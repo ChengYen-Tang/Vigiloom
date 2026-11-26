@@ -9,7 +9,8 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 namespace Vigiloom.Modules.ServiceObservability.Application;
 
 /// <summary>Manages source credentials and writes an audit event in the same transaction.</summary>
-public sealed class SourceAdministration(IDbContextFactory<ServiceObservabilityDbContext> contexts, IOperationAuditWriter<OperationAudit> audit)
+public sealed class SourceAdministration(IDbContextFactory<ServiceObservabilityDbContext> contexts, IOperationAuditWriter<OperationAudit> audit,
+    IEnumerable<IHealthTransitionSink>? transitions = null)
 {
     public async Task<SourceCredentialIssue> IssueAsync(string name, Guid actorId, CancellationToken token)
     {
@@ -78,11 +79,11 @@ public sealed class SourceAdministration(IDbContextFactory<ServiceObservabilityD
         return new(SourceRotationStatus.Rotated, credential);
     }
 
-    private static async Task InvalidateHealthAsync(ServiceObservabilityDbContext db, Guid sourceId, DateTimeOffset now, CancellationToken token)
+    private async Task InvalidateHealthAsync(ServiceObservabilityDbContext db, Guid sourceId, DateTimeOffset now, CancellationToken token)
     {
         var serviceIds = await db.Services.AsNoTracking().Where(x => x.SourceId == sourceId)
             .OrderBy(x => x.RowId).Select(x => x.Id).ToArrayAsync(token);
-        foreach (var serviceId in serviceIds) await HealthInvalidation.ServiceAsync(db, serviceId, now, token);
+        foreach (var serviceId in serviceIds) await HealthInvalidation.ServiceAsync(db, serviceId, now, token, transitions);
     }
 }
 

@@ -16,7 +16,7 @@ namespace Vigiloom.Web.Workspace;
 /// <summary>Combines independent source states without transferring an unbounded inventory to the browser.</summary>
 internal sealed class WorkspaceOverviewReader(IDeviceManagement devices, IPingStatusReader ping, AgentMonitoring agents,
     IDbContextFactory<ResourcesDbContext> resources, IGroupManagement groups, IServiceMembership services,
-    HealthStatusReader health, TimeProvider clock, ILogger<WorkspaceOverviewReader> logger)
+    HealthStatusReader health, Vigiloom.Web.Publishing.PublicObservationClient observation, IConfiguration configuration, TimeProvider clock, ILogger<WorkspaceOverviewReader> logger)
 {
     private const int DisplayLimit = 10;
 
@@ -91,10 +91,13 @@ internal sealed class WorkspaceOverviewReader(IDeviceManagement devices, IPingSt
         {
             var batch = await services.ListAsync(null, false, null, null, page, token);
             if (batch.Items.Count == 0) break;
-            var states = await health.ReadManyAsync(batch.Items.Select(x => x.Id).ToArray(), token);
+            var ids = batch.Items.Select(x => x.Id).ToArray();
+            var states = string.IsNullOrWhiteSpace(configuration["Services:Observability:Url"])
+                ? await health.ReadManyAsync(ids, token) : await observation.StatusesAsync(ids, token);
             foreach (var service in batch.Items)
             {
-                if (!states.TryGetValue(service.Id, out var state)) continue;
+                var state = states.TryGetValue(service.Id, out var observed) ? observed :
+                    new HealthStatusReader.OverviewStatus(new ServiceHealthStatus(ServiceHealthState.Unknown, 0, 0, ServiceHealthUnknownReason.Waiting), null, false, false);
                 count++;
                 var inactive = state.CollectionStopped || state.SourceRevoked || state.Status.UnknownReasons == ServiceHealthUnknownReason.Disabled;
                 var priority = inactive ? 3 : state.Status.State switch { ServiceHealthState.Unhealthy => 0, ServiceHealthState.Degraded => 0, ServiceHealthState.Unknown => 1, _ => 2 };

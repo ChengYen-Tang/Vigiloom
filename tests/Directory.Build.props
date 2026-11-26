@@ -5,6 +5,9 @@
     <IsPackable>false</IsPackable>
     <MSTestAnalysisMode>Recommended</MSTestAnalysisMode>
   </PropertyGroup>
+  <ItemGroup Condition="$([System.String]::Copy('$(MSBuildProjectName)').EndsWith('.Tests'))">
+    <Compile Include="$(MSBuildThisFileDirectory)Shared/TestEnvironment.cs" Link="TestEnvironment.cs" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="MSTest" />
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />

@@ -7,6 +7,8 @@ using Vigiloom.Modules.Resources.Persistence;
 
 namespace Vigiloom.Modules.Resources.Application;
 
+public sealed class ApplicationDiscoveryBusyException() : InvalidOperationException("Could not acquire the candidate lock.");
+
 /// <summary>Records service identity only after the telemetry receiver authenticates its source.</summary>
 public sealed class ApplicationDiscovery(IDbContextFactory<ResourcesDbContext> contexts, IApplicationSourceVerifier sources)
 {
@@ -28,6 +30,9 @@ public sealed class ApplicationDiscovery(IDbContextFactory<ResourcesDbContext> c
         {
             var cutoff = now.AddMinutes(-3);
             await db.ApplicationCandidates.Where(c => c.LastSeen < cutoff).ExecuteDeleteAsync(token);
+            if (await db.ApplicationCandidates.CountAsync(token) >= 10_000 ||
+                await db.ApplicationCandidates.CountAsync(c => c.SourceId == proposed.SourceId, token) >= 1_000)
+                return ApplicationObservationStatus.CapacityReached;
             db.ApplicationCandidates.Add(new ApplicationCandidate(proposed.SourceId, proposed.ServiceKey, proposed.Environment, proposed.DisplayName, proposed.ServiceNamespace, now));
         }
         else candidate.Observe(proposed.DisplayName, now);
@@ -75,6 +80,6 @@ public sealed class ApplicationDiscovery(IDbContextFactory<ResourcesDbContext> c
         await using var command = db.Database.GetDbConnection().CreateCommand();
         command.Transaction = transaction.GetDbTransaction();
         command.CommandText = "DECLARE @r int; EXEC @r = sys.sp_getapplock @Resource = N'Vigiloom.ResourceCandidates', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 5000; SELECT @r";
-        if (Convert.ToInt32(await command.ExecuteScalarAsync(token)) < 0) throw new InvalidOperationException("Could not acquire the candidate lock.");
+        if (Convert.ToInt32(await command.ExecuteScalarAsync(token)) < 0) throw new ApplicationDiscoveryBusyException();
     }
 }

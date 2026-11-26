@@ -8,6 +8,7 @@ using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
+using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Tests.Fixtures;
 using Vigiloom.Testing.SqlServer;
@@ -20,6 +21,8 @@ using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Infrastructure.LogAdmission;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
 
 namespace Vigiloom.Modules.ServiceObservability.Tests.Health;
 
@@ -29,13 +32,97 @@ namespace Vigiloom.Modules.ServiceObservability.Tests.Health;
 public sealed class HealthRunnerTests(TestContext context)
 {
     [TestMethod]
+    [Timeout(120000, CooperativeCancellation = true)]
+    public Task MigrationPreservesHealthEvidenceAndPolicyInvalidation() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (source, outer) =>
+            await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
+            {
+                var sourceOptions = Options(source.ConnectionString);
+                var targetOptions = Options(target.ConnectionString);
+                var id = await SeedAsync(sourceOptions, 12345, token);
+                var sourceQuotaOptions = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(source.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
+                var targetQuotaOptions = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(target.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
+                await using (var quota = new LogAdmissionDbContext(sourceQuotaOptions)) await quota.Database.MigrateAsync(token);
+                await using (var quota = new LogAdmissionDbContext(targetQuotaOptions)) await quota.Database.MigrateAsync(token);
+                var quotaPolicy = new TracePolicyAdministration(new PooledDbContextFactory<LogAdmissionDbContext>(sourceQuotaOptions));
+                var savedQuota = await quotaPolicy.UpdateAsync(new LogQuotaValues(25, 50, 100, 200), "", Guid.CreateVersion7(),
+                    (_, _, _, _) => Task.CompletedTask, token);
+                Assert.IsNotNull(savedQuota);
+                Guid serviceId;
+                await using (var targetDb = new ServiceObservabilityDbContext(targetOptions)) await targetDb.Database.MigrateAsync(token);
+                await using (var db = new ServiceObservabilityDbContext(sourceOptions))
+                {
+                    var sourceRow = await db.Sources.SingleAsync(token);
+                    var service = await db.Services.SingleAsync(token);
+                    serviceId = service.Id;
+                    var check = await db.HealthTargets.SingleAsync(token);
+                    var policy = await db.HealthNetworkPolicies.SingleAsync(token);
+                    var schedule = await db.HealthSchedules.SingleAsync(token);
+                    var observed = DateTimeOffset.UtcNow.AddSeconds(-10);
+                    schedule.SetEvaluation(1, observed, 1, 1, observed, observed);
+                    schedule.SetVersions(sourceRow.Version, service.Version, null, check.Version, policy.Version);
+                    db.HealthObservations.Add(new HealthObservation(id, 1, policy.Generation, sourceRow.Version, service.Version,
+                        null, check.Version, policy.Version, HealthObservationKind.Healthy, observed, observed));
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE service.HealthStateIntervals SET State = 1, Reason = 1, StartedAt = {observed} WHERE TargetId = {id}", token);
+                    policy.ReplaceNetworks(["10.0.0.0/8"], observed.AddSeconds(1));
+                    db.HealthNetworkRevisions.Add(new HealthNetworkRevision(policy, Guid.CreateVersion7(), observed.AddSeconds(1)));
+                    db.TelemetryRetentionSettings.Add(new TelemetryRetentionSetting { LogDays = 45, TraceDays = 21 });
+                    var traceContext = new TraceContext { ServiceId = service.Id, ResourcePayload = [1], ScopePayload = [2], ResourceSchemaUrl = "", ScopeSchemaUrl = "" };
+                    db.TraceSpans.Add(new TraceSpan { ServiceId = service.Id, Context = traceContext, StartedAt = observed, EndedAt = observed,
+                        ReceivedAt = observed, TraceId = Enumerable.Repeat((byte)1, 16).ToArray(), SpanId = Enumerable.Repeat((byte)2, 8).ToArray(), SpanPayload = [3] });
+                    var metricContext = new MetricContext { ServiceId = service.Id, ResourcePayload = [4], ScopePayload = [5], MetricPayload = [6],
+                        MetricName = "migration.test", ResourceSchemaUrl = "", ScopeSchemaUrl = "" };
+                    db.MetricPoints.Add(new MetricPoint { ServiceId = service.Id, Context = metricContext, OccurredAt = observed,
+                        ReceivedAt = observed, Kind = 1, PointPayload = [7] });
+                    await db.SaveChangesAsync(token);
+                    await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE service.HealthSchedules SET Generation = 42, LeaseUntil = SYSDATETIMEOFFSET() WHERE TargetId = {id}", token);
+                }
+                await ObservabilityDataMigration.CopyAsync(source.ConnectionString, target.ConnectionString, token);
+                var copiedQuota = await new TracePolicyAdministration(new PooledDbContextFactory<LogAdmissionDbContext>(targetQuotaOptions)).GetAsync(token);
+                Assert.AreEqual(25, copiedQuota.Values.SourceRate);
+                Assert.AreEqual(200, copiedQuota.Values.GlobalBurst);
+                await using var verify = new ServiceObservabilityDbContext(targetOptions);
+                var result = await verify.HealthSchedules.SingleAsync(token);
+                CollectionAssert.AreEqual((await verify.Sources.SingleAsync(token)).Version, result.SourceVersion);
+                CollectionAssert.AreEqual((await verify.Services.SingleAsync(token)).Version, result.ServiceVersion);
+                CollectionAssert.AreEqual((await verify.HealthTargets.SingleAsync(token)).Version, result.TargetVersion);
+                CollectionAssert.AreEqual(new byte[8], result.NetworkVersion);
+                Assert.AreEqual(42L, result.LastTransitionGeneration);
+                Assert.IsNull(result.LeaseUntil);
+                Assert.AreEqual(1, await verify.HealthStateIntervals.CountAsync(token));
+                var retention = await verify.TelemetryRetentionSettings.SingleAsync(token);
+                Assert.AreEqual(45, retention.LogDays);
+                Assert.AreEqual(21, retention.TraceDays);
+                var span = await verify.TraceSpans.Include(item => item.Context).SingleAsync(token);
+                Assert.AreEqual(serviceId, span.ServiceId);
+                CollectionAssert.AreEqual(new byte[] { 3 }, span.SpanPayload);
+                CollectionAssert.AreEqual(new byte[] { 1 }, span.Context.ResourcePayload);
+                var metric = await verify.MetricPoints.Include(item => item.Context).SingleAsync(token);
+                Assert.AreEqual(serviceId, metric.ServiceId);
+                Assert.AreEqual("migration.test", metric.Context.MetricName);
+                CollectionAssert.AreEqual(new byte[] { 7 }, metric.PointPayload);
+                var reader = new HealthStatusReader(new PooledDbContextFactory<ServiceObservabilityDbContext>(targetOptions));
+                Assert.AreEqual(ServiceHealthState.Unknown, (await reader.ReadAsync(serviceId, token))!.State);
+                var store = new HealthStore(new PooledDbContextFactory<ServiceObservabilityDbContext>(targetOptions));
+                var lease = Assert.ContainsSingle(await store.ClaimAsync(1, token));
+                var work = await store.LoadAsync(lease, token);
+                var network = await store.NetworkAsync(token);
+                Assert.IsNotNull(work);
+                Assert.IsNotNull(network);
+                Assert.IsTrue(await store.CommitAsync(work, network, HealthObservationKind.Healthy, DateTimeOffset.UtcNow, token));
+            }, outer), context.CancellationToken);
+
+    [TestMethod]
     public Task ConfirmedHealthChanges_CreateAlertsWithoutTreatingUnknownAsRecovery() =>
         ReusableServiceDatabase.ExecuteAsync(async (database, token) =>
         {
             var options = Options(database.ConnectionString);
             var targetId = await SeedAsync(options, 12345, token);
             var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
-            var store = new HealthStore(factory, [new ServiceHealthAlertSink(new TestGroups())]);
+            var recording = new RecordingHealthSink();
+            var store = new HealthStore(factory, [new ServiceHealthAlertSink(new TestGroups()), recording]);
             async Task Observe(HealthObservationKind kind)
             {
                 await using (var db = new ServiceObservabilityDbContext(options))
@@ -67,6 +154,12 @@ public sealed class HealthRunnerTests(TestContext context)
             var recovered = Assert.ContainsSingle((await reader.GetEpisodesAsync(new NotificationQuery(1), token)).Items);
             Assert.IsNotNull(recovered.RecoveredAt);
             Assert.IsTrue(await operations.Set<Notification>().AllAsync(x => x.Source == "service-health" && x.Detail.Contains("Operations"), token));
+            Assert.IsGreaterThan(1, recording.Transitions.Count);
+            Assert.AreEqual(0L, recording.Transitions[0].PreviousTransitionGeneration);
+            for (var i = 1; i < recording.Transitions.Count; i++)
+                Assert.AreEqual(recording.Transitions[i - 1].Generation, recording.Transitions[i].PreviousTransitionGeneration);
+            await using var verify = new ServiceObservabilityDbContext(options);
+            Assert.AreEqual(recording.Transitions[^1].Generation, (await verify.HealthSchedules.SingleAsync(token)).LastTransitionGeneration);
         }, context.CancellationToken);
 
     [TestMethod]
@@ -138,10 +231,12 @@ public sealed class HealthRunnerTests(TestContext context)
     private sealed class RecordingHealthSink : IHealthTransitionSink
     {
         public ServiceHealthState? LastState { get; private set; }
+        public List<HealthTransition> Transitions { get; } = [];
         public Task RecordAsync(HealthTransition transition, System.Data.Common.DbConnection connection,
             System.Data.Common.DbTransaction transaction, CancellationToken token)
         {
             LastState = transition.State;
+            Transitions.Add(transition);
             return Task.CompletedTask;
         }
     }
@@ -610,18 +705,19 @@ public sealed class HealthRunnerTests(TestContext context)
                 db.HealthNetworkRevisions.Add(new HealthNetworkRevision(policy, Guid.CreateVersion7(), changed));
                 await db.SaveChangesAsync(token);
             }
+            var recording = new RecordingHealthSink();
             if (invalidateService)
             {
                 await using var db = new ServiceObservabilityDbContext(options);
                 await using var tx = await db.Database.BeginTransactionAsync(token);
                 var service = await db.Services.SingleAsync(token);
-                await HealthInvalidation.ServiceAsync(db, service.Id, await DiscoveryTransaction.NowAsync(db, token), token);
+                await HealthInvalidation.ServiceAsync(db, service.Id, await DiscoveryTransaction.NowAsync(db, token), token, [recording]);
                 await db.SaveChangesAsync(token);
                 await tx.CommitAsync(token);
             }
             else
             {
-                using var runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System);
+                using var runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System, [recording]);
                 await runner.ExpireStaleAsync(token);
             }
             await using var verify = new ServiceObservabilityDbContext(options);
@@ -630,6 +726,9 @@ public sealed class HealthRunnerTests(TestContext context)
             Assert.AreEqual(changed, intervals[0].EndedAt);
             Assert.AreEqual(changed, intervals[1].StartedAt);
             Assert.AreEqual((byte)EvaluatedHealth.Unknown, intervals[1].State);
+            Assert.HasCount(1, recording.Transitions);
+            Assert.AreEqual(changed, recording.Transitions[0].ObservedAt);
+            Assert.AreEqual(ServiceHealthState.Unknown, recording.Transitions[0].State);
         }, context.CancellationToken);
 
     [TestMethod]
@@ -646,7 +745,8 @@ public sealed class HealthRunnerTests(TestContext context)
                 await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [State] = 1, [EvidenceAt] = {evidence}, [Streak] = 1, [StreakCount] = 2, [StreakAt] = {evidence}, [LastEvaluatedAt] = {evidence}, [NetworkVersion] = (SELECT [Version] FROM [service].[HealthNetworkPolicies] WHERE [Name] = 'central') WHERE [TargetId] = {targetId}", token);
                 await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthStateIntervals] SET [State] = 1, [Reason] = 1, [StartedAt] = {start} WHERE [TargetId] = {targetId}", token);
             }
-            using var runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System);
+            var recording = new RecordingHealthSink();
+            using var runner = new HealthRunner(new PooledDbContextFactory<ServiceObservabilityDbContext>(options), TimeProvider.System, [recording]);
             await Task.WhenAll(runner.ExpireStaleAsync(token), runner.ExpireStaleAsync(token));
             await using var verify = new ServiceObservabilityDbContext(options);
             var intervals = await verify.HealthStateIntervals.OrderBy(x => x.RowId).ToArrayAsync(token);
@@ -655,6 +755,9 @@ public sealed class HealthRunnerTests(TestContext context)
             Assert.AreEqual(intervals[0].EndedAt, intervals[1].StartedAt);
             Assert.AreEqual((byte)EvaluatedHealth.Unknown, intervals[1].State);
             Assert.AreEqual(0, await verify.HealthObservations.CountAsync(token));
+            Assert.HasCount(1, recording.Transitions);
+            Assert.AreEqual(ServiceHealthState.Unknown, recording.Transitions[0].State);
+            Assert.AreEqual(recording.Transitions[0].Generation, (await verify.HealthSchedules.SingleAsync(token)).LastTransitionGeneration);
         }, context.CancellationToken);
 
     [TestMethod]

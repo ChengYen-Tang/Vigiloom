@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.Telemetry;
 using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.BuildingBlocks.Operations;
@@ -47,6 +48,7 @@ public static class WorkerHost
     public static HostApplicationBuilder CreateBuilder(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
+        builder.AddVigiloomSelfTelemetry("Vigiloom.Worker");
         builder.Services.AddModuleSqlServer<IdentityAccessDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "identity");
         builder.Services.AddModuleSqlServer<ResourcesDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "resources");
         builder.Services.AddModuleSqlServer<NetworkDbContext>(_ => builder.Configuration.GetConnectionString("Vigiloom") ?? throw new InvalidOperationException("ConnectionStrings:Vigiloom is required."), "network", pooled: true);
@@ -209,13 +211,16 @@ public static class WorkerHost
         builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
         builder.Services.AddHostedService<HostMetricRollupSchedule>();
         builder.Services.AddHostedService<HostMetricRetentionSchedule>();
-        builder.Services.AddHostedService<TelemetryRetentionSchedule>();
         builder.Services.AddHostedService<AuditRetentionSchedule>();
-        builder.Services.AddHostedService<MetricRollupSchedule>();
-        builder.Services.AddSingleton<HealthRunner>();
-        builder.Services.AddHostedService<HealthPolicyWorker>();
-        builder.Services.AddHostedService<HealthExpiryWorker>();
-        builder.Services.AddHostedService<HealthWorker>();
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Observability:Url"]))
+        {
+            builder.Services.AddHostedService<TelemetryRetentionSchedule>();
+            builder.Services.AddHostedService<MetricRollupSchedule>();
+            builder.Services.AddSingleton<HealthRunner>();
+            builder.Services.AddHostedService<HealthPolicyWorker>();
+            builder.Services.AddHostedService<HealthExpiryWorker>();
+            builder.Services.AddHostedService<HealthWorker>();
+        }
         builder.Services.AddHostedService<OutboxSchedule>();
         builder.Services.AddHangfireServer();
         return builder;

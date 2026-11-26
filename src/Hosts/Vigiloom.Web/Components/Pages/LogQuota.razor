@@ -6,7 +6,7 @@
 @using Vigiloom.Infrastructure.LogAdmission
 @using Vigiloom.Web.LogQuota
 @inject LogQuotaSettings Settings
-@inject TraceQuotaSettings TraceSettings
+@inject Vigiloom.Web.LogQuota.TraceQuotaAccess TraceSettings
 @inject ILogger<LogQuota> Logger
 
 <PageTitle>@Signal 收集配額 - Vigiloom</PageTitle>

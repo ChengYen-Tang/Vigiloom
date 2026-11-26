@@ -19,11 +19,14 @@ public sealed class ServiceSource
     public Guid Id { get; private set; }
     public long RowId { get; private set; }
     public string Name { get; private set; } = "";
+    public bool IsSelf { get; private set; }
     public byte[] Verifier { get; private set; } = [];
     public byte[] Version { get; private set; } = [];
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? RevokedAt { get; private set; }
+    internal static ServiceSource CreateSelf(DateTimeOffset now) =>
+        new("Vigiloom Self", System.Security.Cryptography.RandomNumberGenerator.GetBytes(32), now) { IsSelf = true };
     public void ReplaceVerifier(byte[] verifier, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(verifier);

@@ -17,7 +17,7 @@ namespace Vigiloom.Web.HostMonitoring;
 
 internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
     DeviceInventoryAgent ownership, InventoryQuery inventory, HostMetricHistory metrics, HostMetricThresholds thresholds, HostLogHistory logs,
-    IntegrityQuery integrity, IntegrityChangeQuery changes, InventoryChangeQuery inventoryChanges, SigmaDetectionHistory detections, IocDetectionHistory iocDetections, TelemetryRetentionSettings retention, EventTimelineAudit audit) : IHostMonitoringClient
+    IntegrityQuery integrity, IntegrityChangeQuery changes, InventoryChangeQuery inventoryChanges, SigmaDetectionHistory detections, IocDetectionHistory iocDetections, Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess retention, EventTimelineAudit audit) : IHostMonitoringClient
 {
     public async Task<DeviceInventoryView?> GetInventoryAsync(Guid deviceId, CancellationToken token)
     {

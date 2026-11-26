@@ -6,7 +6,7 @@
 @using Vigiloom.Contracts.Groups
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IServiceMembership Memberships
-@inject ServiceDetailsReader Services
+@inject Vigiloom.Web.ServiceDetails.ServiceQueries Services
 @inject ILogger<ServiceOverview> Logger
 
 <PageTitle>應用服務 - Vigiloom</PageTitle>
@@ -45,7 +45,7 @@
         if (Id.Version != 7) return;
         try
         {
-            if (await Services.ReadAsync(Id, HttpContext.RequestAborted) is not null)
+            if (await Services.DetailAsync(Id, HttpContext.RequestAborted) is not null)
                 groups = await Memberships.ListGroupsAsync(Id, CurrentPage, HttpContext.RequestAborted);
         }
         catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { }

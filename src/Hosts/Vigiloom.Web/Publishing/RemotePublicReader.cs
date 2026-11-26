@@ -85,7 +85,7 @@ internal sealed class RemotePublicReader(HttpClient client, PingStore ping, Heal
         if (groupId is not null && group is null) return new([], page, false);
         var first = await PageAsync<PublishedServicePolicy>("services", search, page, groupId, token);
         var versions = await SourceVersionsAsync(first.Items.Select(x => x.Id).ToArray(), token);
-        var states = await health.ReadManyAsync(first.Items.Select(x => x.Id).ToArray(), token);
+        var states = await ServiceStatusesAsync(first.Items.Select(x => x.Id).ToArray(), token);
         var currentVersions = await SourceVersionsAsync(first.Items.Select(x => x.Id).ToArray(), token);
         var current = await PageAsync<PublishedServicePolicy>("services", search, page, groupId, token);
         if (groupId is { } groupKey && group != await GroupPolicyAsync(groupKey, token)) return new([], page, false);
@@ -101,14 +101,23 @@ internal sealed class RemotePublicReader(HttpClient client, PingStore ping, Heal
         var first = await ServicePolicyAsync(id, token);
         if (first is null) return null;
         var versions = await SourceVersionsAsync([id], token);
-        var states = await health.ReadManyAsync([id], token);
+        var states = await ServiceStatusesAsync([id], token);
         var current = await SourceVersionsAsync([id], token);
         return first == await ServicePolicyAsync(id, token) && states.TryGetValue(id, out var state) && versions.TryGetValue(id, out var before) &&
             current.TryGetValue(id, out var after) && Same(before, after) ? Map(first, state) : null;
     }
 
+    private Task<IReadOnlyDictionary<Guid, HealthStatusReader.OverviewStatus>> ServiceStatusesAsync(Guid[] ids, CancellationToken token) =>
+        string.IsNullOrWhiteSpace(configuration["Services:Observability:Url"])
+            ? health.ReadManyAsync(ids, token) : provider.GetRequiredService<PublicObservationClient>().StatusesAsync(ids, token);
+
     private async Task<Dictionary<Guid, SourceVersions>> SourceVersionsAsync(Guid[] ids, CancellationToken token)
     {
+        if (!string.IsNullOrWhiteSpace(configuration["Services:Observability:Url"]))
+        {
+            var remote = await provider.GetRequiredService<PublicObservationClient>().VersionsAsync(ids, token);
+            return remote.ToDictionary(row => row.Key, row => new SourceVersions(row.Key, row.Value.Service, row.Value.Source));
+        }
         await using var db = await observations.CreateDbContextAsync(token);
         return await (from service in db.Services.AsNoTracking()
             join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id

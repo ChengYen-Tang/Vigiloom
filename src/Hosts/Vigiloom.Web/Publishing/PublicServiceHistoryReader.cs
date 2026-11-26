@@ -62,10 +62,12 @@ internal sealed class PublicServiceHistoryReader(IDbContextFactory<ServiceObserv
         if (before?.PublicSince is not { } publicSince ||
             (before.PolicyVersion != PublicationPolicy.ServiceHistoryDetailsVersion &&
              (requireDetails || before.PolicyVersion != PublicationPolicy.ServiceHistoryVersion))) return null;
-        await using var db = await contexts.CreateDbContextAsync(token);
-        var source = await SourceVersionsAsync(db, id, token);
+        var observation = string.IsNullOrWhiteSpace(configuration?["Services:Observability:Url"]) ? null : provider!.GetRequiredService<PublicObservationClient>();
+        await using var db = observation is null ? await contexts.CreateDbContextAsync(token) : null;
+        var source = observation is null ? await SourceVersionsAsync(db!, id, token) : await RemoteVersionsAsync(observation, id, token);
         if (source is null) return null;
-        var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+        var now = observation is null ? await db!.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token)
+            : await observation.TimeAsync(token);
         var first = from > publicSince ? from : publicSince;
         var oldest = now.AddDays(-90);
         if (first < oldest) first = oldest;
@@ -74,13 +76,19 @@ internal sealed class PublicServiceHistoryReader(IDbContextFactory<ServiceObserv
         if (first >= last) result = project(last, last, now, []);
         else
         {
-            var rows = await history.ReadAsync(id, first, last, token);
+            var rows = observation is null ? await history.ReadAsync(id, first, last, token) : await observation.HistoryAsync(id, first, last, token);
             if (rows is null) return null;
             result = project(first, last, now, rows.Intervals);
         }
-        var current = await SourceVersionsAsync(db, id, token);
+        var current = observation is null ? await SourceVersionsAsync(db!, id, token) : await RemoteVersionsAsync(observation, id, token);
         return current is not null && source.Service.AsSpan().SequenceEqual(current.Service) && source.Source.AsSpan().SequenceEqual(current.Source) &&
             before == await remote.ServicePolicyAsync(id, token) ? result : null;
+    }
+
+    private static async Task<SourceVersions?> RemoteVersionsAsync(PublicObservationClient client, Guid id, CancellationToken token)
+    {
+        var versions = await client.VersionsAsync([id], token);
+        return versions.TryGetValue(id, out var value) ? new(value.Service, value.Source) : null;
     }
 
     private static Task<SourceVersions?> SourceVersionsAsync(ServiceObservabilityDbContext db, Guid id, CancellationToken token) =>

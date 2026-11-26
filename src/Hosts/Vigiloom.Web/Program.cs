@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.Telemetry;
 using Vigiloom.UpdateSecurity.AgentPackages;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Web.SpeedTests;
@@ -59,13 +60,15 @@ using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddVigiloomSelfTelemetry("Vigiloom.Web");
 
 if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Resources:Url"]))
 {
     builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
         builder.Configuration["Temporal:Namespace"] ?? "default");
-    builder.Services.AddVigiloomTemporalWorker<Vigiloom.Web.Services.ApplicationEventHandler>(
-        builder.Configuration["Work:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Observability:Url"]))
+        builder.Services.AddVigiloomTemporalWorker<Vigiloom.Web.Services.ApplicationEventHandler>(
+            builder.Configuration["Work:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
 }
 
 // Keep malformed minimal-API requests as 400 responses in Development as well as Production.
@@ -90,6 +93,9 @@ builder.Services.AddScoped<PolicyAdministration>();
 builder.Services.AddScoped<TracePolicyAdministration>();
 builder.Services.AddScoped<Vigiloom.Web.LogQuota.LogQuotaSettings>();
 builder.Services.AddScoped<TraceQuotaSettings>();
+builder.Services.AddHttpClient<Vigiloom.Web.LogQuota.TraceQuotaAccess>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
 builder.Services.AddScoped<IdentityAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource>(provider =>
@@ -221,17 +227,28 @@ builder.Services.AddScoped<IMachineAgentIdentity>(services =>
         ? services.GetRequiredService<AgentIdentity>()
         : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentRegistration>());
 builder.Services.AddScoped<CandidateDiscovery>();
+builder.Services.AddScoped<ICandidateObserver>(services => services.GetRequiredService<CandidateDiscovery>());
 builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddScoped<TelemetryHistory>();
 builder.Services.AddScoped<TelemetryRetentionSettings>();
+builder.Services.AddScoped<Vigiloom.Web.ServiceDetails.LegacyHostLogCleanup>();
+builder.Services.AddHttpClient<Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<ServiceEvidenceReader>();
 builder.Services.AddScoped<ServiceHttpMetricsReader>();
 builder.Services.AddScoped<ServiceDetailsReader>();
 builder.Services.AddScoped<ReceptionOverview>();
 builder.Services.AddScoped<ReceptionRejectionReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.ReceptionManagement>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<CollectorObservations>();
 builder.Services.AddScoped<CollectorCounters>();
 builder.Services.AddScoped<CollectorAdministration>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.CollectorManagement>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddSingleton<OtlpConcurrency>();
 builder.Services.AddSingleton<MetricRollupPayloadGate>();
 builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
@@ -251,9 +268,15 @@ builder.Services.AddScoped<ServiceInstanceAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthTargetAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthNetworkPolicyAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthObservationReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.HealthAdmin>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthStatusReader>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthHistoryReader>();
 builder.Services.AddScoped<InstancePolicyAdministration>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.InstanceManagement>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<ServiceCollectionAdministration>();
 builder.Services.AddScoped<ApplicationStateProjection>();
 builder.Services.AddScoped<Vigiloom.Web.Services.LocalApplicationManagement>();
@@ -266,6 +289,9 @@ builder.Services.AddScoped<Vigiloom.Web.Services.IApplicationManagement>(service
         : services.GetRequiredService<Vigiloom.Web.Services.RemoteApplicationManagement>());
 builder.Services.AddScoped<SourceCredentials>();
 builder.Services.AddScoped<SourceAdministration>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.SourceManagement>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<AgentMonitoring>();
 builder.Services.AddScoped<HostMetricHistory>();
 builder.Services.AddScoped<HostMetricRetentionSettings>();
@@ -431,6 +457,9 @@ builder.Services.AddHttpClient<Vigiloom.Web.SpeedTests.RemoteSpeedHistory>((serv
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostMonitoringClient, Vigiloom.Web.HostMonitoring.ServerHostMonitoringClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Vulnerabilities.IVulnerabilityClient, Vigiloom.Web.HostMonitoring.ServerVulnerabilityClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Services.IServiceDetailsClient, Vigiloom.Web.ServiceDetails.ServerServiceDetailsClient>();
+builder.Services.AddHttpClient<Vigiloom.Web.ServiceDetails.ServiceQueries>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<WorkspaceIdentityService>();
 builder.Services.AddScoped<IWorkspaceIdentityClient, ServerWorkspaceIdentityClient>();
 builder.Services.AddScoped<Vigiloom.Web.Workspace.WorkspaceOverviewReader>();
@@ -452,6 +481,9 @@ builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemoteNetworkPublicClient
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicServiceHistoryReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Publishing.PublicObservationClient>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicDeviceHistoryReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.DeviceHistoryPreviewReader>();
 builder.Services.AddSingleton<Vigiloom.Web.Publishing.PublicHistoryAdmission>();
@@ -689,6 +721,9 @@ app.MapGet("/internal/v1/agents/{id:guid}/update-status", async (Guid id,
 app.MapOtlpHttpEndpoints();
 app.MapTelemetryHistoryEndpoints();
 app.MapTelemetryRetentionEndpoints();
+app.MapPost("/internal/v1/legacy-host-logs/cleanup", async (Vigiloom.Contracts.Operations.ApplicationLogCleanupRequest input,
+    Vigiloom.Web.ServiceDetails.LegacyHostLogCleanup cleanup, CancellationToken token) =>
+    input.RetentionDays is < 1 or > 3650 ? Results.BadRequest() : Results.Ok(await cleanup.RunAsync(input.RetentionDays, token)));
 app.MapServiceDetailsEndpoints();
 app.MapServiceInstanceEndpoints();
 app.MapHealthTargetEndpoints();
