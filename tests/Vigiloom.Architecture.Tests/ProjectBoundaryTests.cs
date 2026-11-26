@@ -134,10 +134,11 @@ public sealed class ProjectBoundaryTests
 
     private static string[]? AllowedReferences(string name, string[] modules) => name switch
     {
-        "Vigiloom.BuildingBlocks" or "Vigiloom.Contracts" or "Vigiloom.UpdateSecurity" or "Vigiloom.Sample.AspNetCore" => [],
+        "Vigiloom.BuildingBlocks" or "Vigiloom.Contracts" or "Vigiloom.Otlp" or "Vigiloom.UpdateSecurity" or "Vigiloom.Sample.AspNetCore" => [],
         "Vigiloom.Infrastructure" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts"],
         "Vigiloom.Gateway" => ["Vigiloom.Infrastructure"],
         "Vigiloom.Identity" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.IdentityAccess"],
+        "Vigiloom.Operations" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.AlertingOperations"],
         "Vigiloom.Web.Client" => ["Vigiloom.Contracts"],
         "Vigiloom.Resources" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.Resources"],
         "Vigiloom.Web" => [.. modules, "Vigiloom.Infrastructure", "Vigiloom.Web.Client"],
@@ -152,6 +153,8 @@ public sealed class ProjectBoundaryTests
         "Vigiloom.Updater" => ["Vigiloom.Updater.Core"],
         "Vigiloom.Modules.AgentManagement" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure", "Vigiloom.UpdateSecurity"],
         "Vigiloom.Modules.Resources" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure", "Vigiloom.UpdateSecurity"],
+        "Vigiloom.Modules.ServiceObservability" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure", "Vigiloom.Otlp"],
+        "Vigiloom.Modules.AlertingOperations" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure", "Vigiloom.Otlp"],
         _ when modules.Contains(name) => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.Infrastructure"],
         _ => null
     };

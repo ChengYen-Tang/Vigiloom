@@ -1,8 +1,49 @@
+using System.Text.Json.Serialization;
 using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Contracts.Operations;
 
 /// <summary>Versioned, allow-listed audit details; only explicitly approved fields are recorded.</summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
+[JsonDerivedType(typeof(EventTimelineAccessed), "EventTimelineAccessed.v1")]
+[JsonDerivedType(typeof(EventEvidenceAccessed), "EventEvidenceAccessed.v1")]
+[JsonDerivedType(typeof(SpeedSettingsChanged), "SpeedSettingsChanged.v1")]
+[JsonDerivedType(typeof(SpeedRetentionChanged), "SpeedRetentionChanged.v1")]
+[JsonDerivedType(typeof(AuditRetentionChanged), "AuditRetentionChanged.v1")]
+[JsonDerivedType(typeof(HostMetricRetentionChanged), "HostMetricRetentionChanged.v1")]
+[JsonDerivedType(typeof(TelemetryRetentionChanged), "TelemetryRetentionChanged.v1")]
+[JsonDerivedType(typeof(PingSettingsChanged), "PingSettingsChanged.v1")]
+[JsonDerivedType(typeof(AgentReplayPolicyChanged), "AgentReplayPolicyChanged.v1")]
+[JsonDerivedType(typeof(AgentInboxSettingsChanged), "AgentInboxSettingsChanged.v1")]
+[JsonDerivedType(typeof(AgentInboxCleanupActivated), "AgentInboxCleanupActivated.v1")]
+[JsonDerivedType(typeof(AgentPackageSourceChanged), "AgentPackageSourceChanged.v1")]
+[JsonDerivedType(typeof(AgentPackageCatalogueRefreshed), "AgentPackageCatalogueRefreshed.v1")]
+[JsonDerivedType(typeof(AgentPackageTrustInitialized), "AgentPackageTrustInitialized.v1")]
+[JsonDerivedType(typeof(IntelligenceRevisionActivated), "IntelligenceRevisionActivated.v1")]
+[JsonDerivedType(typeof(IntelligenceRevisionRevoked), "IntelligenceRevisionRevoked.v1")]
+[JsonDerivedType(typeof(BaselineExceptionRecorded), "BaselineExceptionRecorded.v1")]
+[JsonDerivedType(typeof(SigmaRuleStateChanged), "SigmaRuleStateChanged.v1")]
+[JsonDerivedType(typeof(IntelligenceOfflineImported), "IntelligenceOfflineImported.v1")]
+[JsonDerivedType(typeof(IntelligencePolicyChanged), "IntelligencePolicyChanged.v1")]
+[JsonDerivedType(typeof(AdvisoryImportAbandoned), "AdvisoryImportAbandoned.v1")]
+[JsonDerivedType(typeof(AdvisoryCredentialChanged), "AdvisoryCredentialChanged.v1")]
+[JsonDerivedType(typeof(LineSettingsChanged), "LineSettingsChanged.v1")]
+[JsonDerivedType(typeof(ServiceApproved), "ServiceApproved.v1")]
+[JsonDerivedType(typeof(ServiceSourceChanged), "ServiceSourceChanged.v1")]
+[JsonDerivedType(typeof(InstancePolicyChanged), "InstancePolicyChanged.v1")]
+[JsonDerivedType(typeof(LogQuotaChanged), "LogQuotaChanged.v1")]
+[JsonDerivedType(typeof(TraceQuotaChanged), "TraceQuotaChanged.v1")]
+[JsonDerivedType(typeof(ServiceInstanceChanged), "ServiceInstanceChanged.v1")]
+[JsonDerivedType(typeof(DeploymentLinkChanged), "DeploymentLinkChanged.v1")]
+[JsonDerivedType(typeof(ServiceCollectionChanged), "ServiceCollectionChanged.v1")]
+[JsonDerivedType(typeof(CollectorChanged), "CollectorChanged.v1")]
+[JsonDerivedType(typeof(HealthTargetChanged), "HealthTargetChanged.v1")]
+[JsonDerivedType(typeof(HealthNetworkPolicyChanged), "HealthNetworkPolicyChanged.v1")]
+[JsonDerivedType(typeof(GroupChanged), "GroupChanged.v1")]
+[JsonDerivedType(typeof(PublicationChanged), "PublicationChanged.v1")]
+[JsonDerivedType(typeof(PublicationTemplateChanged), "PublicationTemplateChanged.v1")]
+[JsonDerivedType(typeof(AgentRegistrationRecorded), "AgentRegistrationRecorded.v1")]
+[JsonDerivedType(typeof(AgentVersionAssigned), "AgentVersionAssigned.v1")]
 public abstract record OperationAuditDetails;
 
 /// <summary>Records event timeline access without copying event payloads.</summary>
@@ -59,6 +100,12 @@ public sealed record AgentPackageCatalogueRefreshed(int PackageCount, string Sou
 
 /// <summary>Records the fingerprint of an explicitly initialized publisher trust root.</summary>
 public sealed record AgentPackageTrustInitialized(int RootVersion, string Sha256) : OperationAuditDetails;
+
+public enum AgentRegistrationAction { EnrollmentIssued = 1, AgentEnrolled, RotationStarted, RotationFinished, EnrollmentRevoked, AgentRevoked }
+/// <summary>Records an Agent registration action without retaining credentials. AgentActor distinguishes Agent-initiated events.</summary>
+public sealed record AgentRegistrationRecorded(AgentRegistrationAction Action, Guid? AgentId, bool AgentActor) : OperationAuditDetails;
+/// <summary>Records an administrator's change to the Agent's assigned package.</summary>
+public sealed record AgentVersionAssigned(Guid AgentId, Guid? PreviousPackageId, Guid? PackageId) : OperationAuditDetails;
 
 /// <summary>Records an administrator's revision selection without copying source contents.</summary>
 public sealed record IntelligenceRevisionActivated(Guid? PreviousRevisionId, Guid RevisionId, bool LargeReductionConfirmed, bool OfflineSourceConfirmed = false) : OperationAuditDetails;
@@ -133,11 +180,23 @@ public sealed record PublicationTemplateChanged(PublicationTemplateAction Action
 /// <summary>Trusted producer metadata and allow-listed details for one operation.</summary>
 public sealed record OperationAudit(Guid ActorId, Guid ResourceId, DateTimeOffset OccurredAt, OperationAuditDetails Details);
 
+/// <summary>Stable work type for forwarding a committed operation audit event.</summary>
+public static class OperationAuditWork
+{
+    public const string Kind = "operation-audit.write.v1";
+}
+
+/// <summary>Default destination queue for Operations work.</summary>
+public static class OperationsWork
+{
+    public const string Queue = "vigiloom.operations";
+}
+
 /// <summary>A bounded Administrator query of non-secret operation audit events.</summary>
 public sealed record OperationAuditQuery(DateTimeOffset From, DateTimeOffset To, int Page = 1);
 
 /// <summary>An event with supported typed details; null details mean an unsupported or invalid stored event.</summary>
-public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null, SpeedRetentionChanged? SpeedRetention = null, AgentInboxSettingsChanged? AgentInboxSettings = null, AgentInboxCleanupActivated? AgentInboxActivation = null, AgentPackageSourceChanged? AgentPackageSource = null, AgentPackageCatalogueRefreshed? AgentPackageCatalogue = null, AgentPackageTrustInitialized? AgentPackageTrust = null, PublicationChanged? Publication = null, PublicationTemplateChanged? PublicationTemplate = null, DeploymentLinkChanged? DeploymentLink = null, IntelligenceRevisionActivated? IntelligenceRevision = null, IntelligencePolicyChanged? IntelligencePolicy = null, AdvisoryImportAbandoned? AdvisoryImport = null, AdvisoryCredentialChanged? AdvisoryCredential = null, IntelligenceRevisionRevoked? IntelligenceRevocation = null, IntelligenceOfflineImported? IntelligenceOfflineImport = null, SigmaRuleStateChanged? SigmaRuleState = null, BaselineExceptionRecorded? BaselineException = null, LineSettingsChanged? LineSettings = null, AuditRetentionChanged? AuditRetention = null, HostMetricRetentionChanged? HostMetricRetention = null, TelemetryRetentionChanged? TelemetryRetention = null, EventTimelineAccessed? EventTimeline = null, EventEvidenceAccessed? EventEvidence = null);
+public sealed record OperationAuditEntry(DateTimeOffset OccurredAt, Guid ActorId, Guid ResourceId, SpeedSettingsChanged? SpeedSettings, PingSettingsChanged? PingSettings = null, AgentReplayPolicyChanged? AgentReplayPolicy = null, ServiceApproved? ServiceApproval = null, ServiceSourceChanged? ServiceSource = null, GroupChanged? Group = null, InstancePolicyChanged? InstancePolicy = null, ServiceInstanceChanged? ServiceInstance = null, ServiceCollectionChanged? ServiceCollection = null, LogQuotaChanged? LogQuota = null, TraceQuotaChanged? TraceQuota = null, CollectorChanged? Collector = null, HealthTargetChanged? HealthTarget = null, HealthNetworkPolicyChanged? HealthNetworkPolicy = null, SpeedRetentionChanged? SpeedRetention = null, AgentInboxSettingsChanged? AgentInboxSettings = null, AgentInboxCleanupActivated? AgentInboxActivation = null, AgentPackageSourceChanged? AgentPackageSource = null, AgentPackageCatalogueRefreshed? AgentPackageCatalogue = null, AgentPackageTrustInitialized? AgentPackageTrust = null, PublicationChanged? Publication = null, PublicationTemplateChanged? PublicationTemplate = null, DeploymentLinkChanged? DeploymentLink = null, IntelligenceRevisionActivated? IntelligenceRevision = null, IntelligencePolicyChanged? IntelligencePolicy = null, AdvisoryImportAbandoned? AdvisoryImport = null, AdvisoryCredentialChanged? AdvisoryCredential = null, IntelligenceRevisionRevoked? IntelligenceRevocation = null, IntelligenceOfflineImported? IntelligenceOfflineImport = null, SigmaRuleStateChanged? SigmaRuleState = null, BaselineExceptionRecorded? BaselineException = null, LineSettingsChanged? LineSettings = null, AuditRetentionChanged? AuditRetention = null, HostMetricRetentionChanged? HostMetricRetention = null, TelemetryRetentionChanged? TelemetryRetention = null, EventTimelineAccessed? EventTimeline = null, EventEvidenceAccessed? EventEvidence = null, AgentRegistrationRecorded? AgentRegistration = null, AgentVersionAssigned? AgentAssignment = null);
 
 /// <summary>A bounded page of operation audit events.</summary>
 public sealed record OperationAuditPage(IReadOnlyList<OperationAuditEntry> Items, int Page, bool HasMore, bool LimitReached);

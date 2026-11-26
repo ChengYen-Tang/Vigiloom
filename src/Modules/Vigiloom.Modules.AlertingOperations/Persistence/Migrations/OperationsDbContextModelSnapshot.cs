@@ -70,6 +70,30 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.HealthTransitionCursor", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("TargetId")
+                        .IsUnique();
+
+                    b.ToTable("HealthTransitionCursors", "operations");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.LineDelivery", b =>
                 {
                     b.Property<Guid>("Id")
@@ -171,6 +195,14 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AggregationSeconds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(10);
+
+                    b.Property<DateTimeOffset?>("AggregationStartedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("Enabled")
                         .HasColumnType("bit");
@@ -395,6 +427,35 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                     b.ToTable("PingAlertEvents", "operations");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.PingTransitionCursor", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Generation")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Target")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("nvarchar(253)");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("DeviceId", "Target")
+                        .IsUnique();
+
+                    b.ToTable("PingTransitionCursors", "operations");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.ServiceHealthAlert", b =>
                 {
                     b.Property<Guid>("Id")
@@ -440,6 +501,65 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                     b.HasIndex("ServiceId", "OpenedAt");
 
                     b.ToTable("ServiceHealthAlerts", "operations");
+                });
+
+            modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.TimelineRecord", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<string>("Evidence")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Link")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<long?>("LocalLogRowId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResourceKind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("RuleLink")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("Time")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("MessageId")
+                        .IsUnique();
+
+                    b.HasIndex("Time", "RowId");
+
+                    b.HasIndex("ResourceId", "Time", "RowId");
+
+                    b.ToTable("TimelineRecords", "operations");
                 });
 
             modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.WorkerDiagnosticSlot", b =>

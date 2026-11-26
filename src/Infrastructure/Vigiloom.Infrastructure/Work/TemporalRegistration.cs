@@ -14,6 +14,7 @@ public static class TemporalRegistration
         services.AddScoped<ServiceWorkClient>();
         services.TryAddScoped<OutboxWriter>();
         services.AddScoped<TemporalWorkWriter>();
+        services.AddScoped<TemporalAuditWriter>();
         services.AddScoped<IOutboxHandler, TemporalOutboxHandler>();
         return services;
     }
