@@ -3,8 +3,7 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using System.Security.Claims
 @using Vigiloom.Contracts.Operations
-@using Vigiloom.Modules.AlertingOperations.Application.Retention
-@inject AuditRetentionSettings Retention
+@inject Vigiloom.Web.Operations.AuditRetentionAccess Retention
 @inject ILogger<AuditRetentionPage> Logger
 
 <PageTitle>操作紀錄保存 - Vigiloom</PageTitle>

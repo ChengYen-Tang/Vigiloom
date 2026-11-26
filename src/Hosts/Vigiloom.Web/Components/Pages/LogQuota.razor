@@ -5,7 +5,7 @@
 @using System.Security.Claims
 @using Vigiloom.Infrastructure.LogAdmission
 @using Vigiloom.Web.LogQuota
-@inject LogQuotaSettings Settings
+@inject LogQuotaReader Settings
 @inject Vigiloom.Web.LogQuota.TraceQuotaAccess TraceSettings
 @inject ILogger<LogQuota> Logger
 
@@ -46,7 +46,7 @@
         HttpContext.Response.Headers.CacheControl = "no-store";
         try
         {
-            var current = IsTrace ? await TraceSettings.GetAsync(HttpContext.RequestAborted) : await Settings.GetAsync(HttpContext.RequestAborted);
+            var current = IsTrace ? await TraceSettings.GetAsync(HttpContext.RequestAborted) : await Settings.GetSnapshotAsync(HttpContext.RequestAborted);
             var posted = HttpMethods.IsPost(HttpContext.Request.Method) && HttpContext.Request.HasFormContentType &&
                 (await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted))["_handler"] == "log-quota";
             if (!posted) Form = new() { SourceRate = current.Values.SourceRate, SourceBurst = current.Values.SourceBurst,
