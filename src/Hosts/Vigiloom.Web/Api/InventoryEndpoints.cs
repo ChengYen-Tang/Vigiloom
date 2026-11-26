@@ -10,7 +10,7 @@ internal static class InventoryEndpoints
     {
         var group = app.MapGroup("/api/v1/devices/{deviceId:guid}/inventory")
             .RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
-        group.MapGet("", async (Guid deviceId, HttpContext context, DeviceInventoryAgent ownership,
+        group.MapGet("", async (Guid deviceId, HttpContext context, IDeviceInventoryAgent ownership,
             InventoryQuery inventory, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
@@ -20,7 +20,7 @@ internal static class InventoryEndpoints
             .WithSummary("Read the most recent Agent's private inventory source status");
 
         group.MapGet("/changes", async (Guid deviceId, DateTimeOffset from, DateTimeOffset until, int? source,
-            string? cursor, HttpContext context, DeviceInventoryAgent ownership, InventoryChangeQuery changes, CancellationToken token) =>
+            string? cursor, HttpContext context, IDeviceInventoryAgent ownership, InventoryChangeQuery changes, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (source is { } value && !Enum.IsDefined((InventorySource)value)) return Results.BadRequest();
@@ -33,7 +33,7 @@ internal static class InventoryEndpoints
 
         group.MapGet("/{source:int}/snapshots/{snapshotId:guid}/chunks/{chunkIndex:int}",
             async (Guid deviceId, int source, Guid snapshotId, int chunkIndex, HttpContext context,
-                DeviceInventoryAgent ownership, InventoryQuery inventory, CancellationToken token) =>
+                IDeviceInventoryAgent ownership, InventoryQuery inventory, CancellationToken token) =>
             {
                 context.Response.Headers.CacheControl = "private, no-store";
                 if (!Enum.IsDefined((InventorySource)source) || snapshotId.Version != 7 ||

@@ -133,6 +133,10 @@ public sealed class InternalApiTests
             var registration = await redeemed.Content.ReadFromJsonAsync<AgentEnrollmentResult>(cancellationToken: token);
             Assert.AreEqual(AgentRegistrationStatus.Success, registration?.Status);
             var agentId = registration!.AgentId!.Value;
+            var owner = await client.GetFromJsonAsync<DeviceAgentOwnership>($"/internal/v1/devices/{active.Id:D}/agent-ownership", token);
+            Assert.IsTrue(owner!.Device.Eligible);
+            Assert.AreEqual(agentId, owner.Registration!.Id);
+            Assert.IsNull(owner.Registration.RevokedAt);
             var credential = AgentCredentials.Encode("vla", agentId, machineSecret);
             using var authenticated = await client.PostAsJsonAsync("/internal/v1/agents/authenticate", new AgentCredentialCommand(credential), token);
             Assert.AreEqual(agentId, (await authenticated.Content.ReadFromJsonAsync<RegisteredAgentIdentity>(cancellationToken: token))?.AgentId);
@@ -154,6 +158,9 @@ public sealed class InternalApiTests
             Assert.AreEqual(HttpStatusCode.NoContent, noCurrent.StatusCode);
             using var revoked = await client.PostAsJsonAsync($"/internal/v1/agents/{agentId:D}/revoke", new AgentRevokeCommand(actorId), token);
             Assert.AreEqual(AgentRegistrationStatus.Success, await revoked.Content.ReadFromJsonAsync<AgentRegistrationStatus>(cancellationToken: token));
+            var revokedOwner = await client.GetFromJsonAsync<DeviceAgentOwnership>($"/internal/v1/devices/{active.Id:D}/agent-ownership", token);
+            Assert.AreEqual(agentId, revokedOwner!.Registration!.Id);
+            Assert.IsNotNull(revokedOwner.Registration.RevokedAt);
             using var afterRevocation = await client.GetAsync($"/internal/v1/agents/{agentId:D}/update/packages/{archiveHash}", token);
             Assert.AreEqual(HttpStatusCode.NotFound, afterRevocation.StatusCode);
 

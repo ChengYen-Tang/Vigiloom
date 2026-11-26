@@ -47,6 +47,19 @@ public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> cont
         return new(agents, enrollments, generation.Value);
     }
 
+    public async Task<DeviceAgentOwnership?> GetOwnershipAsync(Guid deviceId, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var device = await db.Devices.AsNoTracking().Where(x => x.Id == deviceId)
+            .Select(x => new DeviceAgentState(x.Id, x.AgentAuthorizationGeneration, x.DeepMonitoring && x.IsEnabled && !x.IsArchived))
+            .SingleOrDefaultAsync(token);
+        if (device is null) return null;
+        var agent = await db.Agents.AsNoTracking().Where(x => x.DeviceId == deviceId && x.DeviceGeneration == device.Generation)
+            .OrderBy(x => x.RevokedAt != null).ThenByDescending(x => x.CreatedAt).ThenByDescending(x => x.RowId)
+            .Select(x => new AgentRegistrationSummary(x.Id, x.DeviceGeneration, x.CreatedAt, x.RevokedAt)).FirstOrDefaultAsync(token);
+        return new(device, agent);
+    }
+
     public async Task<AgentEnrollmentIssue> IssueAsync(Guid deviceId, Guid actorId, CancellationToken token)
     {
         if (actorId == Guid.Empty) return new(AgentRegistrationStatus.Invalid);
