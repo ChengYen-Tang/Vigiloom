@@ -4,6 +4,12 @@ internal static class PublicPingEndpoints
 {
     public static void MapPublicPingEndpoints(this WebApplication app)
     {
+        app.MapPost("/internal/v1/public-ping", async (Guid[] ids, PublicPing reader, CancellationToken token) =>
+        {
+            if (ids.Length > 50 || ids.Distinct().Count() != ids.Length) return Results.BadRequest();
+            var results = await Task.WhenAll(ids.Select(id => reader.ReadAsync(id, token)));
+            return Results.Ok(results.OfType<Vigiloom.Contracts.Publishing.PublicDevice>().ToArray());
+        });
         var group = app.MapGroup("/api/v1/public/devices/{id:guid}/ping");
         group.MapGet("/", async (Guid id, PublicPing reader, HttpContext context, CancellationToken token) =>
         {
