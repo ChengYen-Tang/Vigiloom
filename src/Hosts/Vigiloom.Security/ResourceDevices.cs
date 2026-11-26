@@ -7,7 +7,7 @@ using Vigiloom.Contracts.Agent.Inventory;
 
 namespace Vigiloom.Security;
 
-internal sealed class ResourceDevices(HttpClient client) : IDeviceAgentSource, IAgentOwnerResolver
+internal sealed class ResourceDevices(HttpClient client) : IDeviceAgentSource, IAgentOwnerResolver, IAgentOwnerFence, IDevicePingSource
 {
     public async Task<DeviceAgentState?> GetAsync(Guid deviceId, CancellationToken token)
     {
@@ -31,5 +31,19 @@ internal sealed class ResourceDevices(HttpClient client) : IDeviceAgentSource, I
             ?? throw new InvalidOperationException("Resources returned empty Agent ownership.");
         return ownership is { Device.Eligible: true, Registration: { RevokedAt: null } agent }
             ? new(agent.Id, deviceId, ownership.Device.Generation) : null;
+    }
+
+    // A remote identity check cannot acquire a lock in the local Security transaction.
+    public async Task<bool> LockCurrentAsync(DbConnection connection, DbTransaction transaction, InventoryOwner owner, CancellationToken token) =>
+        await ResolveAsync(owner.DeviceId, token) == owner;
+
+    public IAsyncEnumerable<PingDeviceSnapshot> ReadEnabledAsync(CancellationToken token) => throw new NotSupportedException();
+    public Task<bool> IsCurrentAsync(Guid id, byte[] version, string target, DbConnection connection, DbTransaction transaction, CancellationToken token) => throw new NotSupportedException();
+    public async Task<PingDeviceContext> GetContextAsync(Guid id, DbConnection connection, DbTransaction transaction, CancellationToken token)
+    {
+        using var response = await client.GetAsync($"internal/v1/ping-targets/{id:D}/context", token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<PingDeviceContext>(cancellationToken: token)
+            ?? throw new InvalidOperationException("Resources returned empty device context.");
     }
 }

@@ -18,11 +18,12 @@ public sealed class SecurityScheduleTests
             new IntelligenceRefreshSchedule(manager), new DebianRefreshSchedule(manager), new UbuntuRefreshSchedule(manager),
             new MsrcRefreshSchedule(manager), new EpssRefreshSchedule(manager), new SigmaRefreshSchedule(manager),
             new SignatureRefreshSchedule(manager), new BaselineRefreshSchedule(manager), new AdvisoryRefreshSchedule(manager),
-            new InventoryExpirySchedule(manager), new IntegrityExpirySchedule(manager)
+            new InventoryExpirySchedule(manager), new IntegrityExpirySchedule(manager),
+            new LinuxReassessmentSchedule(manager), new WindowsReassessmentSchedule(manager)
         ];
         foreach (var schedule in schedules) await schedule.StartAsync(CancellationToken.None);
-        Assert.HasCount(11, manager.Jobs);
-        Assert.AreEqual(11, manager.Jobs.Select(x => x.Id).Distinct().Count());
+        Assert.HasCount(13, manager.Jobs);
+        Assert.AreEqual(13, manager.Jobs.Select(x => x.Id).Distinct().Count());
         foreach (var (id, job) in manager.Jobs)
         {
             Assert.IsTrue(id.StartsWith("vigiloom-security-", StringComparison.Ordinal));

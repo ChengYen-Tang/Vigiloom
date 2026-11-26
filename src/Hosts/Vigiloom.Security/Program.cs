@@ -78,6 +78,9 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", false))
     builder.Services.AddScoped<AdvisoryRefresh>();
     builder.Services.AddScoped<InventoryExpiry>();
     builder.Services.AddScoped<IntegrityExpiry>();
+    builder.Services.AddScoped<LinuxReassessment>();
+    builder.Services.AddScoped<WindowsReassessment>();
+    builder.Services.AddSingleton<MicrosoftCatalogCache>();
     builder.Services.AddScoped<IntelligenceRefreshJob>(); builder.Services.AddHostedService<IntelligenceRefreshSchedule>();
     builder.Services.AddScoped<DebianRefreshJob>(); builder.Services.AddHostedService<DebianRefreshSchedule>();
     builder.Services.AddScoped<UbuntuRefreshJob>(); builder.Services.AddHostedService<UbuntuRefreshSchedule>();
@@ -89,11 +92,14 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", false))
     builder.Services.AddScoped<AdvisoryRefreshJob>(); builder.Services.AddHostedService<AdvisoryRefreshSchedule>();
     builder.Services.AddScoped<InventoryExpiryJob>(); builder.Services.AddHostedService<InventoryExpirySchedule>();
     builder.Services.AddScoped<IntegrityExpiryJob>(); builder.Services.AddHostedService<IntegrityExpirySchedule>();
+    builder.Services.AddScoped<LinuxReassessmentJob>(); builder.Services.AddHostedService<LinuxReassessmentSchedule>();
+    builder.Services.AddScoped<WindowsReassessmentJob>(); builder.Services.AddHostedService<WindowsReassessmentSchedule>();
     builder.Services.AddHttpClient(IntelligenceHttp.KevClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
     builder.Services.AddHttpClient(IntelligenceHttp.DebianClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateDebianHandler);
     builder.Services.AddHttpClient(IntelligenceHttp.UbuntuClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
     builder.Services.AddHttpClient(IntelligenceHttp.MsrcClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
     builder.Services.AddHttpClient(IntelligenceHttp.EpssClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
+    builder.Services.AddHttpClient(IntelligenceHttp.MicrosoftCatalogClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateMicrosoftCatalogHandler);
     builder.Services.AddHttpClient(IntelligenceHttp.AdvisoryClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateAdvisoryHandler);
     builder.Services.AddHttpClient(IntelligenceHttp.RepositoryClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateAdvisoryHandler);
 }
@@ -105,6 +111,8 @@ builder.Services.AddHttpClient<ResourceDevices>((services, client) =>
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IDeviceAgentSource>(services => services.GetRequiredService<ResourceDevices>());
 builder.Services.AddScoped<IAgentOwnerResolver>(services => services.GetRequiredService<ResourceDevices>());
+builder.Services.AddScoped<IAgentOwnerFence>(services => services.GetRequiredService<ResourceDevices>());
+builder.Services.AddScoped<IDevicePingSource>(services => services.GetRequiredService<ResourceDevices>());
 builder.Services.AddHttpClient("host", (services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Host:Url"] ?? "http://vigiloom-host-monitoring";
