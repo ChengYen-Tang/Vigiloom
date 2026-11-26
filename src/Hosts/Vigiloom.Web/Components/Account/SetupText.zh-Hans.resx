@@ -1,0 +1,57 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="Title">
+    <value>创建管理员</value>
+  </data>
+  <data xml:space="preserve" name="Description">
+    <value>完成首次设置，开始使用 Vigiloom。</value>
+  </data>
+  <data xml:space="preserve" name="SetupToken">
+    <value>设置密钥</value>
+  </data>
+  <data xml:space="preserve" name="TokenHint">
+    <value>请输入安装时设置的密钥。</value>
+  </data>
+  <data xml:space="preserve" name="Administrator">
+    <value>管理员账号</value>
+  </data>
+  <data xml:space="preserve" name="Password">
+    <value>密码</value>
+  </data>
+  <data xml:space="preserve" name="PasswordHint">
+    <value>至少 12 个字符，包含大小写英文字母、数字及符号。</value>
+  </data>
+  <data xml:space="preserve" name="ConfirmPassword">
+    <value>确认密码</value>
+  </data>
+  <data xml:space="preserve" name="AlreadyHaveAccount">
+    <value>已有账号？登录</value>
+  </data>
+  <data xml:space="preserve" name="SetupFailed">
+    <value>无法完成首次设置，请确认设置密钥与系统状态。</value>
+  </data>
+  <data xml:space="preserve" name="RequiredToken">
+    <value>请输入设置密钥。</value>
+  </data>
+  <data xml:space="preserve" name="TokenLength">
+    <value>设置密钥不能超过 {1} 个字符。</value>
+  </data>
+  <data xml:space="preserve" name="RequiredConfirmation">
+    <value>请再次输入密码。</value>
+  </data>
+  <data xml:space="preserve" name="PasswordMismatch">
+    <value>两次密码不一致。</value>
+  </data>
+</root>

@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="Title">
+    <value>雙重驗證</value>
+  </data>
+  <data xml:space="preserve" name="Description">
+    <value>輸入驗證器 App 中的 6 位數代碼。</value>
+  </data>
+  <data xml:space="preserve" name="VerificationCode">
+    <value>驗證碼</value>
+  </data>
+  <data xml:space="preserve" name="VerifyAndSignIn">
+    <value>驗證並登入</value>
+  </data>
+  <data xml:space="preserve" name="UseRecovery">
+    <value>使用復原碼</value>
+  </data>
+  <data xml:space="preserve" name="RecoveryCode">
+    <value>復原碼</value>
+  </data>
+  <data xml:space="preserve" name="SignInWithRecovery">
+    <value>使用復原碼登入</value>
+  </data>
+  <data xml:space="preserve" name="BackToSignIn">
+    <value>返回登入</value>
+  </data>
+  <data xml:space="preserve" name="InvalidCode">
+    <value>代碼無效或登入已過期，請重試或重新登入。</value>
+  </data>
+  <data xml:space="preserve" name="RequiredCode">
+    <value>請輸入代碼。</value>
+  </data>
+  <data xml:space="preserve" name="CodeLength">
+    <value>代碼不能超過 {1} 個字元。</value>
+  </data>
+</root>
