@@ -1,0 +1,126 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="群組">
+    <value>Groups</value>
+  </data>
+  <data xml:space="preserve" name="依地點、環境或系統整理設備和應用服務。群組不改變公開設定。">
+    <value>Organize devices and services by location, environment or system. Groups do not change public visibility.</value>
+  </data>
+  <data xml:space="preserve" name="新增群組">
+    <value>Add group</value>
+  </data>
+  <data xml:space="preserve" name="編輯群組">
+    <value>Edit group</value>
+  </data>
+  <data xml:space="preserve" name="搜尋群組">
+    <value>Search groups</value>
+  </data>
+  <data xml:space="preserve" name="名稱或說明">
+    <value>Name or description</value>
+  </data>
+  <data xml:space="preserve" name="搜尋">
+    <value>Search</value>
+  </data>
+  <data xml:space="preserve" name="未分組設備">
+    <value>Ungrouped devices</value>
+  </data>
+  <data xml:space="preserve" name="未分組服務">
+    <value>Ungrouped services</value>
+  </data>
+  <data xml:space="preserve" name="無法載入群組，請稍後重新整理。">
+    <value>Unable to load groups. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的群組。">
+    <value>No groups match your search.</value>
+  </data>
+  <data xml:space="preserve" name="共 {0} 個群組">
+    <value>Groups: {0}</value>
+  </data>
+  <data xml:space="preserve" name="左右滑動查看完整表格。">
+    <value>Scroll horizontally to view the full table.</value>
+  </data>
+  <data xml:space="preserve" name="名稱">
+    <value>Name</value>
+  </data>
+  <data xml:space="preserve" name="說明">
+    <value>Description</value>
+  </data>
+  <data xml:space="preserve" name="設備">
+    <value>Devices</value>
+  </data>
+  <data xml:space="preserve" name="應用服務">
+    <value>Application services</value>
+  </data>
+  <data xml:space="preserve" name="查看群組">
+    <value>View group</value>
+  </data>
+  <data xml:space="preserve" name="群組分頁">
+    <value>Group pages</value>
+  </data>
+  <data xml:space="preserve" name="上一頁">
+    <value>Previous</value>
+  </data>
+  <data xml:space="preserve" name="下一頁">
+    <value>Next</value>
+  </data>
+  <data xml:space="preserve" name="第 {0} 頁">
+    <value>Page {0}</value>
+  </data>
+  <data xml:space="preserve" name="← 返回">
+    <value>← Back</value>
+  </data>
+  <data xml:space="preserve" name="使用群組整理資源，不影響公開或監控設定。">
+    <value>Groups organize resources without changing visibility or monitoring.</value>
+  </data>
+  <data xml:space="preserve" name="無法載入群組，請返回清單確認。">
+    <value>Unable to load the group. Return to the list and check.</value>
+  </data>
+  <data xml:space="preserve" name="群組名稱">
+    <value>Group name</value>
+  </data>
+  <data xml:space="preserve" name="說明（選填）">
+    <value>Description (optional)</value>
+  </data>
+  <data xml:space="preserve" name="儲存群組">
+    <value>Save group</value>
+  </data>
+  <data xml:space="preserve" name="取消">
+    <value>Cancel</value>
+  </data>
+  <data xml:space="preserve" name="請重新登入後再試。">
+    <value>Sign in again and try again.</value>
+  </data>
+  <data xml:space="preserve" name="資料已過期，請重新整理。">
+    <value>The data is outdated. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="群組已變更或不存在，請重新整理後再試。">
+    <value>The group changed or no longer exists. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="無法確認儲存結果，請返回清單確認後再試。">
+    <value>Unable to confirm the save result. Check the group list before retrying.</value>
+  </data>
+  <data xml:space="preserve" name="請輸入 1 至 256 個字元的群組名稱。">
+    <value>Enter a group name of 1 to 256 characters.</value>
+  </data>
+  <data xml:space="preserve" name="說明最多 1024 個字元。">
+    <value>Description must be at most 1024 characters.</value>
+  </data>
+  <data xml:space="preserve" name="請重新整理後再試。">
+    <value>Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="已有相同名稱的群組，請使用其他名稱。">
+    <value>A group with this name already exists. Choose another name.</value>
+  </data>
+</root>

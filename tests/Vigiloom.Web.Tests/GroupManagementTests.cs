@@ -144,6 +144,25 @@ public sealed class GroupManagementTests
         Assert.AreEqual(0, ungrouped.Total);
         using var adminClient = Client(factory);
         await LoginAsync(adminClient, "admin", "Strong-Password-123", token);
+        adminClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var groupList = await adminClient.GetAsync("/groups", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await groupList.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Add group", document.Body!.TextContent);
+            Assert.Contains("Office", document.Body.TextContent);
+        }
+        using (var newGroup = await adminClient.GetAsync("/groups/new", token))
+        {
+            var newGroupFields = Hidden(await FormAsync(newGroup, "group-edit", token));
+            newGroupFields["Input.Name"] = "Office";
+            newGroupFields["Input.Description"] = "Original description";
+            using var duplicate = await adminClient.PostAsync("/groups/new", new FormUrlEncodedContent(newGroupFields), token);
+            var document = await new HtmlParser().ParseDocumentAsync(await duplicate.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("A group with this name already exists.", document.Body!.TextContent);
+            Assert.AreEqual("Office", document.QuerySelector("#group-name")!.GetAttribute("value"));
+            Assert.AreEqual("Original description", document.QuerySelector("#group-description")!.TextContent);
+        }
+        adminClient.DefaultRequestHeaders.AcceptLanguage.Clear();
         using (var noCsrf = await adminClient.PostAsJsonAsync("/api/v1/groups/", new GroupInput("No CSRF", null), token)) Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
         using (var edit = await adminClient.GetAsync($"/devices/{device.Id:D}/edit", token))
         {
