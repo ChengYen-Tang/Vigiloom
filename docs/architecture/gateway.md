@@ -1,6 +1,6 @@
 # Gateway routing and trusted proxies
 
-The Gateway's `ReverseProxy` configuration controls destinations. The default Web, Agent, and OTLP routes all point to the existing Web host; configure their service endpoints separately as those services are extracted. The Gateway uses .NET service discovery: `Services:<name>:http` or `https` can list one or more endpoints, while deployments can also provide a resolvable service name.
+The Gateway's `ReverseProxy` configuration controls destinations. Web remains the destination for the UI and routes not yet cut over. Network and Observability have their own clusters; Host Monitoring receives the Agent channel, heartbeat and host settings. Agent security traffic can be switched to Host Monitoring using `Vigiloom:Gateway:SecurityCutover`; enrollment and other existing Agent routes remain on the Agent cluster. Configure each destination for the deployment. The Gateway uses .NET service discovery: `Services:<name>:http` or `https` can list one or more endpoints, while deployments can also provide a resolvable service name.
 
 The Web cluster uses YARP cookie session affinity so Blazor Server connections and reconnects reach the same Web instance when several endpoints are configured. If that instance is removed or unavailable, its in-memory circuit cannot be recovered on another instance; the browser must establish a new circuit.
 
