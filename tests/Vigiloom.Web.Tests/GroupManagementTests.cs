@@ -330,6 +330,21 @@ public sealed class GroupManagementTests
         Assert.HasCount(10, events.Items);
         Assert.AreEqual(3, events.Items.Count(x => x.Group?.Action == GroupAction.ServicesChanged));
         Assert.IsTrue(events.Items.Any(x => x.ResourceId == group.Id && x.Group?.Action == GroupAction.Deleted));
+        adminClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var englishAudit = await adminClient.GetAsync("/settings/audit?source=groups", token))
+        {
+            var auditText = WebUtility.HtmlDecode(await englishAudit.Content.ReadAsStringAsync(token));
+            Assert.Contains("Audit log", auditText);
+            Assert.Contains("Change services", auditText);
+            Assert.Contains("Saved", auditText);
+        }
+        using (var invalidDates = await adminClient.GetAsync("/settings/audit?from=2026-02-02&to=2026-02-01", token))
+            Assert.Contains("Start date cannot be after end date.", WebUtility.HtmlDecode(await invalidDates.Content.ReadAsStringAsync(token)));
+        adminClient.DefaultRequestHeaders.AcceptLanguage.Clear();
+        adminClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplifiedAudit = await adminClient.GetAsync("/settings/audit?source=groups", token))
+            Assert.Contains("操作稽核", WebUtility.HtmlDecode(await simplifiedAudit.Content.ReadAsStringAsync(token)));
+        adminClient.DefaultRequestHeaders.AcceptLanguage.Clear();
         using (var auditPage = await adminClient.GetAsync("/settings/audit?source=groups", token))
         {
             Assert.AreEqual(HttpStatusCode.OK, auditPage.StatusCode);
