@@ -784,4 +784,41 @@
   <data name="已到期" xml:space="preserve"><value>Expired</value></data>
   <data name="已使用，可安全重試" xml:space="preserve"><value>Used; safe to retry</value></data>
   <data name="等待加入" xml:space="preserve"><value>Awaiting enrollment</value></data>
+  <data name="YARA 掃描" xml:space="preserve"><value>YARA scans</value></data>
+  <data name="{0} · 掃描指定的單一檔案；命中是調查線索，並不代表已入侵。" xml:space="preserve"><value>{0} · Scan a single specified file. A match is an investigative lead, not proof of compromise.</value></data>
+  <data name="新增掃描" xml:space="preserve"><value>New scan</value></data>
+  <data name="Agent 主機需有可執行的 YARA；若尚未安裝，結果會顯示無法使用。掃描工作會在 Agent 下次同步後執行。" xml:space="preserve"><value>The Agent host needs an executable YARA installation; otherwise the result will show it is unavailable. The scan runs after the Agent’s next sync.</value></data>
+  <data name="YARA 引擎採用 " xml:space="preserve"><value>The YARA engine uses the </value></data>
+  <data name="BSD 3-Clause 授權" xml:space="preserve"><value>BSD 3-Clause license</value></data>
+  <data name="；手動輸入的規則有各自的授權，請管理員確認後使用。" xml:space="preserve"><value>. Manually entered rules have their own licenses; administrators should verify them before use.</value></data>
+  <data name="主機上的檔案完整路徑" xml:space="preserve"><value>Full file path on the host</value></data>
+  <data name="YARA 規則" xml:space="preserve"><value>YARA rules</value></data>
+  <data name="檔案大小上限（MiB）" xml:space="preserve"><value>Maximum file size (MiB)</value></data>
+  <data name="建立掃描" xml:space="preserve"><value>Create scan</value></data>
+  <data name="掃描紀錄" xml:space="preserve"><value>Scan history</value></data>
+  <data name="查看最近的掃描" xml:space="preserve"><value>View recent scans</value></data>
+  <data name="已完成的掃描依操作紀錄政策保存 {0} 天；等待執行的工作會保留。" xml:space="preserve"><value>Completed scans are retained for {0} days under the operation history policy; pending work is retained.</value></data>
+  <data name="尚無掃描紀錄。" xml:space="preserve"><value>No scan history.</value></data>
+  <data name="建立時間（UTC）：{0} · 申請者：{1}" xml:space="preserve"><value>Created (UTC): {0} · Requested by: {1}</value></data>
+  <data name="結果：{0} · {1}" xml:space="preserve"><value>Result: {0} · {1}</value></data>
+  <data name="YARA 引擎版本：{0}" xml:space="preserve"><value>YARA engine version: {0}</value></data>
+  <data name="輸出過長，僅顯示部分內容。" xml:space="preserve"><value>Output was truncated.</value></data>
+  <data name="等待 Agent 執行或回報。" xml:space="preserve"><value>Waiting for the Agent to execute or report.</value></data>
+  <data name="取消掃描" xml:space="preserve"><value>Cancel scan</value></data>
+  <data name="查看規則" xml:space="preserve"><value>View rules</value></data>
+  <data name="來源：管理員手動輸入 · SHA-256：{0}" xml:space="preserve"><value>Source: administrator input · SHA-256: {0}</value></data>
+  <data name="找不到此掃描，資料可能已超過保存期限。" xml:space="preserve"><value>Scan not found; its data may have passed the retention period.</value></data>
+  <data name="無法讀取掃描紀錄。" xml:space="preserve"><value>Unable to load scan history.</value></data>
+  <data name="請填寫檔案路徑與規則，大小須介於 1 至 1024 MiB，逾時須介於 1 至 3600 秒。" xml:space="preserve"><value>Enter a file path and rules; size must be 1–1024 MiB and timeout 1–3600 seconds.</value></data>
+  <data name="此設備沒有可用的 Agent。" xml:space="preserve"><value>This device has no available Agent.</value></data>
+  <data name="掃描設定無效，請確認輸入。" xml:space="preserve"><value>Invalid scan settings. Check your input.</value></data>
+  <data name="無法建立掃描，請稍後重試。" xml:space="preserve"><value>Unable to create the scan. Try again later.</value></data>
+  <data name="掃描已結束或不存在，請重新整理。" xml:space="preserve"><value>The scan finished or does not exist. Refresh the page.</value></data>
+  <data name="無法取消掃描，請稍後重試。" xml:space="preserve"><value>Unable to cancel the scan. Try again later.</value></data>
+  <data name="已完成" xml:space="preserve"><value>Completed</value></data>
+  <data name="檔案超過大小上限" xml:space="preserve"><value>File exceeds the size limit</value></data>
+  <data name="已逾時" xml:space="preserve"><value>Timed out</value></data>
+  <data name="無法使用" xml:space="preserve"><value>Unavailable</value></data>
+  <data name="已取消（Agent 連線後停止）" xml:space="preserve"><value>Cancelled (stops when Agent connects)</value></data>
+  <data name="掃描失敗" xml:space="preserve"><value>Scan failed</value></data>
 </root>

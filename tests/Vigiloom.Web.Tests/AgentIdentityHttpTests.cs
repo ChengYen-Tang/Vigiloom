@@ -747,6 +747,22 @@ public sealed class AgentIdentityHttpTests
             var scan = await scans.CreateAsync(device.Id, new("/tmp/sample", "rule example { condition: true }", 1024, 60), Guid.CreateVersion7(), token);
             Assert.IsNotNull(scan);
             var scanPage = $"/devices/{device.Id:D}/yara-scans";
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishScan = await reader.GetAsync(scanPage, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await englishScan.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("YARA scans", text);
+                Assert.Contains("/tmp/sample", text);
+                Assert.Contains("rule example { condition: true }", text);
+            }
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplifiedScan = await reader.GetAsync(scanPage, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await simplifiedScan.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("扫描记录", text);
+            }
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var readerPage = await reader.GetAsync(scanPage, token);
             Assert.DoesNotContain($"yara-scan-cancel-{scan.Id:D}", await readerPage.Content.ReadAsStringAsync(token));
             using var admin = PingTestSite.Client(factory);
