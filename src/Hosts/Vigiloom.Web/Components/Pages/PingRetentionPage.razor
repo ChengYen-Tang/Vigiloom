@@ -6,30 +6,31 @@
 @using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory
 @inject IPingRetentionSettings Retention
 @inject ILogger<PingRetentionPage> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<PingSettingsText> L
 
-<PageTitle>Ping 資料保存 - Vigiloom</PageTitle>
+<PageTitle>@L["Ping 資料保存"] - Vigiloom</PageTitle>
 <main class="device-page device-form-page">
-    <header class="device-heading"><div><h1>Ping 資料保存</h1><p>設定原始量測與五分鐘彙總的保存期限。</p></div></header>
+    <header class="device-heading"><div><h1>@L["Ping 資料保存"]</h1><p>@L["設定原始量測與五分鐘彙總的保存期限。"]</p></div></header>
     <section class="device-panel">
-        <p>過期資料會定期清理；尚未完成彙總的樣本會保留。刪除後，延長期限無法還原資料。</p>
-        @if (loadError) { <p class="device-alert" role="alert">無法讀取保存設定，請重新整理後再試。</p> }
+        <p>@L["過期資料會定期清理；尚未完成彙總的樣本會保留。刪除後，延長期限無法還原資料。"]</p>
+        @if (loadError) { <p class="device-alert" role="alert">@L["無法讀取保存設定，請重新整理後再試。"]</p> }
         else if (snapshot is not null)
         {
             @if (message is not null) { <p role="status">@message</p> }
             <EditForm Model="Input" FormName="ping-retention" method="post" OnValidSubmit="SubmitAsync">
                 <InputHidden @bind-Value="Input.Version" />
                 <InputHidden @bind-Value="Input.ConfirmationToken" />
-                <label for="ping-raw-days">原始樣本保存天數（1～3650 天）</label>
+                <label for="ping-raw-days">@L["原始樣本保存天數（1～3650 天）"]</label>
                 <InputNumber id="ping-raw-days" @bind-Value="Input.RawDays" min="1" max="3650" required />
-                <label for="ping-rollup-days">五分鐘彙總保存天數（1～3650 天）</label>
+                <label for="ping-rollup-days">@L["五分鐘彙總保存天數（1～3650 天）"]</label>
                 <InputNumber id="ping-rollup-days" @bind-Value="Input.RollupDays" min="1" max="3650" required />
                 @if (preview is { } impact)
                 {
-                    <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預計有 @impact.Samples 筆原始樣本及 @impact.Rollups 筆彙總符合清理條件。實際數量會隨時間及資料變動。</p>
-                    <p>確認後將依排程清理；預覽在 5 分鐘內有效。</p>
-                    <div class="device-actions"><button type="submit">確認儲存</button><a href="/settings/ping/retention">取消</a></div>
+                    <p role="status">@L["以 {0} 為準，預計有 {1} 筆原始樣本及 {2} 筆彙總符合清理條件。實際數量會隨時間及資料變動。", impact.PreviewedAt.ToString("u"), impact.Samples, impact.Rollups]</p>
+                    <p>@L["確認後將依排程清理；預覽在 5 分鐘內有效。"]</p>
+                    <div class="device-actions"><button type="submit">@L["確認儲存"]</button><a href="/settings/ping/retention">@L["取消"]</a></div>
                 }
-                else { <div class="device-actions"><button type="submit">預覽變更</button><a href="/settings/ping">返回 Ping 設定</a></div> }
+                else { <div class="device-actions"><button type="submit">@L["預覽變更"]</button><a href="/settings/ping">@L["返回 Ping 設定"]</a></div> }
             </EditForm>
         }
     </section>
@@ -57,25 +58,25 @@
     private async Task SubmitAsync()
     {
         if (!Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
-        if (!PingRetentionLimits.IsValid(Input.RawDays, Input.RollupDays) || Input.Version is null) { message = "請輸入有效的保存天數。"; return; }
+        if (!PingRetentionLimits.IsValid(Input.RawDays, Input.RollupDays) || Input.Version is null) { message = L["請輸入有效的保存天數。"].Value; return; }
         try
         {
             if (string.IsNullOrEmpty(Input.ConfirmationToken))
             {
                 preview = await Retention.PreviewAsync(new(Input.RawDays, Input.RollupDays, Input.Version), actor, HttpContext.RequestAborted);
-                if (preview is null) { message = "設定已被其他操作變更，請重新整理後再試。"; return; }
+                if (preview is null) { message = L["設定已被其他操作變更，請重新整理後再試。"].Value; return; }
                 Input.ConfirmationToken = preview.ConfirmationToken;
             }
             else if (await Retention.UpdateAsync(new(Input.RawDays, Input.RollupDays, Input.Version, Input.ConfirmationToken), actor, HttpContext.RequestAborted) is { } saved)
             {
                 snapshot = saved;
                 Input = new() { RawDays = saved.RawDays, RollupDays = saved.RollupDays, Version = saved.Version };
-                message = "保存設定已儲存。";
+                message = L["保存設定已儲存。"].Value;
             }
-            else { Input.ConfirmationToken = null; message = "設定已被其他操作變更，請重新整理後再試。"; }
+            else { Input.ConfirmationToken = null; message = L["設定已被其他操作變更，請重新整理後再試。"].Value; }
         }
-        catch (ArgumentException) { Input.ConfirmationToken = null; message = "預覽已過期或天數已變更，請重新預覽。"; }
-        catch (Exception ex) { Logger.LogWarning("Could not update Ping retention: {ErrorType}", ex.GetType().Name); message = "無法確認儲存結果，請重新整理後檢查。"; }
+        catch (ArgumentException) { Input.ConfirmationToken = null; message = L["預覽已過期或天數已變更，請重新預覽。"].Value; }
+        catch (Exception ex) { Logger.LogWarning("Could not update Ping retention: {ErrorType}", ex.GetType().Name); message = L["無法確認儲存結果，請重新整理後檢查。"].Value; }
     }
 
     private sealed class RetentionForm
