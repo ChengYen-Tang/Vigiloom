@@ -163,6 +163,13 @@ public sealed class NetworkHostTests(TestContext context)
             Assert.IsNotNull(history);
             Assert.AreEqual(allowedBucket, Assert.ContainsSingle(history.Points).From);
         }
+        using (var response = await client.PostAsJsonAsync("/internal/v1/public-ping", new[] { id }, token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            var batch = await response.Content.ReadFromJsonAsync<PublicDevice[]>(cancellationToken: token);
+            Assert.IsNotNull(batch);
+            Assert.AreEqual(id, Assert.ContainsSingle(batch).Id);
+        }
         withdrawDuringRead = true;
         policyReads = 0;
         using (var response = await client.GetAsync($"/api/v1/public/devices/{id:D}/ping", token))

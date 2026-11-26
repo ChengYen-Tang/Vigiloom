@@ -15,7 +15,8 @@ namespace Vigiloom.Web.Publishing;
 internal sealed class PublicReader(IDbContextFactory<ResourcesDbContext> resources, IDbContextFactory<ServiceObservabilityDbContext> services,
     PingStore ping, HealthStatusReader health, IConfiguration? configuration = null, IServiceProvider? provider = null)
 {
-    private RemotePublicReader? Remote => string.IsNullOrWhiteSpace(configuration?["Services:Resources:Url"]) ? null : provider!.GetRequiredService<RemotePublicReader>();
+    private RemotePublicReader? Remote => string.IsNullOrWhiteSpace(configuration?["Services:Resources:Url"]) && string.IsNullOrWhiteSpace(configuration?["Services:Network:Url"])
+        ? null : provider!.GetRequiredService<RemotePublicReader>();
     public const int PageSize = 50;
     public const int MaximumPage = 1000;
 

@@ -15,8 +15,9 @@ namespace Vigiloom.Web.Publishing;
 
 /// <summary>Combines resource-owned public policies with the current monitoring state.</summary>
 internal sealed class RemotePublicReader(HttpClient client, PingStore ping, HealthStatusReader health,
-    IDbContextFactory<ServiceObservabilityDbContext> observations)
+    IDbContextFactory<ServiceObservabilityDbContext> observations, IConfiguration configuration, IServiceProvider provider)
 {
+    private RemoteNetworkPublicClient? Network => string.IsNullOrWhiteSpace(configuration["Services:Network:Url"]) ? null : provider.GetRequiredService<RemoteNetworkPublicClient>();
     private const string Root = "internal/v1/publications/";
 
     public Task<PublishedDevicePolicy?> DevicePolicyAsync(Guid id, CancellationToken token) => GetAsync<PublishedDevicePolicy>($"devices/{id:D}", token);
@@ -46,6 +47,16 @@ internal sealed class RemotePublicReader(HttpClient client, PingStore ping, Heal
         var group = groupId is { } id ? await GroupPolicyAsync(id, token) : null;
         if (groupId is not null && group is null) return new([], page, false);
         var first = await PageAsync<PublishedDevicePolicy>("devices", search, page, groupId, token);
+        if (Network is { } network)
+        {
+            var statuses = (await network.DevicesAsync(first.Items.Select(item => item.Id).ToArray(), token)).ToDictionary(item => item.Id);
+            var updated = await PageAsync<PublishedDevicePolicy>("devices", search, page, groupId, token);
+            if (groupId is { } selectedGroup && group != await GroupPolicyAsync(selectedGroup, token)) return new([], page, false);
+            var currentPolicies = updated.Items.ToDictionary(item => item.Id);
+            var visible = first.Items.Where(item => statuses.ContainsKey(item.Id) && currentPolicies.TryGetValue(item.Id, out var current) && item == current)
+                .Select(item => statuses[item.Id]).ToArray();
+            return new(visible, page, first.HasMore);
+        }
         var status = await ReadDevicesAsync(first.Items, token);
         var current = await PageAsync<PublishedDevicePolicy>("devices", search, page, groupId, token);
         if (groupId is { } groupKey && group != await GroupPolicyAsync(groupKey, token)) return new([], page, false);
@@ -59,6 +70,11 @@ internal sealed class RemotePublicReader(HttpClient client, PingStore ping, Heal
     {
         var first = await DevicePolicyAsync(id, token);
         if (first is null) return null;
+        if (Network is { } network)
+        {
+            var result = await network.DeviceAsync(id, token);
+            return first == await DevicePolicyAsync(id, token) ? result : null;
+        }
         var status = await ReadDevicesAsync([first], token);
         return first == await DevicePolicyAsync(id, token) ? Map(first, status) : null;
     }

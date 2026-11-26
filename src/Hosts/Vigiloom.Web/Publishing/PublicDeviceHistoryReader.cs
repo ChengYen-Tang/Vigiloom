@@ -18,6 +18,8 @@ internal sealed class PublicDeviceHistoryReader(IDbContextFactory<ResourcesDbCon
     {
         if (id.Version != 7) return null;
         if (!Valid(from, to)) throw new ArgumentException("A UTC history window of at most seven days is required.");
+        if (!string.IsNullOrWhiteSpace(configuration?["Services:Network:Url"]))
+            return await provider!.GetRequiredService<RemoteNetworkPublicClient>().HistoryAsync(id, from, to, token);
         if (!string.IsNullOrWhiteSpace(configuration?["Services:Resources:Url"]))
             return await ReadRemoteAsync(id, from, to, provider!.GetRequiredService<RemotePublicReader>(), token);
         await using var db = await resources.CreateDbContextAsync(token);

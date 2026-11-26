@@ -398,8 +398,12 @@ builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemotePublicationManageme
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemotePublicReader>((services, client) =>
-    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]
+        ?? throw new InvalidOperationException("Services:Resources:Url is required when using remote publication or the network service.")).TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemoteNetworkPublicClient>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicServiceHistoryReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicDeviceHistoryReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.DeviceHistoryPreviewReader>();
@@ -478,6 +482,9 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<OperationsDbContext>(name: "database", tags: ["platform"]);
 
 var app = builder.Build();
+
+if (!string.IsNullOrWhiteSpace(app.Configuration["Services:Network:Url"]) && string.IsNullOrWhiteSpace(app.Configuration["Services:Resources:Url"]))
+    throw new InvalidOperationException("Services:Resources:Url is required when Services:Network:Url is configured.");
 
 var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
