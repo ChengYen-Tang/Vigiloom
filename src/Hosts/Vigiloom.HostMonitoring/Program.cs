@@ -16,8 +16,10 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Infrastructure.Security;
+using Vigiloom.Infrastructure.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddVigiloomSelfTelemetry("Vigiloom.Host");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddOptions<IdentityOptions>();
 builder.Services.AddAntiforgery();
