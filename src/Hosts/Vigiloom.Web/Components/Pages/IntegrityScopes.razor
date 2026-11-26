@@ -10,50 +10,51 @@
 @inject Vigiloom.Web.AgentVersions.IntegritySettingsAccess Configuration
 @inject NavigationManager Navigation
 @inject ILogger<IntegrityScopes> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ServiceAdminText> L
 
-<PageTitle>完整性監控設定 - Vigiloom</PageTitle>
+<PageTitle>@L["完整性監控設定"] - Vigiloom</PageTitle>
 <main class="device-page device-form-page">
-    <a href="@($"/devices/{Id:D}")">← 返回設備詳情</a>
-    <header class="device-heading"><div><h1>完整性監控設定</h1><p>管理 Agent 要掃描的目錄與 Windows 登錄範圍；設定由 Agent 定期同步。</p></div></header>
-    @if (loadError) { <section class="device-panel"><p role="alert">無法載入設定，請稍後重試。</p></section> }
-    else if (scopes is null || (ScopeId is not null && current is null)) { <section class="device-panel"><p>找不到設備或監控範圍。</p></section> }
+    <a href="@($"/devices/{Id:D}")">← @L["返回設備詳情"]</a>
+    <header class="device-heading"><div><h1>@L["完整性監控設定"]</h1><p>@L["管理 Agent 要掃描的目錄與 Windows 登錄範圍；設定由 Agent 定期同步。"]</p></div></header>
+    @if (loadError) { <section class="device-panel"><p role="alert">@L["無法載入設定，請稍後重試。"]</p></section> }
+    else if (scopes is null || (ScopeId is not null && current is null)) { <section class="device-panel"><p>@L["找不到設備或監控範圍。"]</p></section> }
     else
     {
         <section class="device-panel">
-            <h2>已設定的範圍</h2>
-            @if (scopes.Count == 0) { <p>尚未設定監控範圍。</p> }
+            <h2>@L["已設定的範圍"]</h2>
+            @if (scopes.Count == 0) { <p>@L["尚未設定監控範圍。"]</p> }
             else
             {
-                <ul>@foreach (var scope in scopes) { <li @key="scope.Scope.Id"><a href="@($"/devices/{Id:D}/integrity-scopes/{scope.Scope.Id:D}")">@scope.Scope.Root</a> · @(scope.Scope.Enabled ? "已啟用" : "已停用")</li> }</ul>
+                <ul>@foreach (var scope in scopes) { <li @key="scope.Scope.Id"><a href="@($"/devices/{Id:D}/integrity-scopes/{scope.Scope.Id:D}")">@scope.Scope.Root</a> · @(scope.Scope.Enabled ? L["已啟用"].Value : L["已停用"].Value)</li> }</ul>
             }
-            @if (ScopeId is not null) { <a href="@($"/devices/{Id:D}/integrity-scopes")">新增範圍</a> }
+            @if (ScopeId is not null) { <a href="@($"/devices/{Id:D}/integrity-scopes")">@L["新增範圍"]</a> }
         </section>
         <section class="device-panel">
-            <h2>@(ScopeId is null ? "新增監控範圍" : "編輯監控範圍")</h2>
-            <p>僅保存路徑與雜湊，不收集檔案內容。請確認 Agent 對目標有讀取權限。</p>
+            <h2>@(ScopeId is null ? L["新增監控範圍"].Value : L["編輯監控範圍"].Value)</h2>
+            <p>@L["僅保存路徑與雜湊，不收集檔案內容。請確認 Agent 對目標有讀取權限。"]</p>
             @if (message is not null) { <p class="device-alert" role="alert">@message</p> }
             <EditForm Model="Input" FormName="integrity-save" method="post" OnValidSubmit="SaveAsync">
                 <ValidationSummary />
                 <InputHidden @bind-Value="Input.Version" />
-                <label for="integrity-kind">類型</label><InputSelect id="integrity-kind" @bind-Value="Input.Kind"><option value="Directory">目錄</option><option value="Registry">Windows 登錄</option></InputSelect>
-                <label for="integrity-root">完整路徑</label><InputText id="integrity-root" @bind-Value="Input.Root" maxlength="1024" />
-                <label for="integrity-registry">登錄檢視（僅 Windows 登錄）</label><InputSelect id="integrity-registry" @bind-Value="Input.RegistryView"><option value="Registry64">64 位元</option><option value="Registry32">32 位元</option></InputSelect>
-                <label for="integrity-exclusions">排除項目（每行一個相對路徑樣式）</label><InputTextArea id="integrity-exclusions" @bind-Value="Input.Exclusions" />
-                <label for="integrity-interval">掃描間隔（秒，60–604800）</label><InputNumber id="integrity-interval" @bind-Value="Input.ScanIntervalSeconds" />
-                <label for="integrity-entries">最多項目（1–20000）</label><InputNumber id="integrity-entries" @bind-Value="Input.MaximumEntries" />
-                <label for="integrity-file">單一檔案最大位元組（1–1073741824）</label><InputNumber id="integrity-file" @bind-Value="Input.MaximumFileBytes" />
-                <label for="integrity-scan">單次掃描最大位元組（1–17179869184）</label><InputNumber id="integrity-scan" @bind-Value="Input.MaximumScanBytes" />
-                <label for="integrity-depth">最大深度（1–64）</label><InputNumber id="integrity-depth" @bind-Value="Input.MaximumDepth" />
-                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用</label>
-                <div class="device-actions"><button type="submit">儲存設定</button></div>
+                <label for="integrity-kind">@L["類型"]</label><InputSelect id="integrity-kind" @bind-Value="Input.Kind"><option value="Directory">@L["目錄"]</option><option value="Registry">@L["Windows 登錄"]</option></InputSelect>
+                <label for="integrity-root">@L["完整路徑"]</label><InputText id="integrity-root" @bind-Value="Input.Root" maxlength="1024" />
+                <label for="integrity-registry">@L["登錄檢視（僅 Windows 登錄）"]</label><InputSelect id="integrity-registry" @bind-Value="Input.RegistryView"><option value="Registry64">@L["64 位元"]</option><option value="Registry32">@L["32 位元"]</option></InputSelect>
+                <label for="integrity-exclusions">@L["排除項目（每行一個相對路徑樣式）"]</label><InputTextArea id="integrity-exclusions" @bind-Value="Input.Exclusions" />
+                <label for="integrity-interval">@L["掃描間隔（秒，60–604800）"]</label><InputNumber id="integrity-interval" @bind-Value="Input.ScanIntervalSeconds" />
+                <label for="integrity-entries">@L["最多項目（1–20000）"]</label><InputNumber id="integrity-entries" @bind-Value="Input.MaximumEntries" />
+                <label for="integrity-file">@L["單一檔案最大位元組（1–1073741824）"]</label><InputNumber id="integrity-file" @bind-Value="Input.MaximumFileBytes" />
+                <label for="integrity-scan">@L["單次掃描最大位元組（1–17179869184）"]</label><InputNumber id="integrity-scan" @bind-Value="Input.MaximumScanBytes" />
+                <label for="integrity-depth">@L["最大深度（1–64）"]</label><InputNumber id="integrity-depth" @bind-Value="Input.MaximumDepth" />
+                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> @L["啟用"]</label>
+                <div class="device-actions"><button type="submit">@L["儲存設定"]</button></div>
             </EditForm>
         </section>
         @if (current is not null)
         {
-            <section class="device-panel"><h2>移除監控範圍</h2><p>停止後續掃描；過往紀錄依保存政策保留。</p>
+            <section class="device-panel"><h2>@L["移除監控範圍"]</h2><p>@L["停止後續掃描；過往紀錄依保存政策保留。"]</p>
                 <EditForm Model="Retire" FormName="integrity-retire" method="post" OnValidSubmit="RetireAsync">
                     <ValidationSummary />
-                    <InputHidden @bind-Value="Retire.Version" /><label><InputCheckbox @bind-Value="Retire.Confirm" /> 我了解以上影響</label><button type="submit">確認移除</button>
+                    <InputHidden @bind-Value="Retire.Version" /><label><InputCheckbox @bind-Value="Retire.Confirm" /> @L["我了解以上影響"]</label><button type="submit">@L["確認移除"]</button>
                 </EditForm>
             </section>
         }
@@ -101,7 +102,7 @@
             !ValidInteger(fields, "Input.MaximumFileBytes") || !ValidInteger(fields, "Input.MaximumScanBytes") || !ValidInt32(fields, "Input.MaximumDepth") ||
             !ValidEnum<IntegrityScopeKind>(fields, "Input.Kind") || !ValidEnum<IntegrityRegistryView>(fields, "Input.RegistryView") ||
             fields["Input.Enabled"].Count > 1 || fields["Input.Enabled"].Count == 1 && !bool.TryParse(fields["Input.Enabled"][0], out _))
-        { message = "設定無效，請確認數字及選擇欄位。"; return; }
+        { message = L["設定無效，請確認數字及選擇欄位。"].Value; return; }
         Input.Enabled = fields["Input.Enabled"].Count == 1 && bool.Parse(fields["Input.Enabled"][0]!);
         var exclusions = (Input.Exclusions ?? "").Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToImmutableArray();
         var policy = new IntegrityScopeInput(Input.Kind, Input.Root ?? "", Input.Enabled, exclusions, Input.ScanIntervalSeconds,
@@ -112,24 +113,24 @@
             var result = ScopeId is { } scopeId ? await Configuration.UpdateAsync(Id, scopeId, policy, Input.Version, actor, HttpContext.RequestAborted)
                 : await Configuration.CreateAsync(Id, policy, actor, HttpContext.RequestAborted);
             saved = result.Status == IntegrityConfigurationStatus.Success;
-            if (!saved) message = result.Status switch { IntegrityConfigurationStatus.Conflict => "設定已變更，請重新整理後再試。", IntegrityConfigurationStatus.LimitReached => "已達監控範圍數量上限。", _ => "找不到設備或監控範圍。" };
+            if (!saved) message = result.Status switch { IntegrityConfigurationStatus.Conflict => L["設定已變更，請重新整理後再試。"].Value, IntegrityConfigurationStatus.LimitReached => L["已達監控範圍數量上限。"].Value, _ => L["找不到設備或監控範圍。"].Value };
         }
-        catch (ArgumentException) { message = "設定無效，請檢查路徑、排除項目與各項範圍限制。"; }
-        catch (Exception ex) { Logger.LogWarning("Could not save integrity scope: {ExceptionType}", ex.GetType().Name); message = "無法確認儲存結果，請重新整理並檢查設定。"; }
+        catch (ArgumentException) { message = L["設定無效，請檢查路徑、排除項目與各項範圍限制。"].Value; }
+        catch (Exception ex) { Logger.LogWarning("Could not save integrity scope: {ExceptionType}", ex.GetType().Name); message = L["無法確認儲存結果，請重新整理並檢查設定。"].Value; }
         if (saved) Navigation.NavigateTo($"/devices/{Id:D}/integrity-scopes", forceLoad: true);
     }
     private async Task RetireAsync()
     {
         if (!TryActor(out var actor) || ScopeId is not { } scopeId) return;
-        if (!Retire.Confirm) { message = "請先確認操作影響。"; return; }
+        if (!Retire.Confirm) { message = L["請先確認操作影響。"].Value; return; }
         var retired = false;
         try
         {
             var result = await Configuration.RetireAsync(Id, scopeId, Retire.Version, actor, HttpContext.RequestAborted);
             retired = result.Status == IntegrityConfigurationStatus.Success;
-            if (!retired) message = "設定已變更或找不到範圍，請重新整理後再試。";
+            if (!retired) message = L["設定已變更或找不到範圍，請重新整理後再試。"].Value;
         }
-        catch (Exception ex) { Logger.LogWarning("Could not retire integrity scope: {ExceptionType}", ex.GetType().Name); message = "無法確認移除結果，請重新整理並檢查設定。"; }
+        catch (Exception ex) { Logger.LogWarning("Could not retire integrity scope: {ExceptionType}", ex.GetType().Name); message = L["無法確認移除結果，請重新整理並檢查設定。"].Value; }
         if (retired) Navigation.NavigateTo($"/devices/{Id:D}/integrity-scopes", forceLoad: true);
     }
     private bool TryActor(out Guid actor)

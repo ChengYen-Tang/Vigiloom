@@ -1063,4 +1063,38 @@
   <data name="基準版本已變更，請回設備頁重新選擇。" xml:space="preserve"><value>基准版本已更改，请返回设备页重新选择。</value></data>
   <data name="無法儲存說明，請檢查內容後再試。" xml:space="preserve"><value>无法保存说明，请检查内容后重试。</value></data>
   <data name="無法儲存說明，請稍後再試。" xml:space="preserve"><value>无法保存说明，请稍后重试。</value></data>
+  <data name="完整性監控設定" xml:space="preserve"><value>完整性监控设置</value></data>
+  <data name="管理 Agent 要掃描的目錄與 Windows 登錄範圍；設定由 Agent 定期同步。" xml:space="preserve"><value>管理 Agent 要扫描的目录与 Windows 注册表范围；设置由 Agent 定期同步。</value></data>
+  <data name="無法載入設定，請稍後重試。" xml:space="preserve"><value>无法加载设置，请稍后重试。</value></data>
+  <data name="找不到設備或監控範圍。" xml:space="preserve"><value>找不到设备或监控范围。</value></data>
+  <data name="已設定的範圍" xml:space="preserve"><value>已设置的范围</value></data>
+  <data name="尚未設定監控範圍。" xml:space="preserve"><value>尚未设置监控范围。</value></data>
+  <data name="新增範圍" xml:space="preserve"><value>新增范围</value></data>
+  <data name="新增監控範圍" xml:space="preserve"><value>新增监控范围</value></data>
+  <data name="編輯監控範圍" xml:space="preserve"><value>编辑监控范围</value></data>
+  <data name="僅保存路徑與雜湊，不收集檔案內容。請確認 Agent 對目標有讀取權限。" xml:space="preserve"><value>仅保存路径与哈希，不收集文件内容。请确认 Agent 对目标有读取权限。</value></data>
+  <data name="目錄" xml:space="preserve"><value>目录</value></data>
+  <data name="Windows 登錄" xml:space="preserve"><value>Windows 注册表</value></data>
+  <data name="完整路徑" xml:space="preserve"><value>完整路径</value></data>
+  <data name="登錄檢視（僅 Windows 登錄）" xml:space="preserve"><value>注册表视图（仅 Windows 注册表）</value></data>
+  <data name="64 位元" xml:space="preserve"><value>64 位</value></data>
+  <data name="32 位元" xml:space="preserve"><value>32 位</value></data>
+  <data name="排除項目（每行一個相對路徑樣式）" xml:space="preserve"><value>排除项目（每行一个相对路径模式）</value></data>
+  <data name="掃描間隔（秒，60–604800）" xml:space="preserve"><value>扫描间隔（秒，60–604800）</value></data>
+  <data name="最多項目（1–20000）" xml:space="preserve"><value>最多项目（1–20000）</value></data>
+  <data name="單一檔案最大位元組（1–1073741824）" xml:space="preserve"><value>单个文件最大字节数（1–1073741824）</value></data>
+  <data name="單次掃描最大位元組（1–17179869184）" xml:space="preserve"><value>单次扫描最大字节数（1–17179869184）</value></data>
+  <data name="最大深度（1–64）" xml:space="preserve"><value>最大深度（1–64）</value></data>
+  <data name="啟用" xml:space="preserve"><value>启用</value></data>
+  <data name="移除監控範圍" xml:space="preserve"><value>移除监控范围</value></data>
+  <data name="停止後續掃描；過往紀錄依保存政策保留。" xml:space="preserve"><value>停止后续扫描；历史记录按保留策略保存。</value></data>
+  <data name="我了解以上影響" xml:space="preserve"><value>我了解以上影响</value></data>
+  <data name="確認移除" xml:space="preserve"><value>确认移除</value></data>
+  <data name="設定已變更，請重新整理後再試。" xml:space="preserve"><value>设置已更改，请刷新后重试。</value></data>
+  <data name="已達監控範圍數量上限。" xml:space="preserve"><value>已达监控范围数量上限。</value></data>
+  <data name="設定無效，請檢查路徑、排除項目與各項範圍限制。" xml:space="preserve"><value>设置无效，请检查路径、排除项目与各项范围限制。</value></data>
+  <data name="無法確認儲存結果，請重新整理並檢查設定。" xml:space="preserve"><value>无法确认保存结果，请刷新并检查设置。</value></data>
+  <data name="請先確認操作影響。" xml:space="preserve"><value>请先确认操作影响。</value></data>
+  <data name="設定已變更或找不到範圍，請重新整理後再試。" xml:space="preserve"><value>设置已更改或找不到范围，请刷新后重试。</value></data>
+  <data name="無法確認移除結果，請重新整理並檢查設定。" xml:space="preserve"><value>无法确认移除结果，请刷新并检查设置。</value></data>
 </root>
