@@ -79,3 +79,10 @@ public sealed record AgentMetricSettingsView(Guid? DeviceId, AgentMetricSettings
     AgentMetricSettingsSnapshot Effective, AgentMetricSettingsSnapshot Inherited);
 public sealed record AgentMetricSettingsUpdate([property: JsonRequired] AgentMetricSettingsOverrides Overrides,
     [property: JsonRequired] string Version);
+public sealed record AgentMetricSettingsCommand(AgentMetricSettingsUpdate Input, Guid Actor);
+
+public interface IAgentMetricSettings
+{
+    Task<AgentMetricSettingsView?> GetAsync(Guid? deviceId, CancellationToken token);
+    Task<AgentMetricSettingsView?> UpdateAsync(Guid? deviceId, AgentMetricSettingsUpdate update, Guid actorId, CancellationToken token);
+}

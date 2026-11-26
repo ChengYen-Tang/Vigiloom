@@ -11,16 +11,16 @@ internal static class AgentQueueCapacityEndpoints
     {
         var admin = app.MapGroup("/api/v1/agent-management/queue-capacity")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
-        admin.MapGet("/platform", (AgentQueueCapacityConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token))
+        admin.MapGet("/platform", (IAgentQueueCapacitySettings settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token))
             .Produces<AgentQueueCapacityView>().ProducesProblem(401).ProducesProblem(403).WithSummary("Read platform Agent queue capacity");
-        admin.MapPut("/platform", (AgentQueueCapacityUpdate input, AgentQueueCapacityConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token))
+        admin.MapPut("/platform", (AgentQueueCapacityUpdate input, IAgentQueueCapacitySettings settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token))
             .Produces<AgentQueueCapacityView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).WithSummary("Update platform Agent queue capacity");
-        admin.MapGet("/devices/{deviceId:guid}", (Guid deviceId, AgentQueueCapacityConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, deviceId, context, token))
+        admin.MapGet("/devices/{deviceId:guid}", (Guid deviceId, IAgentQueueCapacitySettings settings, HttpContext context, CancellationToken token) => ReadAsync(settings, deviceId, context, token))
             .Produces<AgentQueueCapacityView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).WithSummary("Read device Agent queue capacity overrides");
-        admin.MapPut("/devices/{deviceId:guid}", (Guid deviceId, AgentQueueCapacityUpdate input, AgentQueueCapacityConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, deviceId, input, context, token))
+        admin.MapPut("/devices/{deviceId:guid}", (Guid deviceId, AgentQueueCapacityUpdate input, IAgentQueueCapacitySettings settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, deviceId, input, context, token))
             .Produces<AgentQueueCapacityView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).WithSummary("Update device Agent queue capacity overrides");
 
-        app.MapGet("/api/v1/devices/{deviceId:guid}/agent-queue-capacity", async (Guid deviceId, AgentQueueCapacityConfiguration settings, HttpContext context, CancellationToken token) =>
+        app.MapGet("/api/v1/devices/{deviceId:guid}/agent-queue-capacity", async (Guid deviceId, IAgentQueueCapacitySettings settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await settings.GetAsync(deviceId, token) is { } view ? Results.Ok(view.Effective) : Results.NotFound();
@@ -52,13 +52,13 @@ internal static class AgentQueueCapacityEndpoints
             .WithSummary("Read effective queue capacity for the authenticated Agent");
     }
 
-    private static async Task<IResult> ReadAsync(AgentQueueCapacityConfiguration settings, Guid? deviceId, HttpContext context, CancellationToken token)
+    private static async Task<IResult> ReadAsync(IAgentQueueCapacitySettings settings, Guid? deviceId, HttpContext context, CancellationToken token)
     {
         context.Response.Headers.CacheControl = "no-store";
         return await settings.GetAsync(deviceId, token) is { } view ? Results.Ok(view) : Results.NotFound();
     }
 
-    private static async Task<IResult> UpdateAsync(AgentQueueCapacityConfiguration settings, Guid? deviceId, AgentQueueCapacityUpdate input, HttpContext context, CancellationToken token)
+    private static async Task<IResult> UpdateAsync(IAgentQueueCapacitySettings settings, Guid? deviceId, AgentQueueCapacityUpdate input, HttpContext context, CancellationToken token)
     {
         if (!AgentQueueCapacityConfiguration.Valid(input?.Overrides)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["capacity"] = ["Agent 佇列容量超出允許範圍。"] });
         if (deviceId is not null && await settings.GetAsync(deviceId, token) is null) return Results.NotFound();

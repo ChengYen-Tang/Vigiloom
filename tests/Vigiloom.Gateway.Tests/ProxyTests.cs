@@ -24,6 +24,29 @@ public sealed class ProxyTests
 {
     public TestContext TestContext { get; set; } = null!;
     [TestMethod]
+    public async Task RoutesAgentMetricSettingsToHostAfterAuthentication()
+    {
+        await using var host = await StartUpstreamAsync("host-monitoring", TestContext.CancellationToken);
+        var identityBuilder = WebApplication.CreateBuilder();
+        identityBuilder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var identity = identityBuilder.Build();
+        identity.MapGet("/api/v1/agent/identity", () => Results.Json(new { AgentId = Guid.CreateVersion7(), DeviceId = Guid.CreateVersion7() }));
+        await identity.StartAsync(TestContext.CancellationToken);
+        static string Address(WebApplication app) => app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web => web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = Address(host),
+            ["Vigiloom:Gateway:AgentIdentityAddress"] = Address(identity)
+        })));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        using (var denied = await client.GetAsync("/api/v1/agent/metric-settings", TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-agent");
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/metric-settings", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/settings", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/queue-capacity", TestContext.CancellationToken));
+    }
+    [TestMethod]
     public async Task RoutesAgentChannelOnlyOverHttps()
     {
         await using var host = await StartUpstreamAsync("host-monitoring", TestContext.CancellationToken);
