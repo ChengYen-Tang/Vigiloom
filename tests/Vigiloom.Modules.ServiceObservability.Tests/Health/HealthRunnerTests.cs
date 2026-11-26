@@ -8,6 +8,7 @@ using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
+using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Modules.ServiceObservability.Tests.Fixtures;
 using Vigiloom.Testing.SqlServer;
@@ -67,6 +68,14 @@ public sealed class HealthRunnerTests(TestContext context)
                     await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE service.HealthStateIntervals SET State = 1, Reason = 1, StartedAt = {observed} WHERE TargetId = {id}", token);
                     policy.ReplaceNetworks(["10.0.0.0/8"], observed.AddSeconds(1));
                     db.HealthNetworkRevisions.Add(new HealthNetworkRevision(policy, Guid.CreateVersion7(), observed.AddSeconds(1)));
+                    db.TelemetryRetentionSettings.Add(new TelemetryRetentionSetting { LogDays = 45, TraceDays = 21 });
+                    var traceContext = new TraceContext { ServiceId = service.Id, ResourcePayload = [1], ScopePayload = [2], ResourceSchemaUrl = "", ScopeSchemaUrl = "" };
+                    db.TraceSpans.Add(new TraceSpan { ServiceId = service.Id, Context = traceContext, StartedAt = observed, EndedAt = observed,
+                        ReceivedAt = observed, TraceId = Enumerable.Repeat((byte)1, 16).ToArray(), SpanId = Enumerable.Repeat((byte)2, 8).ToArray(), SpanPayload = [3] });
+                    var metricContext = new MetricContext { ServiceId = service.Id, ResourcePayload = [4], ScopePayload = [5], MetricPayload = [6],
+                        MetricName = "migration.test", ResourceSchemaUrl = "", ScopeSchemaUrl = "" };
+                    db.MetricPoints.Add(new MetricPoint { ServiceId = service.Id, Context = metricContext, OccurredAt = observed,
+                        ReceivedAt = observed, Kind = 1, PointPayload = [7] });
                     await db.SaveChangesAsync(token);
                     await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE service.HealthSchedules SET Generation = 42, LeaseUntil = SYSDATETIMEOFFSET() WHERE TargetId = {id}", token);
                 }
@@ -83,6 +92,17 @@ public sealed class HealthRunnerTests(TestContext context)
                 Assert.AreEqual(42L, result.LastTransitionGeneration);
                 Assert.IsNull(result.LeaseUntil);
                 Assert.AreEqual(1, await verify.HealthStateIntervals.CountAsync(token));
+                var retention = await verify.TelemetryRetentionSettings.SingleAsync(token);
+                Assert.AreEqual(45, retention.LogDays);
+                Assert.AreEqual(21, retention.TraceDays);
+                var span = await verify.TraceSpans.Include(item => item.Context).SingleAsync(token);
+                Assert.AreEqual(serviceId, span.ServiceId);
+                CollectionAssert.AreEqual(new byte[] { 3 }, span.SpanPayload);
+                CollectionAssert.AreEqual(new byte[] { 1 }, span.Context.ResourcePayload);
+                var metric = await verify.MetricPoints.Include(item => item.Context).SingleAsync(token);
+                Assert.AreEqual(serviceId, metric.ServiceId);
+                Assert.AreEqual("migration.test", metric.Context.MetricName);
+                CollectionAssert.AreEqual(new byte[] { 7 }, metric.PointPayload);
                 var reader = new HealthStatusReader(new PooledDbContextFactory<ServiceObservabilityDbContext>(targetOptions));
                 Assert.AreEqual(ServiceHealthState.Unknown, (await reader.ReadAsync(serviceId, token))!.State);
                 var store = new HealthStore(new PooledDbContextFactory<ServiceObservabilityDbContext>(targetOptions));
