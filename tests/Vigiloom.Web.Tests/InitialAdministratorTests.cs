@@ -64,6 +64,19 @@ public sealed class InitialAdministratorTests
                 return document.QuerySelectorAll("form input[type=hidden][name]")
                     .ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
             }
+            client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            var weakSetup = await HiddenFields("/account/setup");
+            weakSetup["Input.SetupToken"] = Token;
+            weakSetup["Input.UserName"] = "admin";
+            weakSetup["Input.Password"] = "short";
+            weakSetup["Input.ConfirmPassword"] = "short";
+            using (var weak = await client.PostAsync("/account/setup", new FormUrlEncodedContent(weakSetup), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, weak.StatusCode);
+                var document = await new HtmlParser().ParseDocumentAsync(await weak.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("The password is too short. Check the password requirements.", document.Body!.TextContent);
+            }
+            client.DefaultRequestHeaders.AcceptLanguage.Clear();
             var setup = await HiddenFields("/account/setup");
             setup["Input.SetupToken"] = Token;
             setup["Input.UserName"] = "admin";
@@ -149,6 +162,8 @@ public sealed class InitialAdministratorTests
             Assert.AreEqual(InitialAdministratorStatus.InvalidSetupToken, invalidSecret.Status);
             var invalidPassword = await Attempt(Token, "alice", "short");
             Assert.AreEqual(InitialAdministratorStatus.ValidationFailed, invalidPassword.Status);
+            Assert.IsNotNull(invalidPassword.ErrorCodes);
+            Assert.Contains("PasswordTooShort", invalidPassword.ErrorCodes);
             var attempts = await Task.WhenAll(Attempt(Token, "alice", "Strong-Password-123"),
                 Attempt(Token, "bob", "Strong-Password-456"));
             Assert.HasCount(1, attempts.Where(result => result.Status == InitialAdministratorStatus.Created));

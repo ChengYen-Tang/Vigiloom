@@ -35,7 +35,8 @@ public sealed class InitialAdministrator(
         var account = new Account { UserName = userName };
         var created = await users.CreateAsync(account, password);
         if (!created.Succeeded)
-            return new(InitialAdministratorStatus.ValidationFailed, created.Errors.Select(error => error.Description).ToArray());
+            return new(InitialAdministratorStatus.ValidationFailed, created.Errors.Select(error => error.Description).ToArray(),
+                created.Errors.Select(error => error.Code).ToArray());
         var assigned = await users.AddToRoleAsync(account, BuiltInRoles.Administrator);
         if (!assigned.Succeeded)
             throw new InvalidOperationException("Failed to assign the built-in Administrator role. Verify that migrations and role initialization ran.");
@@ -54,4 +55,5 @@ public sealed class InitialAdministrator(
 }
 
 public enum InitialAdministratorStatus { Created, InvalidSetupToken, AlreadyInitialized, ValidationFailed }
-public sealed record InitialAdministratorResult(InitialAdministratorStatus Status, IReadOnlyList<string> Errors);
+public sealed record InitialAdministratorResult(InitialAdministratorStatus Status, IReadOnlyList<string> Errors,
+    IReadOnlyList<string>? ErrorCodes = null);

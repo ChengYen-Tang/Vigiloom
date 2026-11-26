@@ -54,4 +54,28 @@
   <data xml:space="preserve" name="PasswordMismatch">
     <value>兩次密碼不一致。</value>
   </data>
+  <data xml:space="preserve" name="Identity.PasswordTooShort">
+    <value>密碼長度不足，請參考密碼規則。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresNonAlphanumeric">
+    <value>密碼必須包含符號。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresDigit">
+    <value>密碼必須包含數字。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresLower">
+    <value>密碼必須包含小寫英文字母。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresUpper">
+    <value>密碼必須包含大寫英文字母。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresUniqueChars">
+    <value>密碼的不同字元數不足。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.InvalidUserName">
+    <value>帳號包含不允許的字元。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.DuplicateUserName">
+    <value>帳號已存在。</value>
+  </data>
 </root>
