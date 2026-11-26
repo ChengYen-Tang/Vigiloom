@@ -14,54 +14,55 @@
 @inject Vigiloom.Web.Operations.AuditRetentionAccess Retention
 @inject NavigationManager Navigation
 @inject ILogger<YaraScanPage> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ServiceAdminText> L
 
-<PageTitle>YARA 掃描 - Vigiloom</PageTitle>
+<PageTitle>@L["YARA 掃描"] - Vigiloom</PageTitle>
 <main class="device-page">
-    <a href="@($"/devices/{Id:D}")">← 返回設備詳情</a>
-    <header class="device-heading"><div><h1>YARA 掃描</h1><p>@name · 掃描指定的單一檔案；命中是調查線索，並不代表已入侵。</p></div></header>
+    <a href="@($"/devices/{Id:D}")">← @L["返回設備詳情"]</a>
+    <header class="device-heading"><div><h1>@L["YARA 掃描"]</h1><p>@L["{0} · 掃描指定的單一檔案；命中是調查線索，並不代表已入侵。", name ?? ""]</p></div></header>
     @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
     @if (name is not null)
     {
         <AuthorizeView Roles="Administrator" Context="authorization"><Authorized>
             <section class="device-panel">
-                <h2>新增掃描</h2>
-                <p>Agent 主機需有可執行的 YARA；若尚未安裝，結果會顯示無法使用。掃描工作會在 Agent 下次同步後執行。</p>
-                <p>YARA 引擎採用 <a href="https://github.com/VirusTotal/yara/blob/master/COPYING" target="_blank" rel="noopener noreferrer">BSD 3-Clause 授權</a>；手動輸入的規則有各自的授權，請管理員確認後使用。</p>
+                <h2>@L["新增掃描"]</h2>
+                <p>@L["Agent 主機需有可執行的 YARA；若尚未安裝，結果會顯示無法使用。掃描工作會在 Agent 下次同步後執行。"]</p>
+                <p>@L["YARA 引擎採用 "]<a href="https://github.com/VirusTotal/yara/blob/master/COPYING" target="_blank" rel="noopener noreferrer">@L["BSD 3-Clause 授權"]</a>@L["；手動輸入的規則有各自的授權，請管理員確認後使用。"]</p>
                 <EditForm Model="Input" FormName="yara-scan-create" method="post" OnSubmit="CreateAsync">
-                    <label for="scan-file">主機上的檔案完整路徑</label><InputText id="scan-file" @bind-Value="Input.FilePath" maxlength="1024" />
-                    <label for="scan-rules">YARA 規則</label><InputTextArea id="scan-rules" @bind-Value="Input.Rules" rows="8" maxlength="65536" />
-                    <label for="scan-size">檔案大小上限（MiB）</label><InputNumber id="scan-size" @bind-Value="Input.MaximumMiB" />
-                    <label for="scan-time">逾時（秒）</label><InputNumber id="scan-time" @bind-Value="Input.TimeoutSeconds" />
-                    <button type="submit">建立掃描</button>
+                    <label for="scan-file">@L["主機上的檔案完整路徑"]</label><InputText id="scan-file" @bind-Value="Input.FilePath" maxlength="1024" />
+                    <label for="scan-rules">@L["YARA 規則"]</label><InputTextArea id="scan-rules" @bind-Value="Input.Rules" rows="8" maxlength="65536" />
+                    <label for="scan-size">@L["檔案大小上限（MiB）"]</label><InputNumber id="scan-size" @bind-Value="Input.MaximumMiB" />
+                    <label for="scan-time">@L["逾時（秒）"]</label><InputNumber id="scan-time" @bind-Value="Input.TimeoutSeconds" />
+                    <button type="submit">@L["建立掃描"]</button>
                 </EditForm>
             </section>
         </Authorized></AuthorizeView>
         <section class="device-panel">
-            <h2>掃描紀錄</h2>
-            @if (ScanId is not null) { <a href="@($"/devices/{Id:D}/yara-scans")">查看最近的掃描</a> }
-            <p>已完成的掃描依操作紀錄政策保存 @retentionDays 天；等待執行的工作會保留。</p>
-            @if (jobs.Count == 0) { <p>尚無掃描紀錄。</p> }
+            <h2>@L["掃描紀錄"]</h2>
+            @if (ScanId is not null) { <a href="@($"/devices/{Id:D}/yara-scans")">@L["查看最近的掃描"]</a> }
+            <p>@L["已完成的掃描依操作紀錄政策保存 {0} 天；等待執行的工作會保留。", retentionDays]</p>
+            @if (jobs.Count == 0) { <p>@L["尚無掃描紀錄。"]</p> }
             @foreach (var job in jobs)
             {
-                <article><h3>@job.Request.FilePath</h3><p>建立時間（UTC）：@job.RequestedAt.ToString("u") · 申請者：@job.RequestedBy</p>
+                <article><h3>@job.Request.FilePath</h3><p>@L["建立時間（UTC）：{0} · 申請者：{1}", job.RequestedAt.ToString("u"), job.RequestedBy]</p>
                     @if (job.Result is { } result)
                     {
-                        <p>結果：@Outcome(result.Outcome) · @result.CompletedAt.ToString("u")</p>
-                        <p>YARA 引擎版本：@(result.EngineVersion ?? "未知")</p>
+                        <p>@L["結果：{0} · {1}", Outcome(result.Outcome), result.CompletedAt.ToString("u")]</p>
+                        <p>@L["YARA 引擎版本：{0}", result.EngineVersion ?? L["未知"].Value]</p>
                         @if (!string.IsNullOrWhiteSpace(result.Output)) { <pre>@result.Output</pre> }
                         @if (!string.IsNullOrWhiteSpace(result.Error)) { <p>@result.Error</p> }
-                        @if (result.OutputTruncated) { <p>輸出過長，僅顯示部分內容。</p> }
+                        @if (result.OutputTruncated) { <p>@L["輸出過長，僅顯示部分內容。"]</p> }
                     }
                     else
                     {
-                        <p>等待 Agent 執行或回報。</p>
+                        <p>@L["等待 Agent 執行或回報。"]</p>
                         <AuthorizeView Roles="Administrator" Context="cancelAuthorization"><Authorized>
                             <EditForm Model="job" FormName="@($"yara-scan-cancel-{job.Id:D}")" method="post" OnSubmit="@(() => CancelAsync(job.Id))">
-                                <button type="submit">取消掃描</button>
+                                <button type="submit">@L["取消掃描"]</button>
                             </EditForm>
                         </Authorized></AuthorizeView>
                     }
-                    <details><summary>查看規則</summary><p>來源：管理員手動輸入 · SHA-256：@RulesHash(job.Request.Rules)</p><pre>@job.Request.Rules</pre></details>
+                    <details><summary>@L["查看規則"]</summary><p>@L["來源：管理員手動輸入 · SHA-256：{0}", RulesHash(job.Request.Rules)]</p><pre>@job.Request.Rules</pre></details>
                 </article>
             }
         </section>
@@ -91,7 +92,7 @@
                 if (ScanId is { } scanId)
                 {
                     var scan = await Scans.GetAsync(Id, scanId, HttpContext.RequestAborted);
-                    if (scan is null) { error = "找不到此掃描，資料可能已超過保存期限。"; return; }
+                    if (scan is null) { error = L["找不到此掃描，資料可能已超過保存期限。"].Value; return; }
                     loaded = [scan];
                 }
                 else loaded = await Scans.ListAsync(Id, HttpContext.RequestAborted);
@@ -100,41 +101,41 @@
                 await Audit.RecordEvidenceAsync(actor, new EventEvidenceAccessed(ScanId is null ? "yara-list" : "yara-scan", ScanId ?? Id, Id), HttpContext.RequestAborted);
                 jobs = loaded;
             }
-            else error = "找不到設備。";
+            else error = L["找不到設備。"].Value;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning("Unable to load YARA scans: {ErrorType}.", ex.GetType().Name); error = "無法讀取掃描紀錄。"; }
+        catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning("Unable to load YARA scans: {ErrorType}.", ex.GetType().Name); error = L["無法讀取掃描紀錄。"].Value; }
     }
 
     private async Task CreateAsync()
     {
-        if (!HttpContext.User.IsInRole("Administrator") || !Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { error = "無法確認管理員身分。"; return; }
+        if (!HttpContext.User.IsInRole("Administrator") || !Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { error = L["無法確認管理員身分。"].Value; return; }
         if (Input.MaximumMiB is < 1 or > 1024 || Input.TimeoutSeconds is < 1 or > 3600 || string.IsNullOrWhiteSpace(Input.FilePath) || string.IsNullOrWhiteSpace(Input.Rules))
-        { error = "請填寫檔案路徑與規則，大小須介於 1 至 1024 MiB，逾時須介於 1 至 3600 秒。"; return; }
+        { error = L["請填寫檔案路徑與規則，大小須介於 1 至 1024 MiB，逾時須介於 1 至 3600 秒。"].Value; return; }
         try
         {
             var request = new YaraScanRequest(Input.FilePath.Trim(), Input.Rules, (long)Input.MaximumMiB * 1024 * 1024, Input.TimeoutSeconds);
-            if (await Scans.CreateAsync(Id, request, actor, HttpContext.RequestAborted) is null) { error = "此設備沒有可用的 Agent。"; return; }
+            if (await Scans.CreateAsync(Id, request, actor, HttpContext.RequestAborted) is null) { error = L["此設備沒有可用的 Agent。"].Value; return; }
             Navigation.NavigateTo($"/devices/{Id:D}/yara-scans", forceLoad: true);
         }
-        catch (ArgumentException) { error = "掃描設定無效，請確認輸入。"; }
-        catch (Exception ex) when (ex is not NavigationException and not OperationCanceledException) { Logger.LogWarning("Unable to create YARA scan: {ErrorType}.", ex.GetType().Name); error = "無法建立掃描，請稍後重試。"; }
+        catch (ArgumentException) { error = L["掃描設定無效，請確認輸入。"].Value; }
+        catch (Exception ex) when (ex is not NavigationException and not OperationCanceledException) { Logger.LogWarning("Unable to create YARA scan: {ErrorType}.", ex.GetType().Name); error = L["無法建立掃描，請稍後重試。"].Value; }
     }
 
     private async Task CancelAsync(Guid scanId)
     {
-        if (!HttpContext.User.IsInRole("Administrator")) { error = "無法確認管理員身分。"; return; }
+        if (!HttpContext.User.IsInRole("Administrator")) { error = L["無法確認管理員身分。"].Value; return; }
         try
         {
-            if (!await Scans.CancelAsync(Id, scanId, HttpContext.RequestAborted)) { error = "掃描已結束或不存在，請重新整理。"; return; }
+            if (!await Scans.CancelAsync(Id, scanId, HttpContext.RequestAborted)) { error = L["掃描已結束或不存在，請重新整理。"].Value; return; }
             Navigation.NavigateTo($"/devices/{Id:D}/yara-scans", forceLoad: true);
         }
-        catch (Exception ex) when (ex is not NavigationException and not OperationCanceledException) { Logger.LogWarning("Unable to cancel YARA scan: {ErrorType}.", ex.GetType().Name); error = "無法取消掃描，請稍後重試。"; }
+        catch (Exception ex) when (ex is not NavigationException and not OperationCanceledException) { Logger.LogWarning("Unable to cancel YARA scan: {ErrorType}.", ex.GetType().Name); error = L["無法取消掃描，請稍後重試。"].Value; }
     }
 
-    private static string Outcome(YaraScanOutcome value) => value switch
+    private string Outcome(YaraScanOutcome value) => value switch
     {
-        YaraScanOutcome.Completed => "已完成", YaraScanOutcome.FileTooLarge => "檔案超過大小上限", YaraScanOutcome.TimedOut => "已逾時",
-        YaraScanOutcome.Unavailable => "無法使用", YaraScanOutcome.Cancelled => "已取消（Agent 連線後停止）", _ => "掃描失敗"
+        YaraScanOutcome.Completed => L["已完成"].Value, YaraScanOutcome.FileTooLarge => L["檔案超過大小上限"].Value, YaraScanOutcome.TimedOut => L["已逾時"].Value,
+        YaraScanOutcome.Unavailable => L["無法使用"].Value, YaraScanOutcome.Cancelled => L["已取消（Agent 連線後停止）"].Value, _ => L["掃描失敗"].Value
     };
 
     private static string RulesHash(string rules) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(rules)));

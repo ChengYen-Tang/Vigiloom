@@ -784,4 +784,41 @@
   <data name="已到期" xml:space="preserve"><value>已到期</value></data>
   <data name="已使用，可安全重試" xml:space="preserve"><value>已使用，可安全重试</value></data>
   <data name="等待加入" xml:space="preserve"><value>等待加入</value></data>
+  <data name="YARA 掃描" xml:space="preserve"><value>YARA 扫描</value></data>
+  <data name="{0} · 掃描指定的單一檔案；命中是調查線索，並不代表已入侵。" xml:space="preserve"><value>{0} · 扫描指定的单个文件；命中是调查线索，并不代表已入侵。</value></data>
+  <data name="新增掃描" xml:space="preserve"><value>新增扫描</value></data>
+  <data name="Agent 主機需有可執行的 YARA；若尚未安裝，結果會顯示無法使用。掃描工作會在 Agent 下次同步後執行。" xml:space="preserve"><value>Agent 主机需有可运行的 YARA；若尚未安装，结果会显示无法使用。扫描任务会在 Agent 下次同步后运行。</value></data>
+  <data name="YARA 引擎採用 " xml:space="preserve"><value>YARA 引擎采用 </value></data>
+  <data name="BSD 3-Clause 授權" xml:space="preserve"><value>BSD 3-Clause 许可</value></data>
+  <data name="；手動輸入的規則有各自的授權，請管理員確認後使用。" xml:space="preserve"><value>；手动输入的规则有各自的许可，请管理员确认后使用。</value></data>
+  <data name="主機上的檔案完整路徑" xml:space="preserve"><value>主机上的文件完整路径</value></data>
+  <data name="YARA 規則" xml:space="preserve"><value>YARA 规则</value></data>
+  <data name="檔案大小上限（MiB）" xml:space="preserve"><value>文件大小上限（MiB）</value></data>
+  <data name="建立掃描" xml:space="preserve"><value>创建扫描</value></data>
+  <data name="掃描紀錄" xml:space="preserve"><value>扫描记录</value></data>
+  <data name="查看最近的掃描" xml:space="preserve"><value>查看最近的扫描</value></data>
+  <data name="已完成的掃描依操作紀錄政策保存 {0} 天；等待執行的工作會保留。" xml:space="preserve"><value>已完成的扫描按操作记录策略保留 {0} 天；等待执行的任务会保留。</value></data>
+  <data name="尚無掃描紀錄。" xml:space="preserve"><value>尚无扫描记录。</value></data>
+  <data name="建立時間（UTC）：{0} · 申請者：{1}" xml:space="preserve"><value>创建时间（UTC）：{0} · 申请者：{1}</value></data>
+  <data name="結果：{0} · {1}" xml:space="preserve"><value>结果：{0} · {1}</value></data>
+  <data name="YARA 引擎版本：{0}" xml:space="preserve"><value>YARA 引擎版本：{0}</value></data>
+  <data name="輸出過長，僅顯示部分內容。" xml:space="preserve"><value>输出过长，仅显示部分内容。</value></data>
+  <data name="等待 Agent 執行或回報。" xml:space="preserve"><value>等待 Agent 执行或报告。</value></data>
+  <data name="取消掃描" xml:space="preserve"><value>取消扫描</value></data>
+  <data name="查看規則" xml:space="preserve"><value>查看规则</value></data>
+  <data name="來源：管理員手動輸入 · SHA-256：{0}" xml:space="preserve"><value>来源：管理员手动输入 · SHA-256：{0}</value></data>
+  <data name="找不到此掃描，資料可能已超過保存期限。" xml:space="preserve"><value>找不到此扫描，数据可能已超过保留期限。</value></data>
+  <data name="無法讀取掃描紀錄。" xml:space="preserve"><value>无法读取扫描记录。</value></data>
+  <data name="請填寫檔案路徑與規則，大小須介於 1 至 1024 MiB，逾時須介於 1 至 3600 秒。" xml:space="preserve"><value>请填写文件路径与规则，大小须介于 1 至 1024 MiB，超时须介于 1 至 3600 秒。</value></data>
+  <data name="此設備沒有可用的 Agent。" xml:space="preserve"><value>此设备没有可用的 Agent。</value></data>
+  <data name="掃描設定無效，請確認輸入。" xml:space="preserve"><value>扫描设置无效，请确认输入。</value></data>
+  <data name="無法建立掃描，請稍後重試。" xml:space="preserve"><value>无法创建扫描，请稍后重试。</value></data>
+  <data name="掃描已結束或不存在，請重新整理。" xml:space="preserve"><value>扫描已结束或不存在，请刷新。</value></data>
+  <data name="無法取消掃描，請稍後重試。" xml:space="preserve"><value>无法取消扫描，请稍后重试。</value></data>
+  <data name="已完成" xml:space="preserve"><value>已完成</value></data>
+  <data name="檔案超過大小上限" xml:space="preserve"><value>文件超过大小上限</value></data>
+  <data name="已逾時" xml:space="preserve"><value>已超时</value></data>
+  <data name="無法使用" xml:space="preserve"><value>无法使用</value></data>
+  <data name="已取消（Agent 連線後停止）" xml:space="preserve"><value>已取消（Agent 连接后停止）</value></data>
+  <data name="掃描失敗" xml:space="preserve"><value>扫描失败</value></data>
 </root>
