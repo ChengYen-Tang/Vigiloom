@@ -86,6 +86,20 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.AreEqual(1, await db.Set<AgentQueueCapacityAudit>().CountAsync(token));
             Assert.AreEqual(AgentSettingsApplyState.NotRegistered, (await monitor.GetQueueCapacityStatusAsync(device, null, token)).State);
             Assert.AreEqual(AgentSettingsApplyState.Disabled, (await monitor.GetQueueCapacityStatusAsync(device with { Eligible = false }, registration, token)).State);
+            var targetUpdate = new RecordedAgentUpdateTarget(Guid.CreateVersion7(), identity.AgentId, Guid.CreateVersion7(), "1.2.3", "win-x64", new string('a', 64), DateTimeOffset.UtcNow);
+            var updateResults = new HostUpdateResults(factory, new TargetReader(targetUpdate), TimeProvider.System);
+            var updateReport = new AgentUpdateResult(Guid.CreateVersion7(), targetUpdate.UpdateId, targetUpdate.PackageId, targetUpdate.ManifestSha256, 1,
+                AgentUpdateResultKind.Succeeded, DateTimeOffset.UtcNow, false, null);
+            Assert.AreEqual(AgentUpdateResultStatus.Success, await updateResults.ReceiveAsync(identity, updateReport, token));
+            Assert.AreEqual(AgentUpdateResultStatus.Success, await updateResults.ReceiveAsync(identity, updateReport, token));
+            Assert.AreEqual(AgentUpdateResultStatus.Conflict, await updateResults.ReceiveAsync(identity, updateReport with { Sequence = 2 }, token));
+            Assert.AreEqual("1.2.3", (await updateResults.GetAsync(identity.AgentId, token))!.LatestResult!.PackageVersion);
+            var newIdentity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var newTarget = targetUpdate with { AgentId = newIdentity.AgentId, UpdateId = Guid.CreateVersion7() };
+            var newResults = new HostUpdateResults(factory, new TargetReader(newTarget), TimeProvider.System);
+            var newUpdateReport = updateReport with { MessageId = Guid.CreateVersion7(), UpdateId = newTarget.UpdateId };
+            Assert.AreEqual(AgentUpdateResultStatus.Success, await newResults.ReceiveAsync(newIdentity, newUpdateReport, token));
+            Assert.AreEqual("1.2.3", (await newResults.GetAsync(newIdentity.AgentId, token))!.LatestResult!.PackageVersion);
         }, context.CancellationToken);
 
     [TestMethod]
@@ -146,12 +160,20 @@ public sealed class HostObservationMigrationTests(TestContext context)
             var threshold = new HostMetricThreshold { DeviceId = device.Id, AgentId = agent.Id, Kind = AgentMetricKind.CpuTotalPercent,
                 Source = "cpu", SeriesHash = new byte[32], Enabled = true, Comparison = HostMetricComparison.AtLeast, Value = 80, FreshnessSeconds = 60 };
             var logMessageId = Guid.CreateVersion7();
+            var package = new Vigiloom.Modules.AgentManagement.Domain.AgentPackage { Id = Guid.CreateVersion7(), Version = "1.2.3", RuntimeIdentifier = "win-x64", Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64), Size = 10 };
+            var updateTarget = new Vigiloom.Modules.AgentManagement.Domain.AgentUpdateTarget { Id = Guid.CreateVersion7(), AgentId = agent.Id, PackageId = package.Id,
+                Version = package.Version, RuntimeIdentifier = package.RuntimeIdentifier, ManifestSha256 = package.ManifestSha256, AssignedAt = now };
+            var updateMessage = Guid.CreateVersion7();
             var logBatch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
                 logSource.Id, AgentLogSourceKind.Journal, "System", 1,
                 [new AgentLogRecord(logMessageId, now, "hello", null, null, null, null, null)]);
             await using (var legacy = new AgentManagementDbContext(legacyOptions))
             {
                 legacy.Agents.Add(agent);
+                legacy.Set<Vigiloom.Modules.AgentManagement.Domain.AgentPackage>().Add(package);
+                legacy.UpdateTargets.Add(updateTarget);
+                legacy.UpdateReceipts.Add(new AgentUpdateReceipt { AgentId = agent.Id, MessageId = updateMessage, UpdateId = updateTarget.Id,
+                    Sequence = 1, Result = AgentUpdateResultKind.Succeeded, OccurredAt = now, ReceivedAt = now });
                 legacy.ReceivedBatches.Add(new ReceivedBatch(agent.Id, batchId, new byte[32], now, now, 1, 100));
                 var point = new HostMetric(agent.Id, batchId, 0,
                     new AgentMetricPoint(messageId, now, AgentMetricKind.CpuTotalPercent, "cpu", null, 42), now);
@@ -178,6 +200,7 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.AreEqual(agent.Id, inbox.Id);
             Assert.AreEqual(device.Id, inbox.DeviceId);
             Assert.AreEqual(1L, inbox.DeviceGeneration);
+            Assert.IsTrue(await copied.UpdateReceipts.AnyAsync(x => x.AgentId == agent.Id && x.MessageId == updateMessage, token));
             var status = await copied.AgentStatuses.SingleAsync(token);
             Assert.AreEqual(agent.Id, status.Id);
             Assert.AreEqual(epoch, status.QueueReportEpoch);
@@ -204,4 +227,10 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.AreEqual(80d, (await copied.Set<HostMetricThreshold>().SingleAsync(token)).Value);
             Assert.IsTrue(await copied.HostLogMessageIds.AnyAsync(x => x.AgentId == agent.Id && x.MessageId == logMessageId, token));
         }, outerToken), context.CancellationToken);
+
+    private sealed class TargetReader(RecordedAgentUpdateTarget target) : IRecordedAgentTargetReader
+    {
+        public Task<RecordedAgentUpdateTarget?> GetAsync(Guid agentId, Guid updateId, CancellationToken token) =>
+            Task.FromResult<RecordedAgentUpdateTarget?>(target.AgentId == agentId && target.UpdateId == updateId ? target : null);
+    }
 }

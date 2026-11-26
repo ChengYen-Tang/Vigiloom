@@ -15,6 +15,7 @@ public sealed class HostMonitoringDbContext(DbContextOptions<HostMonitoringDbCon
     public DbSet<ReceivedBatch> ReceivedBatches => Set<ReceivedBatch>();
     public DbSet<HostLogMessageId> HostLogMessageIds => Set<HostLogMessageId>();
     public DbSet<HostSecurityBatch> HostSecurityBatches => Set<HostSecurityBatch>();
+    public DbSet<AgentUpdateReceipt> UpdateReceipts => Set<AgentUpdateReceipt>();
     public DbSet<RuntimeObservation> RuntimeObservations => Set<RuntimeObservation>();
     public DbSet<HostMetric> HostMetrics => Set<HostMetric>();
     public DbSet<HostMetricRollup> HostMetricRollups => Set<HostMetricRollup>();
@@ -95,6 +96,15 @@ public sealed class HostMonitoringDbContext(DbContextOptions<HostMonitoringDbCon
         securityBatch.Property(x => x.Kind).HasMaxLength(32).IsRequired();
         securityBatch.Property(x => x.Payload).IsRequired();
         securityBatch.HasIndex(x => new { x.AgentId, x.BatchId }).IsUnique();
+
+        var updateReceipt = modelBuilder.Entity<AgentUpdateReceipt>();
+        updateReceipt.ToTable("UpdateReceipts", table => table.HasCheckConstraint("CK_UpdateReceipts_Result",
+            "[Sequence] > 0 AND [Result] IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10) AND ([Failure] IS NULL OR [Failure] IN (1, 2, 3)) AND ([Result] IN (2, 3, 10) OR ([RetryAllowed] = 0 AND [Failure] IS NULL))"));
+        updateReceipt.HasKey(x => x.RowId).IsClustered();
+        updateReceipt.Property(x => x.RowId).UseIdentityColumn();
+        updateReceipt.HasIndex(x => new { x.AgentId, x.MessageId }).IsUnique();
+        updateReceipt.HasIndex(x => new { x.AgentId, x.ReceivedAt, x.RowId });
+        updateReceipt.HasIndex(x => new { x.UpdateId, x.Sequence }).IsUnique();
 
         var observation = modelBuilder.Entity<RuntimeObservation>();
         observation.ToTable("RuntimeObservations");

@@ -36,7 +36,7 @@ public sealed class AgentUpdateResults(IDbContextFactory<AgentManagementDbContex
         return AgentUpdateResultStatus.Success;
     }
 
-    private static bool Same(AgentUpdateReceipt existing, AgentUpdateResult report) =>
+    internal static bool Same(AgentUpdateReceipt existing, AgentUpdateResult report) =>
         existing.UpdateId == report.UpdateId && existing.Sequence == report.Sequence && existing.Result == report.Result &&
         existing.OccurredAt == report.OccurredAt && existing.RetryAllowed == report.RetryAllowed && existing.Failure == report.Failure;
 }

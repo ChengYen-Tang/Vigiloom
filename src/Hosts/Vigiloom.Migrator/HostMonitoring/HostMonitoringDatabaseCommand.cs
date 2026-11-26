@@ -33,7 +33,7 @@ internal static class HostMonitoringDatabaseCommand
         await using (var db = new SchedulingDbContext(schedulingOptions)) await db.Database.MigrateAsync(token);
         if (source is not null)
         {
-            string[] tables = ["ReplayPolicies", "ReplayGenerations", "RuntimeObservations", "HostMetrics", "HostMetricRollups", "HostMetricRetentionSettings",
+            string[] tables = ["ReplayPolicies", "ReplayGenerations", "RuntimeObservations", "UpdateReceipts", "HostMetrics", "HostMetricRollups", "HostMetricRetentionSettings",
                 "HostLogSources", "HostLogSourceAudits", "Settings", "SettingAudits", "QueueCapacitySettings", "QueueCapacityAudits",
                 "HostMetricThresholds", "HostMetricThresholdAudits", "MetricSettings", "MetricSettingAudits"];
             var mappings = new List<SqlTableDataMigration.TableMapping>

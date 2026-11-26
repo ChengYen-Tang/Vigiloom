@@ -77,6 +77,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             });
             using var operationsClient = operations.CreateClient();
             var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var targetUpdate = new RecordedAgentUpdateTarget(Guid.CreateVersion7(), identity.AgentId, Guid.CreateVersion7(), "1.2.3", "win-x64", new string('a', 64), DateTimeOffset.UtcNow);
             var sink = new CommitThenLoseResponse(operationsClient);
             using var host = new WebApplicationFactory<HostMonitoring::Program>().WithWebHostBuilder(web =>
             {
@@ -87,6 +88,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 web.ConfigureTestServices(configured =>
                 {
                     configured.AddHttpClient("resources").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
+                    configured.RemoveAll<IRecordedAgentTargetReader>();
+                    configured.AddSingleton<IRecordedAgentTargetReader>(new TargetReader(targetUpdate));
                     configured.RemoveAll<IHostLogSink>();
                     configured.AddSingleton<IHostLogSink>(sink);
                 });
@@ -112,6 +115,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
             using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 1, null), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            var update = new AgentUpdateResult(Guid.CreateVersion7(), targetUpdate.UpdateId, targetUpdate.PackageId, targetUpdate.ManifestSha256, 1,
+                AgentUpdateResultKind.Succeeded, DateTimeOffset.UtcNow, false, null);
+            using (var result = await client.PostAsJsonAsync("/api/v1/agent/update-results", update, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, result.StatusCode);
+            var updateStatus = await client.GetFromJsonAsync<AgentVersionObservation>($"/internal/v1/agents/{identity.AgentId:D}/update-status", token);
+            Assert.AreEqual("1.2.3", updateStatus!.LatestResult!.PackageVersion);
             Assert.AreEqual(epoch, (await client.GetFromJsonAsync<AgentQueueSession>("/api/v1/agent/queue-session", token))!.Epoch);
             var capacityCommand = new AgentQueueCapacityCommand(new AgentQueueCapacityUpdate(new AgentQueueCapacityOverrides(128L * 1024 * 1024, null), ""), Guid.CreateVersion7());
             using (var updated = await client.PostAsJsonAsync($"/internal/v1/agent-queue-capacity/devices/{identity.DeviceId:D}", capacityCommand, token))
@@ -237,6 +246,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
     {
         public Task<VerifiedApiCredentialResponse?> VerifyAsync(string value, CancellationToken token) =>
             Task.FromResult<VerifiedApiCredentialResponse?>(value == "valid" ? new(Guid.CreateVersion7(), "test", false) : null);
+    }
+
+    private sealed class TargetReader(RecordedAgentUpdateTarget target) : IRecordedAgentTargetReader
+    {
+        public Task<RecordedAgentUpdateTarget?> GetAsync(Guid agentId, Guid updateId, CancellationToken token) =>
+            Task.FromResult<RecordedAgentUpdateTarget?>(target.AgentId == agentId && target.UpdateId == updateId ? target : null);
     }
 
     private sealed class CommitThenLoseResponse(HttpClient client) : IHostLogSink
