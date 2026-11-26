@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Events;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
@@ -70,6 +71,12 @@ public sealed class TimelineTests(TestContext context)
             Assert.HasCount(2, all!.Items);
             var filtered = await client.GetFromJsonAsync<EventTimelinePage>($"/internal/v1/events?from={from}&until={until}&groupId={groupId:D}", token);
             Assert.AreEqual(device, filtered!.Items.Single().ResourceId);
+            var actor = Guid.CreateVersion7();
+            var access = new OperationAudit(actor, actor, now, new EventTimelineAccessed(now.AddMinutes(-1), now.AddMinutes(1), groupId, null, 1, 1, false));
+            using (var saved = await client.PostAsJsonAsync("/internal/v1/audit/event-access", access, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, saved.StatusCode);
+            var audit = await client.GetFromJsonAsync<OperationAuditPage>($"/internal/v1/audit/event-timeline?from={from}&to={until}", token);
+            Assert.AreEqual(actor, Assert.ContainsSingle(audit!.Items).ActorId);
             var wrongKind = hostEntry with { MessageId = Guid.CreateVersion7(), Entry = hostEntry.Entry with { ResourceKind = "service" } };
             await Assert.ThrowsAsync<ArgumentException>(() => handler.ExecuteAsync(new(EventTimelineWork.Kind,
                 JsonSerializer.Serialize(wrongKind), Guid.CreateVersion7().ToString("D")), token));
