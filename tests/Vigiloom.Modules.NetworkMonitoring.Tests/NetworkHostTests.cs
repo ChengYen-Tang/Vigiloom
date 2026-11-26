@@ -156,6 +156,26 @@ public sealed class NetworkHostTests(TestContext context)
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM scheduling.Outbox";
         Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+        var actor = Guid.CreateVersion7();
+        var speedSettings = await client.GetFromJsonAsync<SpeedSettingsSnapshot>("/internal/v1/speed/settings", token);
+        Assert.IsNotNull(speedSettings);
+        var input = new SpeedSettingsInput(false, 6, 2, 40, speedSettings.Version);
+        using (var response = await client.PostAsJsonAsync("/internal/v1/speed/settings", new SpeedSettingsCommand(input, actor), token))
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        using (var response = await client.PostAsJsonAsync("/internal/v1/speed/settings", new SpeedSettingsCommand(input, actor), token))
+            Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);
+        var retention = await client.GetFromJsonAsync<SpeedRetentionSnapshot>("/internal/v1/speed/retention", token);
+        Assert.IsNotNull(retention);
+        using (var response = await client.PostAsJsonAsync("/internal/v1/speed/retention/preview", new SpeedRetentionPreviewCommand(30, retention.Version, actor), token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            var preview = await response.Content.ReadFromJsonAsync<SpeedRetentionPreview>(cancellationToken: token);
+            Assert.IsNotNull(preview);
+            using var update = await client.PostAsJsonAsync("/internal/v1/speed/retention", new SpeedRetentionCommand(new SpeedRetentionInput(30, retention.Version, preview.ConfirmationToken), actor), token);
+            Assert.AreEqual(HttpStatusCode.OK, update.StatusCode);
+        }
+        using (var response = await client.PostAsync($"/internal/v1/speed/{Guid.CreateVersion7():D}/cancel", null, token))
+            Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
         client.DefaultRequestHeaders.Authorization = null;
         using (var response = await client.GetAsync($"/api/v1/public/devices/{id:D}/ping", token))
         {
