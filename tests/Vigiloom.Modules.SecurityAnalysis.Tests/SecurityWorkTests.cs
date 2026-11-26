@@ -133,15 +133,19 @@ public sealed class SecurityWorkTests(TestContext context)
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
             var notifier = new YaraScanNotifier(new TemporalWorkWriter(new OutboxWriter([new NoopHandler()])), config);
-            var scans = new YaraScans(new Factory(options), TimeProvider.System, notifier);
+            var timeline = new YaraTimelineWriter(new TemporalWorkWriter(new OutboxWriter([new NoopHandler()])), config);
+            var scans = new YaraScans(new Factory(options), TimeProvider.System, notifier, timeline);
             var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             var created = await scans.CreateAsync(identity, new("/tmp/file", "rule test { condition: true }", 1024, 30), Guid.CreateVersion7(), token);
             Assert.IsTrue(await scans.CancelAsync(identity.DeviceId, created.Id, token));
+            Assert.IsFalse(await scans.CancelAsync(identity.DeviceId, created.Id, token));
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
             await using var command = connection.CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM scheduling.Outbox WHERE MessageType = 'temporal.service-work' AND Payload LIKE '%YaraScanChanged%'";
             Assert.AreEqual(2, (int)(await command.ExecuteScalarAsync(token))!);
+            command.CommandText = "SELECT COUNT(*) FROM scheduling.Outbox WHERE MessageType = 'temporal.service-work' AND Payload LIKE '%event-timeline.append.v1%'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
         }, context.CancellationToken);
 
     private sealed class NoopHandler : IOutboxHandler
@@ -256,16 +260,34 @@ public sealed class SecurityWorkTests(TestContext context)
             var fake = new HostHandler(payload);
             using var http = new HttpClient(fake) { BaseAddress = new Uri("http://host/") };
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = database.ConnectionString }).Build();
-            var consumer = new SecurityWorkHandler(config, new TestClients(http));
+            var consumer = new SecurityWorkHandler(config, new TestClients(http), timeline: new YaraTimelineWriter(new TemporalWorkWriter(new OutboxWriter([new NoopHandler()])), config));
             var reference = new HostSecurityBatchReady(agent, id, device, 1, "yara");
             var work = new ServiceWork(nameof(HostSecurityBatchReady), JsonSerializer.Serialize(reference), Guid.CreateVersion7().ToString());
+            var failing = new SecurityWorkHandler(config, new TestClients(http), timeline: new YaraTimelineWriter(new TemporalWorkWriter(new OutboxWriter([])), config));
+            await Assert.ThrowsExactlyAsync<ArgumentException>(() => failing.ExecuteAsync(work, token));
+            await using (var beforeRetry = new SecurityAnalysisDbContext(options))
+                Assert.IsNull((await beforeRetry.YaraScans.SingleAsync(token)).Outcome);
+            Assert.AreEqual(0, fake.Deletes);
             await consumer.ExecuteAsync(work, token);
             await consumer.ExecuteAsync(work, token);
             await using var verify = new SecurityAnalysisDbContext(options);
             var scan = await verify.YaraScans.SingleAsync(token);
             Assert.AreEqual("matched", scan.Output);
             Assert.AreEqual((int)YaraScanOutcome.Completed, scan.Outcome);
-            Assert.AreEqual(1, fake.Gets);
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT Payload FROM scheduling.Outbox WHERE MessageType = 'temporal.service-work'";
+            var envelope = JsonSerializer.Deserialize<TemporalWorkRequest>((string)(await command.ExecuteScalarAsync(token))!);
+            Assert.IsNotNull(envelope);
+            Assert.AreEqual(Vigiloom.Contracts.Events.EventTimelineWork.Kind, envelope.Work.Kind);
+            var timeline = JsonSerializer.Deserialize<Vigiloom.Contracts.Events.EventTimelineDelivery>(envelope.Work.Payload);
+            Assert.AreEqual(id, timeline!.MessageId);
+            Assert.AreEqual(device, timeline.Entry.ResourceId);
+            Assert.AreEqual("yara", timeline.Entry.Source);
+            command.CommandText = "SELECT COUNT(*) FROM scheduling.Outbox WHERE MessageType = 'temporal.service-work'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+            Assert.AreEqual(2, fake.Gets);
             Assert.AreEqual(2, fake.Deletes);
         }, context.CancellationToken);
 

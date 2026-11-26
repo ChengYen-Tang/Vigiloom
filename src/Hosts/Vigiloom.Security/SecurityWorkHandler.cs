@@ -14,11 +14,12 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 namespace Vigiloom.Security;
 
 /// <summary>Consumes Host batches and commits security effects with the delivery receipt.</summary>
-public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClientFactory clients, IEnumerable<IOutboxHandler>? handlers = null) : IServiceWorkHandler
+public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClientFactory clients, IEnumerable<IOutboxHandler>? handlers = null, IYaraTimelineWriter? timeline = null) : IServiceWorkHandler
 {
     public async Task<string?> ExecuteAsync(ServiceWork work, CancellationToken cancellationToken)
     {
@@ -59,7 +60,7 @@ public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClien
         return result;
     }
 
-    private static async Task ApplyAsync(HostSecurityBatchReady batch, byte[] payload, SqlConnection sql, SqlTransaction transaction, CancellationToken token)
+    private async Task ApplyAsync(HostSecurityBatchReady batch, byte[] payload, SqlConnection sql, SqlTransaction transaction, CancellationToken token)
     {
         await using var time = new SqlCommand("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')", sql, transaction);
         var now = (DateTimeOffset)(await time.ExecuteScalarAsync(token) ?? throw new InvalidOperationException("Database clock unavailable."));
@@ -98,6 +99,8 @@ public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClien
                 scan.EngineVersion = yara.Result.EngineVersion;
                 scan.OutputTruncated = yara.Result.OutputTruncated; scan.CompletedAt = yara.Result.CompletedAt;
                 await db.SaveChangesAsync(token);
+                await (timeline ?? throw new InvalidOperationException("Timeline writer is required."))
+                    .RecordAsync(db, scan.Id, scan.DeviceId, scan.FilePath, scan.Outcome.Value, scan.CompletedAt.Value, token);
             }
         }
         else throw new InvalidOperationException("Security batch type or identity does not match its payload.");
