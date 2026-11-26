@@ -19,6 +19,7 @@ using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Baseline;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
@@ -57,6 +58,13 @@ public sealed class YaraRoutingTests(TestContext context)
             });
             security.UseKestrel(0);
             using var securityClient = security.CreateClient();
+            using (var count = await securityClient.PostAsJsonAsync("/internal/v1/retention/detections/count", new SecurityDetectionRetentionRequest(DateTimeOffset.UtcNow, 30), token))
+            {
+                count.EnsureSuccessStatusCode();
+                Assert.AreEqual(0L, await count.Content.ReadFromJsonAsync<long>(cancellationToken: token));
+            }
+            using (var invalidRetention = await securityClient.PostAsJsonAsync("/internal/v1/retention/detections/delete", new SecurityDetectionRetentionRequest(DateTimeOffset.UtcNow, 0, 500), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidRetention.StatusCode);
             var inventoryPath = $"/internal/v1/devices/{identity.DeviceId:D}/inventory/";
             var inventoryView = await securityClient.GetFromJsonAsync<DeviceInventoryView>(inventoryPath + $"?agentId={identity.AgentId:D}", token);
             Assert.AreEqual(identity.AgentId, inventoryView!.AgentId);
@@ -89,6 +97,19 @@ public sealed class YaraRoutingTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
             await using (var db = new SecurityAnalysisDbContext(options))
                 Assert.AreEqual(actor, (await db.InventorySettingAudits.SingleAsync(token)).ActorId);
+            await using (var db = new SecurityAnalysisDbContext(options))
+                await db.InventorySettingAudits.ExecuteUpdateAsync(update => update.SetProperty(x => x.OccurredAt, DateTimeOffset.UtcNow.AddDays(-40)), token);
+            var cutoff = DateTimeOffset.UtcNow.AddDays(-30);
+            using (var countAudit = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/count", new SecurityAuditRetentionRequest(cutoff), token))
+            {
+                countAudit.EnsureSuccessStatusCode();
+                Assert.AreEqual(1L, await countAudit.Content.ReadFromJsonAsync<long>(cancellationToken: token));
+            }
+            using (var deleteAudit = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/delete", new SecurityAuditRetentionRequest(cutoff, 500), token))
+            {
+                deleteAudit.EnsureSuccessStatusCode();
+                Assert.AreEqual(1, await deleteAudit.Content.ReadFromJsonAsync<int>(cancellationToken: token));
+            }
             using (var stale = await securityClient.PutAsJsonAsync("/internal/v1/inventory-settings",
                 new { Update = new InventorySettingsUpdate(new(3600), before.Version), ActorId = Guid.CreateVersion7() }, token))
                 Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);

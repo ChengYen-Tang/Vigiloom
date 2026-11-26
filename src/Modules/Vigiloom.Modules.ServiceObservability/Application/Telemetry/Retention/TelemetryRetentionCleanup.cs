@@ -12,6 +12,22 @@ public sealed class TelemetryRetentionCleanup(IDbContextFactory<ServiceObservabi
 
     public Task<(long Pruned, long Expired)> RunMetricsAsync(CancellationToken token) => new MetricRetentionCleanup(contexts).RunAsync(token);
 
+    public async Task RunSecurityDetectionsAsync(CancellationToken token)
+    {
+        if (securityDetections is null) return;
+        await TelemetryRetentionSettings.EnsureAsync(contexts, token);
+        while (true)
+        {
+            await using var db = await contexts.CreateDbContextAsync(token);
+            await using var tx = await db.Database.BeginTransactionAsync(token);
+            var policy = await db.TelemetryRetentionSettings.FromSqlRaw("SELECT * FROM [service].[TelemetryRetentionSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [Slot] = 1").SingleAsync(token);
+            var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+            var removed = await securityDetections.DeleteBatchAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now, policy.LogDays, BatchSize, token);
+            await tx.CommitAsync(token);
+            if (removed < BatchSize) return;
+        }
+    }
+
     public async Task<long> RunHostLogsAsync(CancellationToken token)
     {
         if (hostLogs is null) throw new InvalidOperationException("Host log retention is not registered.");
