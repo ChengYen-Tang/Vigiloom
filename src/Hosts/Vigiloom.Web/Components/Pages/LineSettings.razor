@@ -7,58 +7,59 @@
 @inject Vigiloom.Web.Operations.LineManagement Channel
 @inject NavigationManager Navigation
 @inject ILogger<LineSettings> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<LineText> L
 
-<PageTitle>LINE 通知設定 - Vigiloom</PageTitle>
+<PageTitle>@L["LINE 通知設定"] - Vigiloom</PageTitle>
 <main class="device-page line-page">
-    <header class="device-heading"><div><h1>LINE 通知設定</h1><p>設定 LINE 官方帳號，將監控通知傳送至已確認的 LINE 群組。</p></div></header>
+    <header class="device-heading"><div><h1>@L["LINE 通知設定"]</h1><p>@L["設定 LINE 官方帳號，將監控通知傳送至已確認的 LINE 群組。"]</p></div></header>
     @if (message is not null) { <p class="line-message" role="status">@message</p> }
     @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
     @if (view is not null)
     {
         <section class="device-panel line-panel">
-            <h2>連線設定</h2>
-            <p>憑證已設定後不會再次顯示。留空可保留目前的值。</p>
+            <h2>@L["連線設定"]</h2>
+            <p>@L["憑證已設定後不會再次顯示。留空可保留目前的值。"]</p>
             <div class="line-form"><EditForm Model="Input" FormName="line-settings" method="post" OnValidSubmit="SaveAsync">
                 <DataAnnotationsValidator /><ValidationSummary />
-                <label for="line-token">Channel access token <span>@(view.HasAccessToken ? "已設定" : "尚未設定")</span></label>
+                <label for="line-token">Channel access token <span>@(view.HasAccessToken ? L["已設定"].Value : L["尚未設定"].Value)</span></label>
                 <InputText id="line-token" type="password" autocomplete="new-password" @bind-Value="Input.AccessToken" />
-                <label for="line-secret">Channel secret <span>@(view.HasChannelSecret ? "已設定" : "尚未設定")</span></label>
+                <label for="line-secret">Channel secret <span>@(view.HasChannelSecret ? L["已設定"].Value : L["尚未設定"].Value)</span></label>
                 <InputText id="line-secret" type="password" autocomplete="new-password" @bind-Value="Input.ChannelSecret" />
-                <label for="line-aggregation">異常通知彙整等待時間（0～300 秒）</label>
+                <label for="line-aggregation">@L["異常通知彙整等待時間（0～300 秒）"]</label>
                 <InputNumber id="line-aggregation" @bind-Value="Input.AggregationSeconds" min="0" max="300" />
-                <label class="line-toggle"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用 LINE 通知</label>
-                <button type="submit">儲存設定</button>
+                <label class="line-toggle"><InputCheckbox @bind-Value="Input.Enabled" /> @L["啟用 LINE 通知"]</label>
+                <button type="submit">@L["儲存設定"]</button>
             </EditForm></div>
             <p><strong>Webhook URL：</strong><span class="line-url">@Navigation.ToAbsoluteUri("/api/v1/line/webhook")</span></p>
-            <p>LINE 必須能連線至此 HTTPS 網址；本機 localhost 網址無法直接接收 LINE 事件。</p>
+            <p>@L["LINE 必須能連線至此 HTTPS 網址；本機 localhost 網址無法直接接收 LINE 事件。"]</p>
         </section>
         <section class="device-panel line-panel">
-            <h2>加入 LINE 群組</h2>
-            <ol><li>在 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener noreferrer">LINE Developers</a> 啟用官方帳號加入群組與 webhook，並設定上方 Webhook URL。</li><li>一次邀請官方帳號加入一個 LINE 群組。</li><li>重新整理此頁，為最新的候選群組命名並確認啟用。</li></ol>
-            <p>LINE 群組與 Vigiloom 的設備群組彼此獨立；聊天訊息不會自動啟用通知。</p>
+            <h2>@L["加入 LINE 群組"]</h2>
+            <ol><li>@L["在 "]<a href="https://developers.line.biz/console/" target="_blank" rel="noopener noreferrer">LINE Developers</a>@L[" 啟用官方帳號加入群組與 webhook，並設定上方 Webhook URL。"]</li><li>@L["一次邀請官方帳號加入一個 LINE 群組。"]</li><li>@L["重新整理此頁，為最新的候選群組命名並確認啟用。"]</li></ol>
+            <p>@L["LINE 群組與 Vigiloom 的設備群組彼此獨立；聊天訊息不會自動啟用通知。"]</p>
         </section>
         <section class="device-panel line-panel">
-            <div class="line-heading"><div><h2>LINE 接收群組</h2><p>僅已確認的群組會收到監控通知。</p></div><a href="/settings/line">重新整理</a></div>
-            @if (view.Groups.Count == 0) { <p>尚未收到群組資訊。邀請官方帳號加入群組後，重新整理此頁。</p> }
+            <div class="line-heading"><div><h2>@L["LINE 接收群組"]</h2><p>@L["僅已確認的群組會收到監控通知。"]</p></div><a href="/settings/line">@L["重新整理"]</a></div>
+            @if (view.Groups.Count == 0) { <p>@L["尚未收到群組資訊。邀請官方帳號加入群組後，重新整理此頁。"]</p> }
             else
             {
                 @foreach (var group in view.Groups)
                 {
                     <article class="line-group">
-                        <div><strong>@(group.Name ?? "未命名群組")</strong><span class="line-badge">@(group.Approved ? "已啟用" : "待確認")</span><p class="line-id">@group.ExternalId</p></div>
+                        <div><strong>@(group.Name ?? L["未命名群組"].Value)</strong><span class="line-badge">@(group.Approved ? L["已啟用"].Value : L["待確認"].Value)</span><p class="line-id">@group.ExternalId</p></div>
                         <form method="post" action="/settings/line/group" class="line-group-form">
                             <AntiforgeryToken /><input type="hidden" name="groupId" value="@group.Id" />
-                            <label for="@($"line-name-{group.Id:N}")">群組名稱</label><input id="@($"line-name-{group.Id:N}")" name="name" maxlength="256" value="@group.Name" placeholder="例如：維運通知" />
+                            <label for="@($"line-name-{group.Id:N}")">@L["群組名稱"]</label><input id="@($"line-name-{group.Id:N}")" name="name" maxlength="256" value="@group.Name" placeholder="@L["例如：維運通知"]" />
                             @if (group.Approved)
                             {
-                                <button type="submit" name="approved" value="true">儲存名稱</button>
-                                <button type="submit" name="approved" value="false">停用</button>
+                                <button type="submit" name="approved" value="true">@L["儲存名稱"]</button>
+                                <button type="submit" name="approved" value="false">@L["停用"]</button>
                             }
-                            else { <button type="submit" name="approved" value="true">確認啟用</button> }
+                            else { <button type="submit" name="approved" value="true">@L["確認啟用"]</button> }
                         </form>
                         @if (group.Approved)
                         {
-                            <form method="post" action="/settings/line/test"><AntiforgeryToken /><input type="hidden" name="groupId" value="@group.Id" /><button class="line-secondary" type="submit">發送測試通知</button></form>
+                            <form method="post" action="/settings/line/test"><AntiforgeryToken /><input type="hidden" name="groupId" value="@group.Id" /><button class="line-secondary" type="submit">@L["發送測試通知"]</button></form>
                         }
                     </article>
                 }
@@ -66,19 +67,19 @@
         </section>
         @if (test is not null)
         {
-            <section class="device-panel line-panel" aria-live="polite"><h2>測試通知</h2><p>@TestMessage(test)</p>
-                @if (test.Status == "pending") { <a href="@($"/settings/line?test={test.Id:D}")">重新整理結果</a> }
+            <section class="device-panel line-panel" aria-live="polite"><h2>@L["測試通知"]</h2><p>@L[TestMessage(test)]</p>
+                @if (test.Status == "pending") { <a href="@($"/settings/line?test={test.Id:D}")">@L["重新整理結果"]</a> }
             </section>
         }
         <section class="device-panel line-panel">
-            <div class="line-heading"><div><h2>最近派送</h2><p>顯示最近 20 筆；LINE 已受理不代表訊息已送達。</p></div><a href="/settings/line">重新整理</a></div>
-            @if (recent.Count == 0) { <p>尚無派送紀錄。</p> }
+            <div class="line-heading"><div><h2>@L["最近派送"]</h2><p>@L["顯示最近 20 筆；LINE 已受理不代表訊息已送達。"]</p></div><a href="/settings/line">@L["重新整理"]</a></div>
+            @if (recent.Count == 0) { <p>@L["尚無派送紀錄。"]</p> }
             else
             {
                 <ul class="line-recent">
                     @foreach (var item in recent)
                     {
-                        <li><strong>@item.GroupName</strong> · @item.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC · @DeliveryMessage(item)</li>
+                        <li><strong>@item.GroupName</strong> · @item.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC · @L[DeliveryMessage(item)]</li>
                     }
                 </ul>
             }
@@ -106,12 +107,12 @@
             recent = await Channel.GetRecentAsync(HttpContext.RequestAborted);
             if (HttpMethods.IsGet(HttpContext.Request.Method)) { Input.Enabled = view.Enabled; Input.AggregationSeconds = view.AggregationSeconds; }
             if (TestId is { } id) test = await Channel.GetDeliveryAsync(id, HttpContext.RequestAborted);
-            if (Saved is "group" or "channel") message = "設定已儲存。";
+            if (Saved is "group" or "channel") message = L["設定已儲存。"].Value;
         }
         catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException or HttpRequestException || ex is OperationCanceledException && !HttpContext.RequestAborted.IsCancellationRequested)
         {
             Logger.LogWarning("Unable to load LINE settings: {ErrorType}", ex.GetType().Name);
-            error = "目前無法載入設定，請稍後再試。";
+            error = L["目前無法載入設定，請稍後再試。"].Value;
         }
     }
 
@@ -119,15 +120,15 @@
     {
         try
         {
-            if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { error = "登入已失效，請重新登入。"; return; }
+            if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { error = L["登入已失效，請重新登入。"].Value; return; }
             if (await Channel.SaveAsync(new(Input.Enabled, Input.AccessToken, Input.ChannelSecret, Input.AggregationSeconds), actor, HttpContext.RequestAborted))
             { Navigation.NavigateTo("/settings/line?saved=channel"); return; }
-            error = "請先設定 Channel access token 與 Channel secret，再啟用通知。";
+            error = L["請先設定 Channel access token 與 Channel secret，再啟用通知。"].Value;
         }
         catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException or HttpRequestException || ex is OperationCanceledException && !HttpContext.RequestAborted.IsCancellationRequested)
         {
             Logger.LogWarning("Unable to save LINE settings: {ErrorType}", ex.GetType().Name);
-            error = "無法儲存設定，請稍後再試。";
+            error = L["無法儲存設定，請稍後再試。"].Value;
         }
     }
 

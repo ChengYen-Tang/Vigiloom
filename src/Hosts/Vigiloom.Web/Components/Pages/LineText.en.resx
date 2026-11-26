@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="LINE 通知設定" xml:space="preserve"><value>LINE notification settings</value></data>
+  <data name="設定 LINE 官方帳號，將監控通知傳送至已確認的 LINE 群組。" xml:space="preserve"><value>Configure a LINE Official Account to send monitoring notifications to approved LINE groups.</value></data>
+  <data name="連線設定" xml:space="preserve"><value>Connection settings</value></data>
+  <data name="憑證已設定後不會再次顯示。留空可保留目前的值。" xml:space="preserve"><value>Credentials are not shown again after saving. Leave fields blank to keep current values.</value></data>
+  <data name="已設定" xml:space="preserve"><value>Configured</value></data>
+  <data name="尚未設定" xml:space="preserve"><value>Not configured</value></data>
+  <data name="異常通知彙整等待時間（0～300 秒）" xml:space="preserve"><value>Alert aggregation wait (0–300 seconds)</value></data>
+  <data name="啟用 LINE 通知" xml:space="preserve"><value>Enable LINE notifications</value></data>
+  <data name="儲存設定" xml:space="preserve"><value>Save settings</value></data>
+  <data name="LINE 必須能連線至此 HTTPS 網址；本機 localhost 網址無法直接接收 LINE 事件。" xml:space="preserve"><value>LINE must be able to reach this HTTPS URL; a local localhost URL cannot receive LINE events directly.</value></data>
+  <data name="加入 LINE 群組" xml:space="preserve"><value>Join LINE groups</value></data>
+  <data name="在 " xml:space="preserve"><value>In </value></data>
+  <data name=" 啟用官方帳號加入群組與 webhook，並設定上方 Webhook URL。" xml:space="preserve"><value>, enable group joining and webhooks for the Official Account, then set the Webhook URL above.</value></data>
+  <data name="一次邀請官方帳號加入一個 LINE 群組。" xml:space="preserve"><value>Invite the Official Account to one LINE group at a time.</value></data>
+  <data name="重新整理此頁，為最新的候選群組命名並確認啟用。" xml:space="preserve"><value>Refresh this page, name the latest candidate group and confirm activation.</value></data>
+  <data name="LINE 群組與 Vigiloom 的設備群組彼此獨立；聊天訊息不會自動啟用通知。" xml:space="preserve"><value>LINE groups are separate from Vigiloom device groups; chat messages do not automatically enable notifications.</value></data>
+  <data name="LINE 接收群組" xml:space="preserve"><value>LINE recipient groups</value></data>
+  <data name="僅已確認的群組會收到監控通知。" xml:space="preserve"><value>Only confirmed groups receive monitoring notifications.</value></data>
+  <data name="重新整理" xml:space="preserve"><value>Refresh</value></data>
+  <data name="尚未收到群組資訊。邀請官方帳號加入群組後，重新整理此頁。" xml:space="preserve"><value>No group information received. Invite the Official Account to a group, then refresh this page.</value></data>
+  <data name="未命名群組" xml:space="preserve"><value>Unnamed group</value></data>
+  <data name="已啟用" xml:space="preserve"><value>Enabled</value></data>
+  <data name="待確認" xml:space="preserve"><value>Pending confirmation</value></data>
+  <data name="群組名稱" xml:space="preserve"><value>Group name</value></data>
+  <data name="例如：維運通知" xml:space="preserve"><value>For example: Operations alerts</value></data>
+  <data name="儲存名稱" xml:space="preserve"><value>Save name</value></data>
+  <data name="停用" xml:space="preserve"><value>Disable</value></data>
+  <data name="確認啟用" xml:space="preserve"><value>Confirm activation</value></data>
+  <data name="發送測試通知" xml:space="preserve"><value>Send test notification</value></data>
+  <data name="測試通知" xml:space="preserve"><value>Test notification</value></data>
+  <data name="重新整理結果" xml:space="preserve"><value>Refresh result</value></data>
+  <data name="最近派送" xml:space="preserve"><value>Recent deliveries</value></data>
+  <data name="顯示最近 20 筆；LINE 已受理不代表訊息已送達。" xml:space="preserve"><value>Showing the latest 20; acceptance by LINE does not mean the message was delivered.</value></data>
+  <data name="尚無派送紀錄。" xml:space="preserve"><value>No delivery records yet.</value></data>
+  <data name="設定已儲存。" xml:space="preserve"><value>Settings saved.</value></data>
+  <data name="目前無法載入設定，請稍後再試。" xml:space="preserve"><value>Unable to load settings. Try again later.</value></data>
+  <data name="登入已失效，請重新登入。" xml:space="preserve"><value>Your session expired. Sign in again.</value></data>
+  <data name="請先設定 Channel access token 與 Channel secret，再啟用通知。" xml:space="preserve"><value>Configure the channel access token and channel secret before enabling notifications.</value></data>
+  <data name="無法儲存設定，請稍後再試。" xml:space="preserve"><value>Unable to save settings. Try again later.</value></data>
+  <data name="LINE 已受理測試通知。請至群組確認是否收到。" xml:space="preserve"><value>LINE accepted the test notification. Check the group to confirm receipt.</value></data>
+  <data name="測試通知未完成，請檢查憑證、群組設定與背景工作後重試。" xml:space="preserve"><value>The test notification did not complete. Check credentials, group settings and background jobs, then retry.</value></data>
+  <data name="測試通知已排入，等待背景工作處理。" xml:space="preserve"><value>The test notification is queued for background processing.</value></data>
+  <data name="目前無法確認測試通知狀態。" xml:space="preserve"><value>Unable to confirm the test notification status.</value></data>
+  <data name="LINE 已受理" xml:space="preserve"><value>Accepted by LINE</value></data>
+  <data name="派送失敗，請檢查群組、憑證與背景工作" xml:space="preserve"><value>Delivery failed; check the group, credentials and background jobs</value></data>
+  <data name="等待處理" xml:space="preserve"><value>Pending</value></data>
+  <data name="狀態無法確認" xml:space="preserve"><value>Status unavailable</value></data>
+</root>
