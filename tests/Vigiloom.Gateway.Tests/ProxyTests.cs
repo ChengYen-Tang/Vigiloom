@@ -43,6 +43,7 @@ public sealed class ProxyTests
             Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-agent");
         Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/metric-settings", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/log-settings", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/settings", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/queue-capacity", TestContext.CancellationToken));
     }

@@ -88,6 +88,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 web.ConfigureTestServices(configured =>
                 {
                     configured.AddHttpClient("resources").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
+                    configured.AddHttpClient("operations").ConfigurePrimaryHttpMessageHandler(() => operations.Server.CreateHandler());
                     configured.RemoveAll<IRecordedAgentTargetReader>();
                     configured.AddSingleton<IRecordedAgentTargetReader>(new TargetReader(targetUpdate));
                     configured.RemoveAll<IHostLogSink>();
@@ -142,10 +143,31 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 using var unchanged = await client.SendAsync(unchangedRequest, token);
                 Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
             }
+            var logSourceCommand = new HostLogSourceCreateCommand(new(AgentLogSourceKind.Journal, "system", "local", true, null), Guid.CreateVersion7());
+            HostLogSourceView savedLogSource;
+            using (var created = await client.PostAsJsonAsync($"/internal/v1/devices/{identity.DeviceId:D}/log-sources", logSourceCommand, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, created.StatusCode);
+                savedLogSource = (await created.Content.ReadFromJsonAsync<HostLogConfigurationResult>(cancellationToken: token))!.Source!;
+            }
+            string logRevision;
+            using (var settings = await client.GetAsync("/api/v1/agent/log-settings", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, settings.StatusCode);
+                var snapshot = await settings.Content.ReadFromJsonAsync<AgentLogSettingsSnapshot>(cancellationToken: token);
+                Assert.AreEqual(savedLogSource.Settings.SourceId, Assert.ContainsSingle(snapshot!.Sources).SourceId);
+                logRevision = snapshot.Revision;
+                using var unchangedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/log-settings");
+                unchangedRequest.Headers.IfNoneMatch.Add(settings.Headers.ETag!);
+                using var unchanged = await client.SendAsync(unchangedRequest, token);
+                Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
+            }
             var queue = new AgentQueueSnapshot(0, 0, 0, capacity.Capacity.PayloadBytes, capacity.Capacity.BatchCount);
             var capacityReport = new AgentQueueCapacityReport(capacity, DateTimeOffset.UtcNow, null);
-            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, queue, CapacityConfiguration: capacityReport, Runtime: new("1.2.3", "win-x64")), token))
+            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, queue, CapacityConfiguration: capacityReport, LogStatus: new(logRevision, false, []), Runtime: new("1.2.3", "win-x64")), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            var logStatus = await client.GetFromJsonAsync<HostLogStatusView>($"/internal/v1/devices/{identity.DeviceId:D}/agent-log-status", token);
+            Assert.AreEqual(logRevision, logStatus!.Report.Revision);
             using (var usage = await client.PostAsJsonAsync("/internal/v1/agent-package-usage", new AgentPackageUsageRequest("1.2.3", "win-x64"), token))
                 Assert.IsTrue((await usage.Content.ReadFromJsonAsync<AgentPackageUsageResponse>(cancellationToken: token))!.InUse);
             using (var usage = await client.PostAsJsonAsync("/internal/v1/agent-package-usage", new AgentPackageUsageRequest("9.9.9", "win-x64"), token))
@@ -186,7 +208,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 (AuditFeedSource.AgentSettings, AuditFeedAction.AgentSettingsChanged),
                 (AuditFeedSource.AgentQueueCapacity, AuditFeedAction.AgentQueueCapacityChanged),
                 (AuditFeedSource.AgentMetricSettings, AuditFeedAction.AgentMetricSettingsChanged),
-                (AuditFeedSource.HostMetricThresholds, AuditFeedAction.HostMetricThresholdChanged)
+                (AuditFeedSource.HostMetricThresholds, AuditFeedAction.HostMetricThresholdChanged),
+                (AuditFeedSource.HostLogSources, AuditFeedAction.HostLogSourceCreated)
             })
             {
                 using var auditResponse = await client.PostAsJsonAsync("/internal/v1/audit/query", new AuditFeedRequest(source, auditQuery), token);

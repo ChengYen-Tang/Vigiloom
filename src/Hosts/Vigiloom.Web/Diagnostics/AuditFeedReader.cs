@@ -34,8 +34,8 @@ internal sealed class AuditFeedReader(IdentityAuditReader identity, DeviceAuditF
         {
             AuditFeedSource.Accounts or AuditFeedSource.ApiCredentials => await identity.QueryAsync(principal, source, query, token),
             AuditFeedSource.Devices => await devices.QueryAsync(query, token),
-            AuditFeedSource.AgentIdentity or AuditFeedSource.HostLogSources => await agent.QueryAsync(source, query, token),
-            AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostMetricThresholds =>
+            AuditFeedSource.AgentIdentity => await agent.QueryAsync(source, query, token),
+            AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostMetricThresholds or AuditFeedSource.HostLogSources =>
                 string.IsNullOrWhiteSpace(configuration["Services:HostMonitoring:Url"])
                     ? await agent.QueryAsync(source, query, token)
                     : await services.GetRequiredService<RemoteHostAuditFeed>().QueryAsync(source, query, token),

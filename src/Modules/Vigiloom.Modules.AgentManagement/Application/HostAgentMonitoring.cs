@@ -11,6 +11,23 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 /// <summary>Reads host-owned Agent observations for a current Resources registration.</summary>
 public sealed class HostAgentMonitoring(IDbContextFactory<HostMonitoringDbContext> contexts, TimeProvider clock)
 {
+    public async Task<HostLogStatusView?> GetLogStatusAsync(DeviceAgentState device, AgentRegistrationSummary? registration, CancellationToken token)
+    {
+        if (!device.Eligible || registration is null || registration.RevokedAt is not null || registration.DeviceGeneration != device.Generation) return null;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var status = await db.AgentStatuses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == registration.Id, token);
+        if (status is null || status.DeviceId != device.DeviceId || status.DeviceGeneration != device.Generation ||
+            status.LogStatusReportEpoch is null || status.LogStatusReportEpoch != status.QueueReportEpoch ||
+            status.LogStatusReportSequence != status.QueueReportSequence || status.LogStatusReportedAt is not { } received ||
+            status.LogStatusJson is not { Length: > 0 and <= 8192 } json) return null;
+        try
+        {
+            var report = JsonSerializer.Deserialize<AgentLogStatusReport>(json);
+            return report?.IsValid() == true ? new(received, Math.Max(AgentMonitoring.OfflineAfterSeconds, status.HeartbeatSafetyIntervalSeconds * 3), report) : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
     public async Task<AgentQueueCapacityStatus> GetQueueCapacityStatusAsync(DeviceAgentState device, AgentRegistrationSummary? registration, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
