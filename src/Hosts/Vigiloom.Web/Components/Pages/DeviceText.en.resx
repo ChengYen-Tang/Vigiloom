@@ -348,4 +348,157 @@
   <data xml:space="preserve" name="待確認">
     <value>Pending</value>
   </data>
+  <data xml:space="preserve" name="Agent 狀態">
+    <value>Agent status</value>
+  </data>
+  <data xml:space="preserve" name="Agent 最後回報（UTC）">
+    <value>Last Agent heartbeat (UTC)</value>
+  </data>
+  <data xml:space="preserve" name="Agent CPU（單一邏輯處理器為 100%）">
+    <value>Agent CPU (one logical processor is 100%)</value>
+  </data>
+  <data xml:space="preserve" name="Agent 記憶體工作集">
+    <value>Agent memory working set</value>
+  </data>
+  <data xml:space="preserve" name="Agent 資源回報（UTC）">
+    <value>Agent resource report (UTC)</value>
+  </data>
+  <data xml:space="preserve" name="本次 Agent 執行期間的最近採集錯誤">
+    <value>Recent collection errors during this Agent run</value>
+  </data>
+  <data xml:space="preserve" name="尚無資料。">
+    <value>No data yet.</value>
+  </data>
+  <data xml:space="preserve" name="尚無回報的採集錯誤。">
+    <value>No collection errors reported.</value>
+  </data>
+  <data xml:space="preserve" name="Agent 狀態與設備 Ping 分開判斷；{0} 秒未回報顯示失聯。重新整理頁面可查看最新狀態。">
+    <value>Agent status is independent of device Ping. The Agent is offline after {0} seconds without a report. Refresh for the latest status.</value>
+  </data>
+  <data xml:space="preserve" name="查看 Agent 版本">
+    <value>View Agent version</value>
+  </data>
+  <data xml:space="preserve" name="管理 Agent 身分">
+    <value>Manage Agent identity</value>
+  </data>
+  <data xml:space="preserve" name="管理主機日誌來源">
+    <value>Manage host log sources</value>
+  </data>
+  <data xml:space="preserve" name="管理完整性監控">
+    <value>Manage integrity monitoring</value>
+  </data>
+  <data xml:space="preserve" name="Agent 設定同步">
+    <value>Agent settings synchronization</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取設定狀態，請稍後重新整理。">
+    <value>Unable to load settings status. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="尚無設定狀態。">
+    <value>No settings status yet.</value>
+  </data>
+  <data xml:space="preserve" name="同步狀態">
+    <value>Synchronization status</value>
+  </data>
+  <data xml:space="preserve" name="期望心跳間隔">
+    <value>Desired heartbeat interval</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用心跳間隔">
+    <value>Applied Agent heartbeat interval</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用設定同步間隔">
+    <value>Applied Agent settings synchronization interval</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用資料傳送間隔">
+    <value>Applied Agent data transmission interval</value>
+  </data>
+  <data xml:space="preserve" name="最後設定回報（UTC）">
+    <value>Last settings report (UTC)</value>
+  </data>
+  <data xml:space="preserve" name="設定由 Agent 定期同步；離線時顯示最後回報的狀態，不代表設定已更新。">
+    <value>The Agent synchronizes settings periodically. When offline, the last report does not confirm that settings are current.</value>
+  </data>
+  <data xml:space="preserve" name="編輯此設備的 Agent 設定">
+    <value>Edit this device’s Agent settings</value>
+  </data>
+  <data xml:space="preserve" name="{0} 秒">
+    <value>{0} seconds</value>
+  </data>
+  <data xml:space="preserve" name="{0} 位元組">
+    <value>{0} bytes</value>
+  </data>
+  <data xml:space="preserve" name="未註冊或已撤銷">
+    <value>Not registered or revoked</value>
+  </data>
+  <data xml:space="preserve" name="等待首次回報">
+    <value>Awaiting first report</value>
+  </data>
+  <data xml:space="preserve" name="已連線">
+    <value>Online</value>
+  </data>
+  <data xml:space="preserve" name="已失聯">
+    <value>Offline</value>
+  </data>
+  <data xml:space="preserve" name="系統時間異常">
+    <value>System clock uncertain</value>
+  </data>
+  <data xml:space="preserve" name="尚未註冊 Agent">
+    <value>Agent not registered</value>
+  </data>
+  <data xml:space="preserve" name="等待首次心跳">
+    <value>Awaiting first heartbeat</value>
+  </data>
+  <data xml:space="preserve" name="等待設定回報">
+    <value>Awaiting settings report</value>
+  </data>
+  <data xml:space="preserve" name="待同步">
+    <value>Pending synchronization</value>
+  </data>
+  <data xml:space="preserve" name="已套用">
+    <value>Applied</value>
+  </data>
+  <data xml:space="preserve" name="同步失敗">
+    <value>Synchronization failed</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已失聯">
+    <value>Agent offline</value>
+  </data>
+  <data xml:space="preserve" name="設定回報已過期">
+    <value>Settings report is stale</value>
+  </data>
+  <data xml:space="preserve" name="無法連線至平台，Agent 會保留上次設定並重試。">
+    <value>The Agent cannot reach the platform. It will retain its last settings and retry.</value>
+  </data>
+  <data xml:space="preserve" name="收到的設定無法套用，Agent 會保留上次設定。">
+    <value>The received settings cannot be applied. The Agent will retain its last settings.</value>
+  </data>
+  <data xml:space="preserve" name="Agent 身分未獲授權，請檢查註冊狀態。">
+    <value>Agent identity is unauthorized. Check its registration.</value>
+  </data>
+  <data xml:space="preserve" name="Agent 無法讀寫本機設定，請檢查 Agent 狀態。">
+    <value>The Agent cannot read or write local settings. Check the Agent.</value>
+  </data>
+  <data xml:space="preserve" name="設定同步發生衝突，Agent 會再次嘗試。">
+    <value>Settings synchronization conflicted. The Agent will retry.</value>
+  </data>
+  <data xml:space="preserve" name="Agent 回報設定同步異常。">
+    <value>The Agent reported a settings synchronization error.</value>
+  </data>
+  <data xml:space="preserve" name="資源指標">
+    <value>Resource metrics</value>
+  </data>
+  <data xml:space="preserve" name="日誌">
+    <value>Logs</value>
+  </data>
+  <data xml:space="preserve" name="資產盤點">
+    <value>Inventory</value>
+  </data>
+  <data xml:space="preserve" name="完整性監控">
+    <value>Integrity monitoring</value>
+  </data>
+  <data xml:space="preserve" name="安全基線">
+    <value>Security baseline</value>
+  </data>
+  <data xml:space="preserve" name="未知模組">
+    <value>Unknown module</value>
+  </data>
 </root>

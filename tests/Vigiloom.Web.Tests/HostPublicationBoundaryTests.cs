@@ -71,6 +71,12 @@ public sealed class HostPublicationBoundaryTests(TestContext context)
         }
         Assert.AreEqual("不可達", await ReadField("Ping 狀態"));
         Assert.AreEqual("已連線", await ReadField("Agent 狀態"));
+        reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        Assert.AreEqual("Unreachable", await ReadField("Ping status"));
+        Assert.AreEqual("Online", await ReadField("Agent status"));
+        var translated = await new HtmlParser().ParseDocumentAsync(await reader.GetStringAsync($"/devices/{device.Id:D}", token), token);
+        Assert.Contains("Agent settings synchronization", translated.Body!.TextContent);
+        Assert.Contains("Independent states", translated.Body.TextContent);
     }, context.CancellationToken);
 
     [TestMethod]
