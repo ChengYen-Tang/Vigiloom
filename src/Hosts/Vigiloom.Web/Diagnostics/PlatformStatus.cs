@@ -33,10 +33,16 @@ internal sealed class PlatformStatus(
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
             timeout.CancelAfter(Timeout);
-            var result = await checks.CheckHealthAsync(check => check.Name == "database", timeout.Token);
-            database = result.Entries.TryGetValue("database", out var entry)
-                ? entry.Status == HealthStatus.Healthy ? ObservationState.Healthy : ObservationState.Unhealthy
-                : ObservationState.Unknown;
+            if (!string.IsNullOrWhiteSpace(configuration["Services:Operations:Url"]))
+                database = await services.GetRequiredService<RemoteJobOverview>().DatabaseHealthyAsync(timeout.Token)
+                    ? ObservationState.Healthy : ObservationState.Unhealthy;
+            else
+            {
+                var result = await checks.CheckHealthAsync(check => check.Name == "database", timeout.Token);
+                database = result.Entries.TryGetValue("database", out var entry)
+                    ? entry.Status == HealthStatus.Healthy ? ObservationState.Healthy : ObservationState.Unhealthy
+                    : ObservationState.Unknown;
+            }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception exception) { logger.LogWarning("Database health unavailable: {ExceptionType}", exception.GetType().Name); }
