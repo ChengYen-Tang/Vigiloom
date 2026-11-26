@@ -1286,6 +1286,15 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode);
                 Assert.Contains("設定已儲存", await BodyTextAsync(saved, token));
             }
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishAudit = await admin.GetAsync("/settings/audit?source=agent-settings", token))
+            {
+                var auditText = await BodyTextAsync(englishAudit, token);
+                Assert.Contains("Change Agent settings", auditText);
+                Assert.Contains("Effective heartbeat: 60 seconds", auditText);
+                Assert.Contains("Inherited", auditText);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var audit = await admin.GetAsync("/settings/audit?source=agent-settings", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, audit.StatusCode);

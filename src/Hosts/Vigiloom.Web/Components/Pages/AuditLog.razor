@@ -260,31 +260,31 @@
                         <td>@L[ActionText(entry.Action)]</td>
                         <td>@(entry.SubjectId?.ToString("D") ?? (feedResult.Source is AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.InventorySettings ? L["平台設定"].Value : "—"))</td>
                         <td>
-                            @if (entry.AgentId is { } agentId) { <div>Agent：@agentId</div> }
-                            @if (entry.AgentVersion is { } agentVersion) { <div>原套件：@(agentVersion.PreviousPackageId?.ToString() ?? "無")</div><div>新套件：@(agentVersion.PackageId?.ToString() ?? "無")</div> }
-                            @if (entry.Reference is { } reference) { <div>工作：@reference</div> }
-                            @if (entry.MetricThreshold is { } threshold) { <div>閾值 ID：@threshold.ThresholdId</div><div>Agent：@threshold.AgentId · 指標：@((Vigiloom.Contracts.Agent.AgentMetricKind)threshold.Kind) · 來源：@threshold.Source @(threshold.Dimension is null ? "" : $"· {threshold.Dimension}")</div><div>@(threshold.Enabled ? "啟用" : "停用") · @(threshold.Comparison == 1 ? "大於等於" : "小於等於") @threshold.Value · 有效時間 @threshold.FreshnessSeconds 秒</div><details><summary>設定版本</summary>@threshold.Version</details> }
-                            @if (entry.HostLogSource is { } logSource) { <div>來源：@logSource.SourceId</div><div>設定：@(logSource.Enabled ? "啟用" : "停用")</div><details><summary>來源版本</summary><div>代次：@logSource.Generation</div><div>@L["版本："]@logSource.Version</div></details> }
+                            @if (entry.AgentId is { } agentId) { <div>@L["Agent："]@agentId</div> }
+                            @if (entry.AgentVersion is { } agentVersion) { <div>@L["原套件："]@(agentVersion.PreviousPackageId?.ToString() ?? L["無"].Value)</div><div>@L["新套件："]@(agentVersion.PackageId?.ToString() ?? L["無"].Value)</div> }
+                            @if (entry.Reference is { } reference) { <div>@L["工作："]@reference</div> }
+                            @if (entry.MetricThreshold is { } threshold) { <div>@L["閾值 ID："]@threshold.ThresholdId</div><div>@L["Agent："]@threshold.AgentId · @L["指標："]@((Vigiloom.Contracts.Agent.AgentMetricKind)threshold.Kind) · @L["來源："]@threshold.Source @(threshold.Dimension is null ? "" : $"· {threshold.Dimension}")</div><div>@(threshold.Enabled ? L["啟用"].Value : L["停用"].Value) · @(threshold.Comparison == 1 ? L["大於等於"].Value : L["小於等於"].Value) @threshold.Value · @L["有效時間 {0} 秒", threshold.FreshnessSeconds]</div><details><summary>@L["設定版本"]</summary>@threshold.Version</details> }
+                            @if (entry.HostLogSource is { } logSource) { <div>@L["來源："]@logSource.SourceId</div><div>@L["設定："]@(logSource.Enabled ? L["啟用"].Value : L["停用"].Value)</div><details><summary>@L["來源版本"]</summary><div>@L["代次："]@logSource.Generation</div><div>@L["版本："]@logSource.Version</div></details> }
                             @if (entry.AgentSettings is { } settings)
                             {
-                                <div>有效心跳：@settings.EffectiveHeartbeatSeconds 秒</div><div>有效設定同步：@settings.EffectiveSettingsPollSeconds 秒</div><div>有效批次間隔：@settings.EffectiveBatchIntervalSeconds 秒</div>
-                                <details><summary>設定與版本</summary><div>覆寫：@(settings.HeartbeatSeconds?.ToString() ?? "繼承")／@(settings.SettingsPollSeconds?.ToString() ?? "繼承")／@(settings.BatchIntervalSeconds?.ToString() ?? "繼承")</div><div>@L["版本："]@settings.Version</div><div>有效版本：@settings.Revision</div></details>
+                                <div>@L["有效心跳：{0} 秒", settings.EffectiveHeartbeatSeconds]</div><div>@L["有效設定同步：{0} 秒", settings.EffectiveSettingsPollSeconds]</div><div>@L["有效批次間隔：{0} 秒", settings.EffectiveBatchIntervalSeconds]</div>
+                                <details><summary>@L["設定與版本"]</summary><div>@L["覆寫："]@(settings.HeartbeatSeconds?.ToString() ?? L["繼承"].Value)／@(settings.SettingsPollSeconds?.ToString() ?? L["繼承"].Value)／@(settings.BatchIntervalSeconds?.ToString() ?? L["繼承"].Value)</div><div>@L["版本："]@settings.Version</div><div>@L["有效版本："]@settings.Revision</div></details>
                             }
                             @if (entry.QueueCapacity is { } capacity)
                             {
-                                <div>有效容量：@(capacity.EffectivePayloadBytes / 1048576) MiB</div><div>有效批次上限：@capacity.EffectiveBatchCount</div>
-                                <details><summary>設定與版本</summary><div>覆寫：@(capacity.PayloadBytes is { } bytes ? $"{bytes / 1048576} MiB" : "繼承")／@(capacity.BatchCount?.ToString() ?? "繼承")</div><div>@L["版本："]@capacity.Version</div><div>有效版本：@capacity.Revision</div></details>
+                                <div>@L["有效容量：{0} MiB", capacity.EffectivePayloadBytes / 1048576]</div><div>@L["有效批次上限："]@capacity.EffectiveBatchCount</div>
+                                <details><summary>@L["設定與版本"]</summary><div>@L["覆寫："]@(capacity.PayloadBytes is { } bytes ? $"{bytes / 1048576} MiB" : L["繼承"].Value)／@(capacity.BatchCount?.ToString() ?? L["繼承"].Value)</div><div>@L["版本："]@capacity.Version</div><div>@L["有效版本："]@capacity.Revision</div></details>
                             }
                             @if (entry.MetricSettings is { } metrics)
                             {
-                                <div>有效主機採樣：@metrics.EffectiveHostIntervalSeconds 秒</div><div>有效程序採樣：@metrics.EffectiveProcessIntervalSeconds 秒</div>
-                                <div>有效採樣 CPU 預算：@metrics.EffectiveCpuMillisecondsPerMinute 毫秒／分鐘</div>
-                                <div>有效 Agent 記憶體門檻：@metrics.EffectiveWorkingSetLimitMiB MiB</div>
-                                <div>有效程序採集時間預算：@metrics.EffectiveProcessCollectionBudgetMs 毫秒</div>
-                                <div>有效採樣 I/O 預算：@metrics.EffectiveIoLimitMiBPerMinute MiB／分鐘</div>
-                                <details><summary>設定與版本</summary><div>覆寫：@(metrics.HostIntervalSeconds?.ToString() ?? "繼承")／@(metrics.ProcessIntervalSeconds?.ToString() ?? "繼承")</div><div>CPU 預算覆寫：@(metrics.CpuMillisecondsPerMinute?.ToString() ?? "繼承")</div><div>記憶體門檻覆寫：@(metrics.WorkingSetLimitMiB?.ToString() ?? "繼承")</div><div>程序時間預算覆寫：@(metrics.ProcessCollectionBudgetMs?.ToString() ?? "繼承")</div><div>採樣 I/O 預算覆寫：@(metrics.IoLimitMiBPerMinute?.ToString() ?? "繼承")</div><div>@L["版本："]@metrics.Version</div><div>有效版本：@metrics.Revision</div></details>
+                                <div>@L["有效主機採樣：{0} 秒", metrics.EffectiveHostIntervalSeconds]</div><div>@L["有效程序採樣：{0} 秒", metrics.EffectiveProcessIntervalSeconds]</div>
+                                <div>@L["有效採樣 CPU 預算：{0} 毫秒／分鐘", metrics.EffectiveCpuMillisecondsPerMinute]</div>
+                                <div>@L["有效 Agent 記憶體門檻：{0} MiB", metrics.EffectiveWorkingSetLimitMiB]</div>
+                                <div>@L["有效程序採集時間預算：{0} 毫秒", metrics.EffectiveProcessCollectionBudgetMs]</div>
+                                <div>@L["有效採樣 I/O 預算：{0} MiB／分鐘", metrics.EffectiveIoLimitMiBPerMinute]</div>
+                                <details><summary>@L["設定與版本"]</summary><div>@L["覆寫："]@(metrics.HostIntervalSeconds?.ToString() ?? L["繼承"].Value)／@(metrics.ProcessIntervalSeconds?.ToString() ?? L["繼承"].Value)</div><div>@L["CPU 預算覆寫："]@(metrics.CpuMillisecondsPerMinute?.ToString() ?? L["繼承"].Value)</div><div>@L["記憶體門檻覆寫："]@(metrics.WorkingSetLimitMiB?.ToString() ?? L["繼承"].Value)</div><div>@L["程序時間預算覆寫："]@(metrics.ProcessCollectionBudgetMs?.ToString() ?? L["繼承"].Value)</div><div>@L["採樣 I/O 預算覆寫："]@(metrics.IoLimitMiBPerMinute?.ToString() ?? L["繼承"].Value)</div><div>@L["版本："]@metrics.Version</div><div>@L["有效版本："]@metrics.Revision</div></details>
                             }
-                            @if (entry.InventorySettings is { } inventory) { <div>有效盤點間隔：@inventory.EffectiveScanIntervalSeconds 秒</div><div>程序執行資訊：@(inventory.EffectiveCollectCommandLine ? "收集路徑，參數遮罩" : "不收集")</div><details><summary>設定與版本</summary><div>覆寫：@(inventory.ScanIntervalSeconds?.ToString() ?? "繼承")</div><div>執行資訊覆寫：@(inventory.CollectCommandLine is null ? "繼承" : inventory.CollectCommandLine.Value ? "收集路徑" : "不收集")</div><div>@L["版本："]@inventory.Version</div><div>有效版本：@inventory.Revision</div></details> }
+                            @if (entry.InventorySettings is { } inventory) { <div>@L["有效盤點間隔：{0} 秒", inventory.EffectiveScanIntervalSeconds]</div><div>@L["程序執行資訊："]@(inventory.EffectiveCollectCommandLine ? L["收集路徑，參數遮罩"].Value : L["不收集"].Value)</div><details><summary>@L["設定與版本"]</summary><div>@L["覆寫："]@(inventory.ScanIntervalSeconds?.ToString() ?? L["繼承"].Value)</div><div>@L["執行資訊覆寫："]@(inventory.CollectCommandLine is null ? L["繼承"].Value : inventory.CollectCommandLine.Value ? L["收集路徑"].Value : L["不收集"].Value)</div><div>@L["版本："]@inventory.Version</div><div>@L["有效版本："]@inventory.Revision</div></details> }
                             @if (entry.AgentId is null && entry.Reference is null && entry.AgentSettings is null && entry.QueueCapacity is null && entry.MetricSettings is null && entry.HostLogSource is null && entry.InventorySettings is null && entry.MetricThreshold is null) { <span>—</span> }
                         </td>
                         <td>@L[OutcomeText(entry.Outcome)]</td>

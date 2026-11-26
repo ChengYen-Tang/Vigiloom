@@ -312,4 +312,44 @@
   <data name="匯入識別碼：" xml:space="preserve"><value>Import ID: </value></data>
   <data name="已設定" xml:space="preserve"><value>Configured</value></data>
   <data name="已清除" xml:space="preserve"><value>Cleared</value></data>
+  <data name="Agent：" xml:space="preserve"><value>Agent: </value></data>
+  <data name="原套件：" xml:space="preserve"><value>Previous package: </value></data>
+  <data name="新套件：" xml:space="preserve"><value>New package: </value></data>
+  <data name="無" xml:space="preserve"><value>None</value></data>
+  <data name="工作：" xml:space="preserve"><value>Job: </value></data>
+  <data name="閾值 ID：" xml:space="preserve"><value>Threshold ID: </value></data>
+  <data name="指標：" xml:space="preserve"><value>Metric: </value></data>
+  <data name="來源：" xml:space="preserve"><value>Source: </value></data>
+  <data name="大於等於" xml:space="preserve"><value>Greater than or equal to</value></data>
+  <data name="小於等於" xml:space="preserve"><value>Less than or equal to</value></data>
+  <data name="有效時間 {0} 秒" xml:space="preserve"><value>Freshness: {0} seconds</value></data>
+  <data name="設定版本" xml:space="preserve"><value>Settings version</value></data>
+  <data name="設定：" xml:space="preserve"><value>Settings: </value></data>
+  <data name="來源版本" xml:space="preserve"><value>Source version</value></data>
+  <data name="代次：" xml:space="preserve"><value>Generation: </value></data>
+  <data name="有效心跳：{0} 秒" xml:space="preserve"><value>Effective heartbeat: {0} seconds</value></data>
+  <data name="有效設定同步：{0} 秒" xml:space="preserve"><value>Effective settings sync: {0} seconds</value></data>
+  <data name="有效批次間隔：{0} 秒" xml:space="preserve"><value>Effective batch interval: {0} seconds</value></data>
+  <data name="設定與版本" xml:space="preserve"><value>Settings and versions</value></data>
+  <data name="覆寫：" xml:space="preserve"><value>Overrides: </value></data>
+  <data name="繼承" xml:space="preserve"><value>Inherited</value></data>
+  <data name="有效版本：" xml:space="preserve"><value>Effective version: </value></data>
+  <data name="有效容量：{0} MiB" xml:space="preserve"><value>Effective capacity: {0} MiB</value></data>
+  <data name="有效批次上限：" xml:space="preserve"><value>Effective batch limit: </value></data>
+  <data name="有效主機採樣：{0} 秒" xml:space="preserve"><value>Effective host sampling: {0} seconds</value></data>
+  <data name="有效程序採樣：{0} 秒" xml:space="preserve"><value>Effective process sampling: {0} seconds</value></data>
+  <data name="有效採樣 CPU 預算：{0} 毫秒／分鐘" xml:space="preserve"><value>Effective sampling CPU budget: {0} ms/min</value></data>
+  <data name="有效 Agent 記憶體門檻：{0} MiB" xml:space="preserve"><value>Effective Agent memory threshold: {0} MiB</value></data>
+  <data name="有效程序採集時間預算：{0} 毫秒" xml:space="preserve"><value>Effective process collection time budget: {0} ms</value></data>
+  <data name="有效採樣 I/O 預算：{0} MiB／分鐘" xml:space="preserve"><value>Effective sampling I/O budget: {0} MiB/min</value></data>
+  <data name="CPU 預算覆寫：" xml:space="preserve"><value>CPU budget override: </value></data>
+  <data name="記憶體門檻覆寫：" xml:space="preserve"><value>Memory threshold override: </value></data>
+  <data name="程序時間預算覆寫：" xml:space="preserve"><value>Process time budget override: </value></data>
+  <data name="採樣 I/O 預算覆寫：" xml:space="preserve"><value>Sampling I/O budget override: </value></data>
+  <data name="有效盤點間隔：{0} 秒" xml:space="preserve"><value>Effective inventory interval: {0} seconds</value></data>
+  <data name="程序執行資訊：" xml:space="preserve"><value>Process execution information: </value></data>
+  <data name="收集路徑，參數遮罩" xml:space="preserve"><value>Collect path, mask arguments</value></data>
+  <data name="不收集" xml:space="preserve"><value>Do not collect</value></data>
+  <data name="執行資訊覆寫：" xml:space="preserve"><value>Execution information override: </value></data>
+  <data name="收集路徑" xml:space="preserve"><value>Collect path</value></data>
 </root>
