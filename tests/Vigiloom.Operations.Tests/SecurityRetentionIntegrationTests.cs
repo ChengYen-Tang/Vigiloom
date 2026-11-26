@@ -36,6 +36,14 @@ public sealed class SecurityRetentionIntegrationTests(TestContext context)
             await using (var db = new SchedulingDbContext(schedulingOptions)) await db.Database.MigrateAsync(token);
             var securityOptions = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(securityDb.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
+            var securityScheduling = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(securityDb.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+            await using (var db = new SchedulingDbContext(securityScheduling))
+            {
+                await db.Database.MigrateAsync(token);
+                var old = DateTimeOffset.UtcNow.AddDays(-40);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO scheduling.Outbox (MessageId, MessageType, Payload, CreatedAt, AvailableAt, State, Attempts, CompletedAt) VALUES ({Guid.CreateVersion7()}, {TemporalOutboxHandler.Type}, {"{}"}, {old}, {old}, {2}, {1}, {old})", token);
+            }
             await using (var db = new SecurityAnalysisDbContext(securityOptions))
             {
                 await db.Database.MigrateAsync(token);
@@ -61,6 +69,7 @@ public sealed class SecurityRetentionIntegrationTests(TestContext context)
                 {
                     HostWorkers.RemoveBackgroundWork(services);
                     services.AddHttpClient<RemoteSecurityRetention>().ConfigurePrimaryHttpMessageHandler(() => security.Server.CreateHandler());
+                    services.AddHttpClient("work-history-Security").ConfigurePrimaryHttpMessageHandler(() => security.Server.CreateHandler());
                 });
             });
             using var client = operations.CreateClient();
@@ -70,11 +79,14 @@ public sealed class SecurityRetentionIntegrationTests(TestContext context)
             previewResponse.EnsureSuccessStatusCode();
             var preview = await previewResponse.Content.ReadFromJsonAsync<AuditRetentionPreview>(cancellationToken: token);
             Assert.AreEqual(1L, preview!.AffectedRecords);
+            Assert.AreEqual(1L, preview.BackgroundJobs);
             using var updated = await client.PutAsJsonAsync("/internal/v1/history/retention", new RetentionChange(actor, new(30, settings.Version, preview!.ConfirmationToken)), token);
             updated.EnsureSuccessStatusCode();
             await using (var scope = operations.Services.CreateAsyncScope())
                 await scope.ServiceProvider.GetRequiredService<AuditRetentionCleanup>().RunAsync(token);
             await using var check = new SecurityAnalysisDbContext(securityOptions);
             Assert.AreEqual("/tmp/5", (await check.YaraScans.SingleAsync(token)).FilePath);
+            await using var checkJobs = new SchedulingDbContext(securityScheduling);
+            Assert.AreEqual(0, await checkJobs.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
         }, outerToken), context.CancellationToken);
 }

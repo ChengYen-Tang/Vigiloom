@@ -15,7 +15,8 @@ public sealed class AuditRetentionSettings(
     IDbContextFactory<OperationsDbContext> contexts,
     IOperationAuditWriter<OperationAudit> audit,
     IDataProtectionProvider protection,
-    IEnumerable<IAuditRetentionSource> sources)
+    IEnumerable<IAuditRetentionSource> sources,
+    IEnumerable<IBackgroundHistorySource>? backgroundSources = null)
 {
     private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.AuditRetention.Preview.v1");
 
@@ -50,6 +51,13 @@ public sealed class AuditRetentionSettings(
             count = checked(count + await source.CountAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now.AddDays(-input.Days), token));
         var (episodes, notifications) = await AlertRetention.CountAsync(db, now.AddDays(-input.Days), token);
         var jobs = await BackgroundHistoryRetention.CountAsync(db, now.AddDays(-input.Days), token);
+        var coveredDatabases = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { await BackgroundHistoryRetention.DatabaseAsync(db, token) };
+        foreach (var source in backgroundSources ?? [])
+        {
+            var result = await source.CountAsync(now.AddDays(-input.Days), coveredDatabases, token);
+            coveredDatabases.Add(result.Database);
+            jobs = checked(jobs + result.Count);
+        }
         await tx.CommitAsync(token);
         var proof = protector.Protect(JsonSerializer.Serialize(new PreviewProof(actor, input.Days, input.Version, now)));
         return new(input.Days, now, count, input.Version, proof, episodes, notifications, jobs);

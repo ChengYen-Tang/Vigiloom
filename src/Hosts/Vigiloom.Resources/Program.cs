@@ -38,6 +38,8 @@ builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.Applic
 builder.Services.AddAuthorization(options => options.AddVigiloomAccessPolicies());
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
     builder.Configuration["Temporal:Namespace"] ?? "default");
+builder.Services.AddScoped(_ => new WorkHistoryRetention(builder.Configuration.GetConnectionString("Resources")
+    ?? throw new InvalidOperationException("ConnectionStrings:Resources is required.")));
 builder.Services.AddScoped<ResourceWork>();
 builder.Services.AddScoped(provider => new OutboxDispatcher(provider.GetRequiredService<IConfiguration>().GetConnectionString("Resources")
     ?? throw new InvalidOperationException("ConnectionStrings:Resources is required."), provider.GetServices<IOutboxHandler>(),
@@ -103,6 +105,7 @@ builder.Services.AddHttpClient<ObservationSourceVerifier>((services, client) =>
 builder.Services.AddScoped<IApplicationSourceVerifier>(services => services.GetRequiredService<ObservationSourceVerifier>());
 
 var app = builder.Build();
+app.MapWorkHistoryEndpoints();
 var internalApi = app.MapGroup("/internal/v1");
 internalApi.MapGet("/application-services/{id:guid}/deployments", async (Guid id, ResourceDeploymentLinks links, CancellationToken token, int page = 1) =>
     await links.ListAsync(id, page, token) is { } result ? Results.Ok(result) : Results.NotFound());
