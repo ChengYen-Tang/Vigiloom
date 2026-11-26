@@ -257,4 +257,23 @@
   <data name="收合成員（{0}）" xml:space="preserve"><value>Hide members ({0})</value></data>
   <data name="第 {0} 頁" xml:space="preserve"><value>Page {0}</value></data>
   <data name="尚無資料" xml:space="preserve"><value>No data</value></data>
+  <data name="盤點變更" xml:space="preserve"><value>Inventory changes</value></data>
+  <data name="依觀察時間顯示這台設備各次 Agent 註冊的歷史；部分觀察不代表完整新增或移除。" xml:space="preserve"><value>Shows history by observation time across this device’s Agent registrations; partial observations do not imply complete additions or removals.</value></data>
+  <data name="查看盤點變更" xml:space="preserve"><value>View inventory changes</value></data>
+  <data name="全部來源（包含程序與服務）" xml:space="preserve"><value>All sources (including processes and services)</value></data>
+  <data name="正在載入盤點變更…" xml:space="preserve"><value>Loading inventory changes…</value></data>
+  <data name="無法讀取盤點變更，請稍後重試。" xml:space="preserve"><value>Unable to load inventory changes. Try again later.</value></data>
+  <data name="盤點變更表格，可左右捲動" xml:space="preserve"><value>Inventory changes table, scroll horizontally</value></data>
+  <data name="來源／Agent" xml:space="preserve"><value>Source / Agent</value></data>
+  <data name="變更" xml:space="preserve"><value>Change</value></data>
+  <data name="詳細資料" xml:space="preserve"><value>Details</value></data>
+  <data name="這段時間沒有盤點變更。" xml:space="preserve"><value>No inventory changes in this period.</value></data>
+  <data name="較新盤點變更" xml:space="preserve"><value>Newer inventory changes</value></data>
+  <data name="較早盤點變更" xml:space="preserve"><value>Older inventory changes</value></data>
+  <data name="新增" xml:space="preserve"><value>Added</value></data>
+  <data name="修改" xml:space="preserve"><value>Modified</value></data>
+  <data name="移除" xml:space="preserve"><value>Removed</value></data>
+  <data name="部分觀察：首次看到" xml:space="preserve"><value>Partial observation: newly seen</value></data>
+  <data name="部分觀察：資料變化" xml:space="preserve"><value>Partial observation: data changed</value></data>
+  <data name="未知" xml:space="preserve"><value>Unknown</value></data>
 </root>
