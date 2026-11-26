@@ -13,6 +13,7 @@ public sealed class HostMonitoringDbContext(DbContextOptions<HostMonitoringDbCon
     public DbSet<AgentReplayGeneration> ReplayGenerations => Set<AgentReplayGeneration>();
     public DbSet<ReceivedBatch> ReceivedBatches => Set<ReceivedBatch>();
     public DbSet<HostLogMessageId> HostLogMessageIds => Set<HostLogMessageId>();
+    public DbSet<HostSecurityBatch> HostSecurityBatches => Set<HostSecurityBatch>();
     public DbSet<RuntimeObservation> RuntimeObservations => Set<RuntimeObservation>();
     public DbSet<HostMetric> HostMetrics => Set<HostMetric>();
     public DbSet<HostMetricRollup> HostMetricRollups => Set<HostMetricRollup>();
@@ -68,6 +69,14 @@ public sealed class HostMonitoringDbContext(DbContextOptions<HostMonitoringDbCon
         logId.ToTable("HostLogMessageIds");
         logId.HasKey(x => new { x.AgentId, x.MessageId }).IsClustered();
         logId.HasIndex(x => x.ReceivedAt);
+
+        var securityBatch = modelBuilder.Entity<HostSecurityBatch>();
+        securityBatch.ToTable("HostSecurityBatches");
+        securityBatch.HasKey(x => x.RowId).IsClustered();
+        securityBatch.Property(x => x.RowId).UseIdentityColumn();
+        securityBatch.Property(x => x.Kind).HasMaxLength(32).IsRequired();
+        securityBatch.Property(x => x.Payload).IsRequired();
+        securityBatch.HasIndex(x => new { x.AgentId, x.BatchId }).IsUnique();
 
         var observation = modelBuilder.Entity<RuntimeObservation>();
         observation.ToTable("RuntimeObservations");

@@ -1002,6 +1002,48 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.HostMigrations
                     b.ToTable("HostMetricThresholdAudits", "agent");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostSecurityBatch", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<byte[]>("Payload")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("AgentId", "BatchId")
+                        .IsUnique();
+
+                    b.ToTable("HostSecurityBatches", "agent");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.ReceivedBatch", b =>
                 {
                     b.Property<long>("RowId")

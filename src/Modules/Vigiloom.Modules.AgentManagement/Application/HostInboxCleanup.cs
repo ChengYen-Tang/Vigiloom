@@ -49,6 +49,7 @@ public sealed class HostInboxCleanup(IDbContextFactory<HostMonitoringDbContext> 
             .MaxAsync(x => (int?)x.WindowSeconds, token);
         var boundary = now.AddSeconds(-Math.Max(policy.ReplayWindowSeconds, previousWindow ?? 0));
         var expired = await db.ReceivedBatches.AsNoTracking().Where(x => x.AgentId == agentId && x.EnqueuedAt < boundary &&
+                !db.HostSecurityBatches.Any(batch => batch.AgentId == x.AgentId && batch.BatchId == x.BatchId) &&
                 (x.RetainUntil == null || x.RetainUntil <= now) &&
                 (x.TrustedReceivedAt != null && x.TrustedReceivedAt >= cutover && x.RetainUntil != null || legacyDeadline <= now))
             .OrderBy(x => x.RowId).Select(x => new { x.RowId, x.ByteCount }).Take(BatchSize).ToArrayAsync(token);

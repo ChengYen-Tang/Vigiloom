@@ -73,17 +73,22 @@ public sealed class HostInboxCleanupTests(TestContext context)
                 var accepted = new ReceivedBatch(agent, Guid.CreateVersion7(), new byte[32], old, old, 1, 20, old.AddMinutes(1), old.AddDays(7));
                 var pending = new ReceivedBatch(agent, Guid.CreateVersion7(), new byte[32], old, old, 1, 30, old.AddMinutes(1), old.AddDays(7));
                 var recent = new ReceivedBatch(agent, Guid.CreateVersion7(), new byte[32], now, now, 1, 40, now, now.AddDays(7));
-                db.ReceivedBatches.AddRange(accepted, pending, recent);
+                var security = new ReceivedBatch(agent, Guid.CreateVersion7(), new byte[32], old, old, 1, 50, old.AddMinutes(1), old.AddDays(7));
+                db.ReceivedBatches.AddRange(accepted, pending, recent, security);
+                db.HostSecurityBatches.Add(new HostSecurityBatch { AgentId = agent, BatchId = security.BatchId, DeviceId = Guid.CreateVersion7(),
+                    DeviceGeneration = 1, Kind = "inventory", Payload = [1], ReceivedAt = old });
                 db.Entry(pending).Property("PendingDelivery").CurrentValue = true;
                 await db.SaveChangesAsync(token);
             }
             Assert.AreEqual(2, await new HostInboxCleanup(factory).RunAsync(token));
             await using var snapshot = await factory.CreateDbContextAsync(token);
-            Assert.AreEqual(1, await snapshot.ReceivedBatches.CountAsync(token));
+            Assert.AreEqual(2, await snapshot.ReceivedBatches.CountAsync(token));
             var state = await snapshot.InboxStates.SingleAsync(token);
-            Assert.AreEqual(1L, state.InboxReceiptCount);
-            Assert.AreEqual(40L, state.InboxReceiptPayloadBytes);
+            Assert.AreEqual(2L, state.InboxReceiptCount);
+            Assert.AreEqual(90L, state.InboxReceiptPayloadBytes);
             Assert.AreEqual(2L, state.InboxDeletedTotal);
             Assert.IsNotNull(state.ReplayCleanedBefore);
+            await snapshot.HostSecurityBatches.ExecuteDeleteAsync(token);
+            Assert.AreEqual(1, await new HostInboxCleanup(factory).RunAsync(token));
         }, context.CancellationToken);
 }
