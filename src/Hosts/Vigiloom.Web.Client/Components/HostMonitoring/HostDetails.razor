@@ -37,37 +37,37 @@
     else if (error is not null) { <p role="alert">@error</p><button type="button" @onclick="ReloadAsync">@L["重新載入"]</button> }
     else if (tab is "inventory" or "process")
     {
-        <p>顯示 Agent 最近一次保留的快照；部分採集或採集失敗不代表其他項目已消失。</p>
-        @if (tab == "inventory") { <p>Windows 軟體的 32／64 位元標示是登錄檢視，並非軟體本身的架構。</p> }
-        @if (tab == "process") { <p>程序、作業系統服務與監聽連線是週期性快照，不是即時建立或終止事件；兩次採集間短暫出現的程序可能不會被記錄。</p> }
-        @if (sources.Count == 0) { <p>目前沒有這類盤點資料。</p> }
+        <p>@L["顯示 Agent 最近一次保留的快照；部分採集或採集失敗不代表其他項目已消失。"]</p>
+        @if (tab == "inventory") { <p>@L["Windows 軟體的 32／64 位元標示是登錄檢視，並非軟體本身的架構。"]</p> }
+        @if (tab == "process") { <p>@L["程序、作業系統服務與監聽連線是週期性快照，不是即時建立或終止事件；兩次採集間短暫出現的程序可能不會被記錄。"]</p> }
+        @if (sources.Count == 0) { <p>@L["目前沒有這類盤點資料。"]</p> }
         else
         {
-            <label for="host-source">資料來源</label>
+            <label for="host-source">@L["資料來源"]</label>
             <select id="host-source" value="@((int)selectedSource)" @onchange="ChangeSourceAsync">
-                @foreach (var availableSource in sources) { <option value="@((int)availableSource.Source)">@SourceName(availableSource.Source)</option> }
+                @foreach (var availableSource in sources) { <option value="@((int)availableSource.Source)">@L[SourceName(availableSource.Source)]</option> }
             </select>
             @if (selected is { } source)
             {
-                <p>最近嘗試：@DisplayTime(source.LastAttemptAt) · Agent 結果：@OutcomeName(source.LastOutcome) · 平台接收：@InventoryStatusName(source.LastStatus)</p>
-                <p>最後成功盤點：@DisplayTime(source.LastCompleteAt) · 保留完整快照觀察時間：@DisplayTime(source.CurrentObservedAt) · 目前顯示快照觀察時間：@DisplayTime(snapshotAt)（UTC）</p>
-                @if (source.LastRejectionReason is { } rejection) { <p role="status">平台拒收原因：@rejection</p> }
+                <p>@L["最近嘗試：{0} · Agent 結果：{1} · 平台接收：{2}", DisplayTime(source.LastAttemptAt), L[OutcomeName(source.LastOutcome)].Value, L[InventoryStatusName(source.LastStatus)].Value]</p>
+                <p>@L["最後成功盤點：{0} · 保留完整快照觀察時間：{1} · 目前顯示快照觀察時間：{2}（UTC）", DisplayTime(source.LastCompleteAt), DisplayTime(source.CurrentObservedAt), DisplayTime(snapshotAt)]</p>
+                @if (source.LastRejectionReason is { } rejection) { <p role="status">@L["平台拒收原因：{0}", rejection]</p> }
                 @if (source.PartialSnapshotId is not null && source.CurrentSnapshotId is not null)
                 {
-                    <label for="snapshot-kind">快照</label><select id="snapshot-kind" value="@(usePartial ? "partial" : "complete")" @onchange="ChangeSnapshotAsync"><option value="partial">最近部分快照</option><option value="complete">保留的完整快照</option></select>
+                    <label for="snapshot-kind">@L["快照"]</label><select id="snapshot-kind" value="@(usePartial ? "partial" : "complete")" @onchange="ChangeSnapshotAsync"><option value="partial">@L["最近部分快照"]</option><option value="complete">@L["保留的完整快照"]</option></select>
                 }
-                @if (snapshotAt is { } observed && observed > DateTimeOffset.UtcNow) { <p role="status">快照時間晚於目前檢視端的時間，請確認時鐘。</p> }
-                else if (snapshotAt is { } old && DateTimeOffset.UtcNow - old > TimeSpan.FromHours(24)) { <p role="status">這份快照已超過 24 小時，可能不是目前狀態。</p> }
-                @if (source.PartialSnapshotId == snapshotId && snapshotId is not null) { <p role="status">這是部分快照，清單可能不完整。原因：@source.PartialReason</p> }
-                @if (snapshotId is null) { <p>尚無可查看的快照。</p> }
+                @if (snapshotAt is { } observed && observed > DateTimeOffset.UtcNow) { <p role="status">@L["快照時間晚於目前檢視端的時間，請確認時鐘。"]</p> }
+                else if (snapshotAt is { } old && DateTimeOffset.UtcNow - old > TimeSpan.FromHours(24)) { <p role="status">@L["這份快照已超過 24 小時，可能不是目前狀態。"]</p> }
+                @if (source.PartialSnapshotId == snapshotId && snapshotId is not null) { <p role="status">@L["這是部分快照，清單可能不完整。原因：{0}", source.PartialReason?.ToString() ?? ""]</p> }
+                @if (snapshotId is null) { <p>@L["尚無可查看的快照。"]</p> }
                 else if (chunk is not null)
                 {
-                    <p>第 @(chunkIndex + 1) / @chunk.ChunkCount 頁，每頁最多 100 筆。</p>
-                    @if (chunk.Items.Count == 0) { <p>快照沒有項目。</p> }
+                    <p>@L["第 {0} / {1} 頁，每頁最多 100 筆。", chunkIndex + 1, chunk.ChunkCount]</p>
+                    @if (chunk.Items.Count == 0) { <p>@L["快照沒有項目。"]</p> }
                     else
                     {
-                        <p class="host-scroll-hint">@L["左右滑動查看完整表格。"]</p><div class="host-table" tabindex="0" role="region" aria-label="盤點表格，可左右捲動"><table><thead><tr><th>名稱</th><th>識別／詳細資料</th></tr></thead><tbody>
-                            @foreach (var entry in chunk.Items) { <tr @key="(snapshotId, entry.Key)"><td>@entry.Name</td><td>@EntryDetails(entry, selectedSource) @if (entry.Members is { Count: > 0 }) { <InventoryMembers Members="entry.Members" /> }</td></tr> }
+                        <p class="host-scroll-hint">@L["左右滑動查看完整表格。"]</p><div class="host-table" tabindex="0" role="region" aria-label="@L["盤點表格，可左右捲動"]"><table><thead><tr><th>@L["名稱"]</th><th>@L["識別／詳細資料"]</th></tr></thead><tbody>
+                            @foreach (var entry in chunk.Items) { <tr @key="(snapshotId, entry.Key)"><td>@entry.Name</td><td>@EntryDetails(entry, selectedSource, L) @if (entry.Members is { Count: > 0 }) { <InventoryMembers Members="entry.Members" /> }</td></tr> }
                         </tbody></table></div>
                     }
                     <div class="host-pagination"><button type="button" disabled="@(chunkIndex == 0)" @onclick="() => LoadChunkAsync(chunkIndex - 1)">@L["上一頁"]</button><button type="button" disabled="@(chunkIndex + 1 >= chunk.ChunkCount)" @onclick="() => LoadChunkAsync(chunkIndex + 1)">@L["下一頁"]</button></div>

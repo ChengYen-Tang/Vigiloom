@@ -1,8 +1,9 @@
 @using Vigiloom.Contracts.Agent.Inventory
+@inject Microsoft.Extensions.Localization.IStringLocalizer<HostText> L
 
 <details><summary>@Label</summary>
-    @if (Entry is null) { <p>無此項目。</p> }
-    else { <p>@Entry.Name · @HostDetails.EntryDetails(Entry, Source)</p>@if (Entry.Members is { Count: > 0 }) { <InventoryMembers Members="Entry.Members" /> } }
+    @if (Entry is null) { <p>@L["無此項目。"]</p> }
+    else { <p>@Entry.Name · @HostDetails.EntryDetails(Entry, Source, L)</p>@if (Entry.Members is { Count: > 0 }) { <InventoryMembers Members="Entry.Members" /> } }
 </details>
 
 @code {

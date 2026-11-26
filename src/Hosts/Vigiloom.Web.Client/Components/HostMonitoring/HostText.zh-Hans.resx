@@ -178,4 +178,83 @@
   <data name="程序工作集記憶體" xml:space="preserve"><value>进程工作集内存</value></data>
   <data name="未知指標" xml:space="preserve"><value>未知指标</value></data>
   <data name="負載" xml:space="preserve"><value>负载</value></data>
+  <data name="顯示 Agent 最近一次保留的快照；部分採集或採集失敗不代表其他項目已消失。" xml:space="preserve"><value>显示 Agent 最近一次保留的快照；部分采集或采集失败不代表其他项目已消失。</value></data>
+  <data name="Windows 軟體的 32／64 位元標示是登錄檢視，並非軟體本身的架構。" xml:space="preserve"><value>Windows 软件的 32／64 位标记是注册表视图，并非软件本身的架构。</value></data>
+  <data name="程序、作業系統服務與監聽連線是週期性快照，不是即時建立或終止事件；兩次採集間短暫出現的程序可能不會被記錄。" xml:space="preserve"><value>进程、操作系统服务与监听连接是周期性快照，不是实时创建或终止事件；两次采集间短暂出现的进程可能不会被记录。</value></data>
+  <data name="目前沒有這類盤點資料。" xml:space="preserve"><value>目前没有这类清单数据。</value></data>
+  <data name="資料來源" xml:space="preserve"><value>数据来源</value></data>
+  <data name="最近嘗試：{0} · Agent 結果：{1} · 平台接收：{2}" xml:space="preserve"><value>最近尝试：{0} · Agent 结果：{1} · 平台接收：{2}</value></data>
+  <data name="最後成功盤點：{0} · 保留完整快照觀察時間：{1} · 目前顯示快照觀察時間：{2}（UTC）" xml:space="preserve"><value>最后成功盘点：{0} · 保留完整快照观察时间：{1} · 当前显示快照观察时间：{2}（UTC）</value></data>
+  <data name="平台拒收原因：{0}" xml:space="preserve"><value>平台拒收原因：{0}</value></data>
+  <data name="快照" xml:space="preserve"><value>快照</value></data>
+  <data name="最近部分快照" xml:space="preserve"><value>最近部分快照</value></data>
+  <data name="保留的完整快照" xml:space="preserve"><value>保留的完整快照</value></data>
+  <data name="快照時間晚於目前檢視端的時間，請確認時鐘。" xml:space="preserve"><value>快照时间晚于当前查看端时间，请确认时钟。</value></data>
+  <data name="這份快照已超過 24 小時，可能不是目前狀態。" xml:space="preserve"><value>这份快照已超过 24 小时，可能不是当前状态。</value></data>
+  <data name="這是部分快照，清單可能不完整。原因：{0}" xml:space="preserve"><value>这是部分快照，列表可能不完整。原因：{0}</value></data>
+  <data name="尚無可查看的快照。" xml:space="preserve"><value>尚无可查看的快照。</value></data>
+  <data name="第 {0} / {1} 頁，每頁最多 100 筆。" xml:space="preserve"><value>第 {0} / {1} 页，每页最多 100 条。</value></data>
+  <data name="快照沒有項目。" xml:space="preserve"><value>快照没有项目。</value></data>
+  <data name="盤點表格，可左右捲動" xml:space="preserve"><value>清单表格，可左右滚动</value></data>
+  <data name="名稱" xml:space="preserve"><value>名称</value></data>
+  <data name="識別／詳細資料" xml:space="preserve"><value>标识／详细信息</value></data>
+  <data name="採集失敗" xml:space="preserve"><value>采集失败</value></data>
+  <data name="Windows 軟體（32 位元登錄檢視）" xml:space="preserve"><value>Windows 软件（32 位注册表视图）</value></data>
+  <data name="Windows 軟體（64 位元登錄檢視）" xml:space="preserve"><value>Windows 软件（64 位注册表视图）</value></data>
+  <data name="Debian 軟體" xml:space="preserve"><value>Debian 软件</value></data>
+  <data name="RPM 軟體" xml:space="preserve"><value>RPM 软件</value></data>
+  <data name="Linux 帳號" xml:space="preserve"><value>Linux 账号</value></data>
+  <data name="Windows 帳號" xml:space="preserve"><value>Windows 账号</value></data>
+  <data name="Linux 群組" xml:space="preserve"><value>Linux 群组</value></data>
+  <data name="Windows 群組" xml:space="preserve"><value>Windows 群组</value></data>
+  <data name="Windows 修補程式" xml:space="preserve"><value>Windows 补丁</value></data>
+  <data name="Windows Update 快取觀察" xml:space="preserve"><value>Windows Update 缓存观察</value></data>
+  <data name="系統資訊" xml:space="preserve"><value>系统信息</value></data>
+  <data name="網路介面" xml:space="preserve"><value>网络接口</value></data>
+  <data name="磁碟空間" xml:space="preserve"><value>磁盘空间</value></data>
+  <data name="程序" xml:space="preserve"><value>进程</value></data>
+  <data name="作業系統服務" xml:space="preserve"><value>操作系统服务</value></data>
+  <data name="監聽連線" xml:space="preserve"><value>监听连接</value></data>
+  <data name="識別" xml:space="preserve"><value>标识</value></data>
+  <data name="版本" xml:space="preserve"><value>版本</value></data>
+  <data name="作業系統" xml:space="preserve"><value>操作系统</value></data>
+  <data name="架構" xml:space="preserve"><value>架构</value></data>
+  <data name="作業系統系列" xml:space="preserve"><value>操作系统系列</value></data>
+  <data name="發行版" xml:space="preserve"><value>发行版</value></data>
+  <data name="發行版版本" xml:space="preserve"><value>发行版版本</value></data>
+  <data name="Windows 安裝類型" xml:space="preserve"><value>Windows 安装类型</value></data>
+  <data name="程序架構" xml:space="preserve"><value>进程架构</value></data>
+  <data name="執行階段" xml:space="preserve"><value>运行时</value></data>
+  <data name="Agent 版本" xml:space="preserve"><value>Agent 版本</value></data>
+  <data name="可用處理器數" xml:space="preserve"><value>可用处理器数</value></data>
+  <data name="供應商" xml:space="preserve"><value>供应商</value></data>
+  <data name="安裝日期" xml:space="preserve"><value>安装日期</value></data>
+  <data name="程序 ID" xml:space="preserve"><value>进程 ID</value></data>
+  <data name="帳號／群組 ID" xml:space="preserve"><value>账号／组 ID</value></data>
+  <data name="主要群組 ID" xml:space="preserve"><value>主要组 ID</value></data>
+  <data name="啟動時間（UTC）" xml:space="preserve"><value>启动时间（UTC）</value></data>
+  <data name="記憶體（bytes）" xml:space="preserve"><value>内存（bytes）</value></data>
+  <data name="容量（bytes）" xml:space="preserve"><value>容量（bytes）</value></data>
+  <data name="位址" xml:space="preserve"><value>地址</value></data>
+  <data name="連接埠" xml:space="preserve"><value>端口</value></data>
+  <data name="通訊協定" xml:space="preserve"><value>协议</value></data>
+  <data name="狀態" xml:space="preserve"><value>状态</value></data>
+  <data name="啟動模式" xml:space="preserve"><value>启动模式</value></data>
+  <data name="執行身分" xml:space="preserve"><value>运行身份</value></data>
+  <data name="執行檔" xml:space="preserve"><value>可执行文件</value></data>
+  <data name="命令列" xml:space="preserve"><value>命令行</value></data>
+  <data name="父程序 ID" xml:space="preserve"><value>父进程 ID</value></data>
+  <data name="程序啟動時間（UTC）" xml:space="preserve"><value>进程启动时间（UTC）</value></data>
+  <data name="擁有程序 ID" xml:space="preserve"><value>所属进程 ID</value></data>
+  <data name="更新 ID" xml:space="preserve"><value>更新 ID</value></data>
+  <data name="更新修訂" xml:space="preserve"><value>更新修订</value></data>
+  <data name="已安裝" xml:space="preserve"><value>已安装</value></data>
+  <data name="需要重新啟動" xml:space="preserve"><value>需要重新启动</value></data>
+  <data name="是" xml:space="preserve"><value>是</value></data>
+  <data name="否" xml:space="preserve"><value>否</value></data>
+  <data name="{0} 筆{1}" xml:space="preserve"><value>{0} 条{1}</value></data>
+  <data name="查看成員（{0}）" xml:space="preserve"><value>查看成员（{0}）</value></data>
+  <data name="收合成員（{0}）" xml:space="preserve"><value>收起成员（{0}）</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>第 {0} 页</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>尚无数据</value></data>
 </root>
