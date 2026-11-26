@@ -2,13 +2,16 @@ extern alias SecurityHost;
 
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Events;
+using Vigiloom.Contracts.Notifications;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
@@ -61,6 +64,16 @@ public sealed class SecurityTimelineIntegrationTests(TestContext context)
                         ["Work:OperationsQueue"] = queue, ["Work:AgentQueue"] = queue + "-agent" }));
                 });
                 using var securityClient = security.CreateClient();
+                await using (var connection = new SqlConnection(securityDb.ConnectionString))
+                {
+                    await connection.OpenAsync(token);
+                    await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token);
+                    await using var scope = security.Services.CreateAsyncScope();
+                    var writer = scope.ServiceProvider.GetRequiredService<INotificationWriter>();
+                    await writer.WriteAsync(new NotificationRequest(Guid.CreateVersion7(), "sigma", DateTimeOffset.UtcNow,
+                        "Security alert", new string('測', 25000)), connection, transaction, token);
+                    await transaction.RollbackAsync(token);
+                }
                 var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
                 using var created = await securityClient.PostAsJsonAsync("/internal/v1/yara-scans/create", new
                 {
