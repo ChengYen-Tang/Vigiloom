@@ -112,6 +112,7 @@ app.UseRateLimiter();
 app.MapSpeedTestEndpoints();
 app.MapPingEndpoints();
 app.MapPublicPingEndpoints();
+app.MapInternalSpeedAdministration();
 app.MapPost("/internal/v1/ping/status", async (PingStatusRequest input, PingStore store, CancellationToken token) =>
     Results.Ok(await store.GetStatusAsync(input.DeviceId, input.Targets, input.DeviceVersion, token)));
 app.MapPost("/internal/v1/ping/statuses", async (PingDeviceSnapshot[] inputs, PingStore store, CancellationToken token) =>

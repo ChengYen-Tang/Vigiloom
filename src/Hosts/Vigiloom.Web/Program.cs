@@ -387,6 +387,15 @@ builder.Services.AddScoped<SpeedRetentionSettings>();
 builder.Services.AddScoped<SpeedQueue>();
 builder.Services.AddScoped<SpeedHistory>();
 builder.Services.AddScoped<ISpeedHistoryClient, ServerSpeedHistoryClient>();
+builder.Services.AddHttpClient<Vigiloom.Web.SpeedTests.RemoteSpeedAdministration>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<Vigiloom.Contracts.SpeedTests.ISpeedSettings>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]) ? services.GetRequiredService<SpeedSettings>() : services.GetRequiredService<Vigiloom.Web.SpeedTests.RemoteSpeedAdministration>());
+builder.Services.AddScoped<Vigiloom.Contracts.SpeedTests.ISpeedRetentionSettings>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]) ? services.GetRequiredService<SpeedRetentionSettings>() : services.GetRequiredService<Vigiloom.Web.SpeedTests.RemoteSpeedAdministration>());
+builder.Services.AddScoped<Vigiloom.Contracts.SpeedTests.ISpeedCancellation>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]) ? services.GetRequiredService<SpeedQueue>() : services.GetRequiredService<Vigiloom.Web.SpeedTests.RemoteSpeedAdministration>());
 builder.Services.AddHttpClient<Vigiloom.Web.SpeedTests.RemoteSpeedHistory>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
