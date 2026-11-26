@@ -34,8 +34,36 @@ public sealed class LocalizationTests(TestContext context)
         Assert.Contains("autostart=\"false\"", html);
         Assert.Contains("culture-start", html);
         var text = (await new HtmlParser().ParseDocumentAsync(html, context.CancellationToken)).Body!.TextContent;
-        if (expected == "en") Assert.Contains("Language", text);
-        if (expected == "zh-Hans") Assert.Contains("语言", text);
+        if (expected == "en") { Assert.Contains("Language", text); Assert.Contains("Sign in to Vigiloom", text); }
+        if (expected == "zh-Hans") { Assert.Contains("语言", text); Assert.Contains("登录 Vigiloom", text); }
+    }
+
+    [TestMethod]
+    [DataRow("en", "Enter your username.", "Enter your password.")]
+    [DataRow("zh-Hant", "請輸入帳號。", "請輸入密碼。")]
+    [DataRow("zh-Hans", "请输入账号。", "请输入密码。")]
+    public async Task LoginValidationUsesSelectedLanguage(string culture, string usernameMessage, string passwordMessage)
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Development");
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Vigiloom"] = "Server=localhost;Database=unused;Integrated Security=true;TrustServerCertificate=true"
+            }));
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.AcceptLanguage.Add(new StringWithQualityHeaderValue(culture));
+        using var page = await client.GetAsync("/account/login", context.CancellationToken);
+        var document = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(context.CancellationToken), context.CancellationToken);
+        var form = document.QuerySelector("form")!;
+        var fields = form.QuerySelectorAll("input[type=hidden][name]").ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+        fields["Input.UserName"] = "";
+        fields["Input.Password"] = "";
+        using var result = await client.PostAsync("/account/login", new FormUrlEncodedContent(fields), context.CancellationToken);
+        var body = (await new HtmlParser().ParseDocumentAsync(await result.Content.ReadAsStringAsync(context.CancellationToken), context.CancellationToken)).Body!.TextContent;
+        Assert.Contains(usernameMessage, body);
+        Assert.Contains(passwordMessage, body);
     }
 
     [TestMethod]
