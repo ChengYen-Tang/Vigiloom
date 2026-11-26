@@ -221,6 +221,25 @@ public sealed class ReceptionRejectionTests(TestContext context)
             await LoginAsync(readOnly, "reader", token);
             using (var denied = await readOnly.GetAsync("/settings/service-reception", token)) Assert.AreNotEqual(HttpStatusCode.OK, denied.StatusCode);
             await LoginAsync(viewer, "admin", token);
+            viewer.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await viewer.GetAsync("/settings/service-reception", token))
+            {
+                var englishText = (await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("Ingestion rejection summary", englishText);
+                Assert.Contains("Source authorization is no longer valid", englishText);
+                Assert.Contains("Configure the Collector to send OTLP/HTTP protobuf over HTTPS", englishText);
+                Assert.Contains("All sources: 1005", englishText);
+                Assert.Contains("Example source: private source", englishText);
+                Assert.DoesNotContain(source.Secret, englishText);
+            }
+            viewer.DefaultRequestHeaders.AcceptLanguage.Clear();
+            viewer.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await viewer.GetAsync("/settings/service-reception", token))
+            {
+                var simplifiedText = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("接收拒绝摘要", simplifiedText);
+            }
+            viewer.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var page = await viewer.GetAsync("/settings/service-reception", token);
             Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
             var text = (await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
