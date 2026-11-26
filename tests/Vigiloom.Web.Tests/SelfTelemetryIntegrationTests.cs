@@ -42,6 +42,7 @@ using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Application;
@@ -49,6 +50,7 @@ using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Web.ServiceDetails;
 
 namespace Vigiloom.Web.Tests;
 
@@ -91,6 +93,8 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             using var resourcesClient = resources.CreateClient();
             var resourceContexts = resources.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
             await using (var db = await resourceContexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var deploymentContexts = resources.Services.GetRequiredService<IDbContextFactory<ResourceDeploymentLinksDbContext>>();
+            await using (var db = await deploymentContexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             var scheduleOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(resourcesDb.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
             await using (var db = new SchedulingDbContext(scheduleOptions)) await db.Database.MigrateAsync(token);
@@ -166,6 +170,43 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
                 Assert.IsTrue(await db.ServiceGroups.AnyAsync(x => x.ServiceId == service.Id && x.GroupId == group.Id, token));
             }
             await ProjectAsync(serviceId);
+            var device = new Device("Test host", "host.example", true, DateTimeOffset.UtcNow);
+            await using (var db = await resourceContexts.CreateDbContextAsync(token))
+            { db.Devices.Add(device); await db.SaveChangesAsync(token); }
+            var instanceId = Guid.CreateVersion7();
+            var now = DateTimeOffset.UtcNow;
+            await using (var db = await observationContexts.CreateDbContextAsync(token))
+            {
+                var sourceId = await db.Services.Where(x => x.Id == serviceId).Select(x => x.SourceId).SingleAsync(token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Instances] ([Id],[ServiceId],[SourceScopeId],[ExternalInstanceId],[CreatedAt],[UpdatedAt]) VALUES ({instanceId},{serviceId},{sourceId},{"node"},{now},{now})", token);
+            }
+            var createLink = new CreateDeploymentLinkCommand(new(device.Id, instanceId, "Verified deployment"), Guid.CreateVersion7());
+            using (var created = await resourcesClient.PostAsJsonAsync($"/internal/v1/application-services/{serviceId:D}/deployments", createLink, token))
+            {
+                created.EnsureSuccessStatusCode();
+                var result = await created.Content.ReadFromJsonAsync<DeploymentLinkMutationResult>(cancellationToken: token);
+                Assert.AreEqual(DeploymentLinkMutationStatus.Saved, result!.Status);
+                var page = await resourcesClient.GetFromJsonAsync<DeploymentLinkPage>($"/internal/v1/application-services/{serviceId:D}/deployments", token);
+                var link = Assert.ContainsSingle(page!.Items);
+                Assert.AreEqual(result.Id, link.Id);
+                Assert.AreEqual("Test host", link.DeviceName);
+                Assert.AreEqual("node", link.InstanceName);
+                using var end = await resourcesClient.PostAsJsonAsync($"/internal/v1/application-services/{serviceId:D}/deployments/{link.Id:D}/end", new EndDeploymentLinkCommand(new(link.Version), createLink.ActorId), token);
+                end.EnsureSuccessStatusCode();
+                Assert.AreEqual(DeploymentLinkMutationStatus.Saved, await end.Content.ReadFromJsonAsync<DeploymentLinkMutationStatus>(cancellationToken: token));
+                var empty = await resourcesClient.GetFromJsonAsync<DeploymentLinkPage>($"/internal/v1/application-services/{serviceId:D}/deployments", token);
+                Assert.IsEmpty(empty!.Items);
+            }
+            using (var remoteHttp = new HttpClient { BaseAddress = new Uri(resourceAddress) })
+            {
+                var remote = new RemoteDeploymentLinks(remoteHttp);
+                var created = await remote.CreateAsync(serviceId, createLink.Input, createLink.ActorId, token);
+                Assert.AreEqual(DeploymentLinkStatus.Saved, created.Status);
+                var page = await remote.ListAsync(serviceId, 1, token);
+                var link = Assert.ContainsSingle(page!.Items);
+                Assert.AreEqual(created.Id, link.Id);
+                Assert.AreEqual(DeploymentLinkStatus.Saved, await remote.EndAsync(serviceId, link.Id, new(link.Version), createLink.ActorId, token));
+            }
             using (var accepted = await PostMetricsAsync(client, token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);

@@ -30,7 +30,7 @@ internal static class ServiceDetailsEndpoints
             return instances is null ? Results.NotFound() : Results.Ok(instances);
         }).Produces<ServiceInstancePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("List registered application service instances");
-        group.MapGet("/deployments", async (Guid serviceId, DeploymentLinks reader, HttpContext context, CancellationToken token, int page = 1) =>
+        group.MapGet("/deployments", async (Guid serviceId, IDeploymentLinks reader, HttpContext context, CancellationToken token, int page = 1) =>
         {
             if (serviceId.Version != 7 || page is < 1 or > 1000) return Results.BadRequest();
             context.Response.Headers.CacheControl = "no-store";
@@ -38,7 +38,7 @@ internal static class ServiceDetailsEndpoints
             return result is null ? Results.NotFound() : Results.Ok(result);
         }).Produces<DeploymentLinkPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("List attested deployment relationships");
-        group.MapPost("/deployments", async (Guid serviceId, CreateDeploymentLink input, DeploymentLinks manager, HttpContext context, CancellationToken token) =>
+        group.MapPost("/deployments", async (Guid serviceId, CreateDeploymentLink input, IDeploymentLinks manager, HttpContext context, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async actor =>
             {
                 var result = await manager.CreateAsync(serviceId, input, actor, token);
@@ -47,7 +47,7 @@ internal static class ServiceDetailsEndpoints
                     : DeploymentResponse(result.Status);
             }, allowApiCredential: false)).RequireAuthorization(AccessPolicies.Administrator).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(4096)).Produces(201).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Attest a service deployment relationship");
-        group.MapPost("/deployments/{linkId:guid}/end", async (Guid serviceId, Guid linkId, EndDeploymentLink input, DeploymentLinks manager, HttpContext context, CancellationToken token) =>
+        group.MapPost("/deployments/{linkId:guid}/end", async (Guid serviceId, Guid linkId, EndDeploymentLink input, IDeploymentLinks manager, HttpContext context, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async actor => DeploymentResponse(await manager.EndAsync(serviceId, linkId, input, actor, token)), allowApiCredential: false))
             .RequireAuthorization(AccessPolicies.Administrator).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(1024)).Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("End an attested deployment relationship");
