@@ -7,7 +7,7 @@ using Vigiloom.Modules.SecurityAnalysis.Persistence;
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 /// <summary>Manages security-owned YARA work for an Agent verified by Resources.</summary>
-public sealed class YaraScans(IDbContextFactory<SecurityAnalysisDbContext> contexts, TimeProvider clock, IYaraScanNotifier? notifier = null)
+public sealed class YaraScans(IDbContextFactory<SecurityAnalysisDbContext> contexts, TimeProvider clock, IYaraScanNotifier? notifier = null, IYaraTimelineWriter? timeline = null)
 {
     public async Task<YaraScanJob> CreateAsync(RegisteredAgentIdentity identity, YaraScanRequest request, Guid actor, CancellationToken token)
     {
@@ -56,14 +56,15 @@ public sealed class YaraScans(IDbContextFactory<SecurityAnalysisDbContext> conte
         await using var db = await contexts.CreateDbContextAsync(token);
         var now = clock.GetUtcNow();
         await using var transaction = await db.Database.BeginTransactionAsync(token);
-        var agentId = await db.YaraScans.Where(x => x.Id == scanId && x.DeviceId == deviceId && x.Outcome == null)
-            .Select(x => (Guid?)x.AgentId).SingleOrDefaultAsync(token);
-        if (agentId is null) return false;
+        var scan = await db.YaraScans.Where(x => x.Id == scanId && x.DeviceId == deviceId && x.Outcome == null)
+            .Select(x => new { x.AgentId, x.FilePath }).SingleOrDefaultAsync(token);
+        if (scan is null) return false;
         var changed = await db.YaraScans.Where(x => x.Id == scanId && x.DeviceId == deviceId && x.Outcome == null)
             .ExecuteUpdateAsync(update => update.SetProperty(x => x.Outcome, (int)YaraScanOutcome.Cancelled)
                 .SetProperty(x => x.CompletedAt, now).SetProperty(x => x.Output, "").SetProperty(x => x.Error, "")
                 .SetProperty(x => x.OutputTruncated, false), token) == 1;
-        if (changed && notifier is not null) await notifier.NotifyAsync(db, agentId.Value, token);
+        if (changed && notifier is not null) await notifier.NotifyAsync(db, scan.AgentId, token);
+        if (changed && timeline is not null) await timeline.RecordAsync(db, scanId, deviceId, scan.FilePath, (int)YaraScanOutcome.Cancelled, now, token);
         await transaction.CommitAsync(token);
         return changed;
     }
