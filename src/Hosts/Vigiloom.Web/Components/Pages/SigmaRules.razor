@@ -5,57 +5,58 @@
 @using Vigiloom.Modules.SecurityAnalysis.Application.Detection
 @inject Vigiloom.Web.HostMonitoring.SigmaRuleAccess Inventory
 @inject ILogger<SigmaRules> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ServiceAdminText> L
 
-<PageTitle>行為規則 - Vigiloom</PageTitle>
+<PageTitle>@L["行為規則"] - Vigiloom</PageTitle>
 <main class="device-page sigma-page">
-    <header class="device-heading"><div><h1>行為規則</h1><p>試跑規則後再啟用；規則支援不代表設備已收集所需日誌。</p></div></header>
+    <header class="device-heading"><div><h1>@L["行為規則"]</h1><p>@L["試跑規則後再啟用；規則支援不代表設備已收集所需日誌。"]</p></div></header>
     @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
-    else if (page is null) { <p role="status">正在載入規則…</p> }
+    else if (page is null) { <p role="status">@L["正在載入規則…"]</p> }
     else if (page.Source.Availability != SigmaAvailability.Ready)
     {
-        <section class="device-panel"><h2>規則來源無法使用</h2><p>請確認情報來源已啟用、已選用版本且資料未過期。</p><a href="/settings/intelligence">前往情報來源</a></section>
+        <section class="device-panel"><h2>@L["規則來源無法使用"]</h2><p>@L["請確認情報來源已啟用、已選用版本且資料未過期。"]</p><a href="/settings/intelligence">@L["前往情報來源"]</a></section>
     }
     else
     {
         <section class="device-panel">
-            <h2>目前來源的規則</h2>
-            <p>來源版本：@(page.Source.Commit)</p>
-            @if (page.Items.Count == 0) { <p>此頁沒有規則。</p> }
+            <h2>@L["目前來源的規則"]</h2>
+            <p>@L["來源版本：{0}", page.Source.Commit ?? ""]</p>
+            @if (page.Items.Count == 0) { <p>@L["此頁沒有規則。"]</p> }
             else
             {
-                <p class="sigma-scroll-hint">左右滑動查看完整規則資訊。</p>
-                <div class="sigma-table-wrap" role="region" tabindex="0" aria-label="行為規則清單，可左右捲動">
-                    <table class="sigma-table"><thead><tr><th>規則</th><th>支援狀態</th><th>最近試跑</th><th>啟用狀態</th><th>操作</th></tr></thead><tbody>
+                <p class="sigma-scroll-hint">@L["左右滑動查看完整規則資訊。"]</p>
+                <div class="sigma-table-wrap" role="region" tabindex="0" aria-label="@L["行為規則清單，可左右捲動"]">
+                    <table class="sigma-table"><thead><tr><th>@L["規則"]</th><th>@L["支援狀態"]</th><th>@L["最近試跑"]</th><th>@L["啟用狀態"]</th><th>@L["操作"]</th></tr></thead><tbody>
                     @foreach (var item in page.Items)
                     {
                         <tr @key="item.Source.Path">
                             <td><strong>@item.Source.Title</strong><br /><small>@item.Source.Path</small></td>
-                            <td>@(item.Supported ? "支援試跑" : "不支援") @if (!item.Supported && item.UnsupportedReason is not null) { <details><summary>查看原因</summary><small>@item.UnsupportedReason</small></details> }</td>
-                            <td>@(item.LatestTestPassed switch { true => "通過", false => "未通過", _ => "尚未試跑" })</td>
-                            <td>@(item.EnabledForCurrentSource ? "已啟用" : item.Enabled ? "設定已啟用，來源不可用或版本已變更" : "未啟用")</td>
-                            <td><a href="@RuleUrl(item.Source.Path)">查看與管理</a></td>
+                            <td>@(item.Supported ? L["支援試跑"].Value : L["不支援"].Value) @if (!item.Supported && item.UnsupportedReason is not null) { <details><summary>@L["查看原因"]</summary><small>@item.UnsupportedReason</small></details> }</td>
+                            <td>@(item.LatestTestPassed switch { true => L["通過"].Value, false => L["未通過"].Value, _ => L["尚未試跑"].Value })</td>
+                            <td>@(item.EnabledForCurrentSource ? L["已啟用"].Value : item.Enabled ? L["設定已啟用，來源不可用或版本已變更"].Value : L["未啟用"].Value)</td>
+                            <td><a href="@RuleUrl(item.Source.Path)">@L["查看與管理"]</a></td>
                         </tr>
                     }
                     </tbody></table>
                 </div>
             }
-            <nav aria-label="規則分頁">@if (Cursor is not null) { <a href="/settings/sigma">回到第一頁</a> } @if (page.NextCursor is not null) { <a href="@($"/settings/sigma?cursor={Uri.EscapeDataString(page.NextCursor)}")">下一頁</a> }</nav>
+            <nav aria-label="@L["規則分頁"]">@if (Cursor is not null) { <a href="/settings/sigma">@L["回到第一頁"]</a> } @if (page.NextCursor is not null) { <a href="@($"/settings/sigma?cursor={Uri.EscapeDataString(page.NextCursor)}")">@L["下一頁"]</a> }</nav>
         </section>
     }
     @if (states is not null)
     {
         <section class="device-panel">
-            <h2>已儲存的規則設定</h2>
-            <p>即使來源暫時無法使用，仍可查看或停用已啟用的設定。</p>
-            @if (states.Items.Count == 0) { <p>尚無規則設定。</p> }
+            <h2>@L["已儲存的規則設定"]</h2>
+            <p>@L["即使來源暫時無法使用，仍可查看或停用已啟用的設定。"]</p>
+            @if (states.Items.Count == 0) { <p>@L["尚無規則設定。"]</p> }
             else
             {
-                <ul>@foreach (var state in states.Items) { <li @key="(state.SourceId, state.Path)">@state.Path · @(state.Enabled ? "已設定啟用" : "已停用") @if (state.Enabled) { <a href="@SavedUrl(state)">停用</a> }</li> }</ul>
+                <ul>@foreach (var state in states.Items) { <li @key="(state.SourceId, state.Path)">@state.Path · @(state.Enabled ? L["已設定啟用"].Value : L["已停用"].Value) @if (state.Enabled) { <a href="@SavedUrl(state)">@L["停用"]</a> }</li> }</ul>
             }
-            <nav aria-label="已儲存設定分頁">
-                @if (states.Page > 1) { <a href="@StatePageUrl(states.Page - 1)">上一頁</a> }
-                <span>第 @states.Page 頁</span>
-                @if (states.HasMore) { <a href="@StatePageUrl(states.Page + 1)">下一頁</a> }
+            <nav aria-label="@L["已儲存設定分頁"]">
+                @if (states.Page > 1) { <a href="@StatePageUrl(states.Page - 1)">@L["上一頁"]</a> }
+                <span>@L["第 {0} 頁", states.Page]</span>
+                @if (states.HasMore) { <a href="@StatePageUrl(states.Page + 1)">@L["下一頁"]</a> }
             </nav>
         </section>
     }
@@ -78,7 +79,7 @@
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.LogWarning("Could not load Sigma rules: {ErrorType}", ex.GetType().Name);
-            error = "無法讀取規則，請重新整理。";
+            error = L["無法讀取規則，請重新整理。"].Value;
         }
     }
 

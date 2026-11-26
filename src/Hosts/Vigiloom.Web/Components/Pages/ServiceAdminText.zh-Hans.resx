@@ -821,4 +821,37 @@
   <data name="無法使用" xml:space="preserve"><value>无法使用</value></data>
   <data name="已取消（Agent 連線後停止）" xml:space="preserve"><value>已取消（Agent 连接后停止）</value></data>
   <data name="掃描失敗" xml:space="preserve"><value>扫描失败</value></data>
+  <data name="行為規則" xml:space="preserve"><value>行为规则</value></data>
+  <data name="試跑規則後再啟用；規則支援不代表設備已收集所需日誌。" xml:space="preserve"><value>试运行规则后再启用；规则受支持不代表设备已收集所需日志。</value></data>
+  <data name="正在載入規則…" xml:space="preserve"><value>正在加载规则…</value></data>
+  <data name="規則來源無法使用" xml:space="preserve"><value>规则来源无法使用</value></data>
+  <data name="請確認情報來源已啟用、已選用版本且資料未過期。" xml:space="preserve"><value>请确认情报来源已启用、已选择版本且数据未过期。</value></data>
+  <data name="前往情報來源" xml:space="preserve"><value>前往情报来源</value></data>
+  <data name="目前來源的規則" xml:space="preserve"><value>当前来源的规则</value></data>
+  <data name="來源版本：{0}" xml:space="preserve"><value>来源版本：{0}</value></data>
+  <data name="此頁沒有規則。" xml:space="preserve"><value>此页没有规则。</value></data>
+  <data name="左右滑動查看完整規則資訊。" xml:space="preserve"><value>左右滑动查看完整规则信息。</value></data>
+  <data name="行為規則清單，可左右捲動" xml:space="preserve"><value>行为规则列表，可左右滚动</value></data>
+  <data name="規則" xml:space="preserve"><value>规则</value></data>
+  <data name="支援狀態" xml:space="preserve"><value>支持状态</value></data>
+  <data name="最近試跑" xml:space="preserve"><value>最近试运行</value></data>
+  <data name="啟用狀態" xml:space="preserve"><value>启用状态</value></data>
+  <data name="支援試跑" xml:space="preserve"><value>支持试运行</value></data>
+  <data name="不支援" xml:space="preserve"><value>不支持</value></data>
+  <data name="查看原因" xml:space="preserve"><value>查看原因</value></data>
+  <data name="通過" xml:space="preserve"><value>通过</value></data>
+  <data name="未通過" xml:space="preserve"><value>未通过</value></data>
+  <data name="尚未試跑" xml:space="preserve"><value>尚未试运行</value></data>
+  <data name="設定已啟用，來源不可用或版本已變更" xml:space="preserve"><value>设置已启用，来源不可用或版本已更改</value></data>
+  <data name="未啟用" xml:space="preserve"><value>未启用</value></data>
+  <data name="查看與管理" xml:space="preserve"><value>查看与管理</value></data>
+  <data name="規則分頁" xml:space="preserve"><value>规则分页</value></data>
+  <data name="回到第一頁" xml:space="preserve"><value>回到第一页</value></data>
+  <data name="已儲存的規則設定" xml:space="preserve"><value>已保存的规则设置</value></data>
+  <data name="即使來源暫時無法使用，仍可查看或停用已啟用的設定。" xml:space="preserve"><value>即使来源暂时无法使用，仍可查看或停用已启用的设置。</value></data>
+  <data name="尚無規則設定。" xml:space="preserve"><value>尚无规则设置。</value></data>
+  <data name="已設定啟用" xml:space="preserve"><value>已设置启用</value></data>
+  <data name="停用" xml:space="preserve"><value>停用</value></data>
+  <data name="已儲存設定分頁" xml:space="preserve"><value>已保存设置分页</value></data>
+  <data name="無法讀取規則，請重新整理。" xml:space="preserve"><value>无法读取规则，请刷新。</value></data>
 </root>
