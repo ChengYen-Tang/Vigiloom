@@ -158,6 +158,7 @@ app.MapGet("/health/live", () => Results.Ok());
 app.MapIntelligenceStatusEndpoints();
 app.MapCustomBaselineEndpoints();
 app.MapIntelligenceImportEndpoints();
+app.MapSigmaRuleEndpoints();
 app.MapGet("/internal/v1/devices/{deviceId:guid}/baseline", async (Guid deviceId, BaselineQuery query, CancellationToken token) =>
     await query.GetAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound());
 app.MapPost("/internal/v1/devices/{deviceId:guid}/baseline-exceptions", async (Guid deviceId, BaselineExceptionCommand command, IServiceProvider services, CancellationToken token) =>

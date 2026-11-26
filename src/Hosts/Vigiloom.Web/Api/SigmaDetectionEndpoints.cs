@@ -39,21 +39,21 @@ internal static class SigmaDetectionEndpoints
 
         var admin = app.MapGroup("/api/v1/admin/sigma")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
-        admin.MapGet("/rules", async (string? cursor, SigmaRuleInventory rules, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/rules", async (string? cursor, SigmaRuleAccess rules, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (!SigmaRuleInventory.ValidCursor(cursor)) return Results.BadRequest();
             return Results.Ok(await rules.GetAsync(cursor, token));
         }).Produces<SigmaDetectionRulePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("List Sigma rules and their test and activation state");
-        admin.MapGet("/states", async (int? page, SigmaRuleInventory rules, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/states", async (int? page, SigmaRuleAccess rules, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var selected = page ?? 1;
             return selected is < 1 or > 1000 ? Results.BadRequest() : Results.Ok(await rules.GetStatesAsync(selected, token));
         }).Produces<SigmaRuleStatePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("List saved Sigma rule settings, including unavailable sources");
-        admin.MapPost("/tests", async (SigmaRuleTestRequest request, SigmaRuleService rules, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/tests", async (SigmaRuleTestRequest request, SigmaRuleAccess rules, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (!SigmaRuleService.Valid(request)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["samples"] = ["Invalid rule path or replay samples."] });
@@ -71,7 +71,7 @@ internal static class SigmaDetectionEndpoints
         }).Produces<SigmaRuleTestResponse>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(422)
             .WithSummary("Test a Sigma rule against retained Agent events");
 
-        admin.MapPut("/state", async (SigmaRuleStateRequest request, SigmaRuleService rules, HttpContext context, CancellationToken token) =>
+        admin.MapPut("/state", async (SigmaRuleStateRequest request, SigmaRuleAccess rules, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (!SigmaRuleService.Valid(request)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["rule"] = ["Invalid rule state request."] });

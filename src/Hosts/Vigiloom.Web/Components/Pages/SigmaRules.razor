@@ -3,7 +3,7 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using Vigiloom.Contracts.Intelligence
 @using Vigiloom.Modules.SecurityAnalysis.Application.Detection
-@inject SigmaRuleInventory Inventory
+@inject Vigiloom.Web.HostMonitoring.SigmaRuleAccess Inventory
 @inject ILogger<SigmaRules> Logger
 
 <PageTitle>行為規則 - Vigiloom</PageTitle>
