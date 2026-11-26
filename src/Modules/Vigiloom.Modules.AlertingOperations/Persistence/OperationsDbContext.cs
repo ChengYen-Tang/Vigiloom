@@ -8,6 +8,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     internal DbSet<OperationAuditRecord> AuditEvents => Set<OperationAuditRecord>();
     internal DbSet<AuditRetentionSetting> AuditRetentionSettings => Set<AuditRetentionSetting>();
     internal DbSet<WorkerDiagnosticSlot> WorkerDiagnosticSlots => Set<WorkerDiagnosticSlot>();
+    internal DbSet<NetworkDiagnostic> NetworkDiagnostics => Set<NetworkDiagnostic>();
     internal DbSet<PingAlert> PingAlerts => Set<PingAlert>();
     internal DbSet<PingAlertEvent> PingAlertEvents => Set<PingAlertEvent>();
     internal DbSet<Notification> Notifications => Set<Notification>();
@@ -20,6 +21,13 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("operations");
+        var networkDiagnostic = modelBuilder.Entity<NetworkDiagnostic>();
+        networkDiagnostic.ToTable("NetworkDiagnostics");
+        networkDiagnostic.HasKey(x => x.Id).IsClustered(false);
+        networkDiagnostic.Property(x => x.Id).ValueGeneratedNever();
+        networkDiagnostic.Property(x => x.RowId).UseIdentityColumn();
+        networkDiagnostic.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        networkDiagnostic.HasIndex(x => x.LeaseUntil);
         var timeline = modelBuilder.Entity<TimelineRecord>();
         timeline.ToTable("TimelineRecords");
         timeline.HasKey(x => x.RowId).IsClustered();

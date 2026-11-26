@@ -88,6 +88,7 @@ builder.Services.AddSingleton(services =>
     return new SchedulingHealth(new PooledDbContextFactory<SchedulingDbContext>(options));
 });
 builder.Services.AddScoped<WorkerDiagnosticsStore>();
+builder.Services.AddScoped<NetworkDiagnosticsStore>();
 builder.Services.AddHealthChecks().AddCheck<OperationsDatabaseHealth>("database");
 builder.Services.AddScoped<AuditRetentionSettings>();
 builder.Services.AddScoped<AuditRetentionCleanup>();
@@ -133,11 +134,11 @@ app.MapGet("/internal/v1/diagnostics/scheduler", async (SchedulingHealth schedul
     var result = await scheduler.ReadAsync(token);
     return Results.Ok(new SchedulerHeartbeatsInfo(result.ObservedAt, result.Values));
 });
-app.MapGet("/internal/v1/diagnostics/workers", async (WorkerDiagnosticsStore workers, CancellationToken token) =>
+app.MapGet("/internal/v1/diagnostics/workers", async (NetworkDiagnosticsStore workers, CancellationToken token) => Results.Ok(await workers.ReadAsync(token)));
+app.MapPost("/internal/v1/diagnostics/workers", async (NetworkDiagnosticUpdate input, NetworkDiagnosticsStore workers, CancellationToken token) =>
 {
-    var result = await workers.GetSnapshotAsync(token);
-    return Results.Ok(new WorkerDiagnosticsInfo(result.ObservedAt, result.Workers.Select(item => new WorkerDiagnosticInfo(
-        item.BootId, item.ObservedAt, item.LeaseUntil, MapScanner(item.Observation.Ping), MapScanner(item.Observation.Speed))).ToArray()));
+    try { await workers.SaveAsync(input, token); return Results.NoContent(); }
+    catch (ArgumentException) { return Results.BadRequest(); }
 });
 
 // The deployment exposes this endpoint only to the trusted service network.
@@ -201,9 +202,6 @@ app.Run();
 
 static QuotaContract Map(LogQuotaSnapshot value) =>
     new(value.Values.SourceRate, value.Values.SourceBurst, value.Values.GlobalRate, value.Values.GlobalBurst, value.Version);
-
-static ScannerDiagnosticInfo MapScanner(ScannerObservation value) =>
-    new(value.LastSuccess, value.LastFailure, value.ConsecutiveFailures, (ScannerDiagnosticFailure)value.FailureKind);
 
 static IResult MapReceipt(LogReceipt receipt) => receipt.Status switch
 {
