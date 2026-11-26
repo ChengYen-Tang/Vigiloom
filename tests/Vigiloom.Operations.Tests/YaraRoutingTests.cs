@@ -173,6 +173,26 @@ public sealed class YaraRoutingTests(TestContext context)
                 deleteAudit.EnsureSuccessStatusCode();
                 Assert.AreEqual(1, await deleteAudit.Content.ReadFromJsonAsync<int>(cancellationToken: token));
             }
+            await using (var db = new SecurityAnalysisDbContext(options))
+            {
+                var old = new Vigiloom.Modules.SecurityAnalysis.Domain.YaraScan { Id = Guid.CreateVersion7(), AgentId = identity.AgentId, DeviceId = identity.DeviceId,
+                    RequestedBy = actor, FilePath = "/tmp/old", Rules = "rule test { condition: true }", MaximumBytes = 1024, TimeoutSeconds = 30,
+                    RequestedAt = cutoff.AddDays(-1), CompletedAt = cutoff.AddDays(-1) };
+                var pending = new Vigiloom.Modules.SecurityAnalysis.Domain.YaraScan { Id = Guid.CreateVersion7(), AgentId = identity.AgentId, DeviceId = identity.DeviceId,
+                    RequestedBy = actor, FilePath = "/tmp/pending", Rules = "rule test { condition: true }", MaximumBytes = 1024, TimeoutSeconds = 30,
+                    RequestedAt = cutoff.AddDays(-1) };
+                db.YaraScans.AddRange(old, pending);
+                await db.SaveChangesAsync(token);
+            }
+            using (var countYara = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/count", new SecurityAuditRetentionRequest(cutoff), token))
+                Assert.AreEqual(1L, await countYara.Content.ReadFromJsonAsync<long>(cancellationToken: token));
+            using (var deleteYara = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/delete", new SecurityAuditRetentionRequest(cutoff, 500), token))
+                Assert.AreEqual(1, await deleteYara.Content.ReadFromJsonAsync<int>(cancellationToken: token));
+            await using (var db = new SecurityAnalysisDbContext(options))
+            {
+                Assert.AreEqual("/tmp/pending", (await db.YaraScans.SingleAsync(token)).FilePath);
+                await db.YaraScans.ExecuteDeleteAsync(token);
+            }
             using (var stale = await securityClient.PutAsJsonAsync("/internal/v1/inventory-settings",
                 new { Update = new InventorySettingsUpdate(new(3600), before.Version), ActorId = Guid.CreateVersion7() }, token))
                 Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
