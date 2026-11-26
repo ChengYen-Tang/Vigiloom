@@ -125,6 +125,7 @@ builder.Services.AddScoped<ReceptionRejectionReader>();
 builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddSingleton<OtlpConcurrency>();
 builder.Services.AddSingleton<IHealthTransitionSink, HealthTransitionDispatcher>();
+builder.Services.AddSingleton<IHealthObservationSink, HealthTimelineSink>();
 builder.Services.AddSingleton<HealthRunner>();
 builder.Services.AddScoped<HealthStatusReader>();
 builder.Services.AddScoped<HealthHistoryReader>();

@@ -16,6 +16,7 @@ using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Modules.AlertingOperations.Application.Timeline;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Operations.Work;
 using Vigiloom.Testing.SqlServer;
 
@@ -26,6 +27,29 @@ namespace Vigiloom.Operations.Tests;
 [TestCategory("Database")]
 public sealed class TimelineTests(TestContext context)
 {
+    [TestMethod]
+    public Task HealthTimelineCleanupPreservesRecentAndOtherSources() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var services = new ServiceCollection();
+            services.AddModuleSqlServer<OperationsDbContext>(database.ConnectionString, "operations");
+            using var provider = services.BuildServiceProvider();
+            var factory = provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
+            var resource = Guid.CreateVersion7();
+            await using (var db = await factory.CreateDbContextAsync(token))
+            {
+                await db.Database.MigrateAsync(token);
+                foreach (var (source, time) in new[] { ("service-health", DateTimeOffset.UtcNow.AddDays(-366)), ("service-health", DateTimeOffset.UtcNow), ("service-trace", DateTimeOffset.UtcNow.AddDays(-366)) })
+                    db.Set<TimelineRecord>().Add(new TimelineRecord { MessageId = Guid.CreateVersion7(), Source = source, Time = time,
+                        ResourceId = resource, ResourceKind = "service", Summary = "summary", Evidence = "evidence", Link = "/services" });
+                await db.SaveChangesAsync(token);
+            }
+            Assert.AreEqual(1, await new TimelineLogCleanup(factory).RunHealthBatchAsync(365, token));
+            await using var verify = await factory.CreateDbContextAsync(token);
+            Assert.AreEqual(2, await verify.Set<TimelineRecord>().CountAsync(token));
+            Assert.AreEqual(1, await verify.Set<TimelineRecord>().CountAsync(x => x.Source == "service-trace", token));
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task EventsAreDeduplicatedAndFilteredByResourceGroup() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>

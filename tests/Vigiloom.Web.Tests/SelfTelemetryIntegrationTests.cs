@@ -297,7 +297,8 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
                 var target = await scope.ServiceProvider.GetRequiredService<HealthTargetAdministration>()
                     .CreateAsync(new(serviceId, null, new("http://127.0.0.1:12345/health", 30, 5, 1, 1, true, "")), actor, token);
                 Assert.AreEqual(HealthTargetStatus.Saved, target.Status);
-                var store = new HealthStore(observationContexts, observation.Services.GetServices<IHealthTransitionSink>());
+                var store = new HealthStore(observationContexts, observation.Services.GetServices<IHealthTransitionSink>(),
+                    observation.Services.GetRequiredService<IHealthObservationSink>());
                 var lease = Assert.ContainsSingle(await store.ClaimAsync(1, token));
                 var work = await store.LoadAsync(lease, token);
                 var network = await store.NetworkAsync(token);
@@ -328,6 +329,7 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
                 }, token);
                 await using var saved = await operationContexts.CreateDbContextAsync(token);
                 Assert.IsTrue(await saved.Set<ServiceHealthAlert>().AnyAsync(row => row.ServiceId == serviceId && row.RecoveredAt == null, token));
+                Assert.IsTrue(await saved.Set<TimelineRecord>().AnyAsync(row => row.ResourceId == serviceId && row.Source == "service-health", token));
             }
             async Task ProjectAsync(Guid id)
             {
