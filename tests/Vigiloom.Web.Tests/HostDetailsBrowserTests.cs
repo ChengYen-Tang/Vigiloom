@@ -267,6 +267,10 @@ public sealed class HostDetailsBrowserTests
         await page.GetByText("No integrity monitoring scopes configured.", new() { Exact = true }).WaitForAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "Recent changes", Exact = true }).WaitForAsync();
         await page.GetByText(IntegrityKey.Create(IntegrityItemKind.File, ["private-config"]), new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Host logs", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Region, new() { Name = "Logs table, scroll horizontally" }).GetByText("event-25", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Behavior detection", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "IOC matching leads", Exact = true }).WaitForAsync();
         await using var localizedContext = await browser.NewContextAsync();
         var localizedPage = await localizedContext.NewPageAsync();
         await localizedPage.GotoAsync($"{url}/account/login");
@@ -278,6 +282,8 @@ public sealed class HostDetailsBrowserTests
         await localizedPage.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
         await localizedPage.GetByText("尚未设置完整性监控范围。", new() { Exact = true }).WaitForAsync();
         await localizedPage.GetByRole(AriaRole.Heading, new() { Name = "最近变更", Exact = true }).WaitForAsync();
+        await localizedPage.GetByRole(AriaRole.Button, new() { Name = "主机日志", Exact = true }).ClickAsync();
+        await localizedPage.GetByRole(AriaRole.Region, new() { Name = "日志表格，可左右滚动" }).GetByText("event-25", new() { Exact = true }).WaitForAsync();
         await localizedGate.ReleaseAsync();
     }, TestContext.CancellationToken);
 

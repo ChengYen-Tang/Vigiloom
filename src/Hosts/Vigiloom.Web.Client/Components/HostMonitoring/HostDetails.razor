@@ -122,63 +122,63 @@
     }
     else if (tab == "logs")
     {
-        <p>依中央接收時間排序；記錄來源時間可能未知。@if (logs is not null) { <text>保存期限 @logs.RetentionDays 天；安全偵測所需資料可能延長保留。</text> }</p>
+        <p>@L["依中央接收時間排序；記錄來源時間可能未知。"] @if (logs is not null) { <text>@L["保存期限 {0} 天；安全偵測所需資料可能延長保留。", logs.RetentionDays]</text> }</p>
         @if (logs?.Items.Count > 0)
         {
-            <p class="host-scroll-hint">@L["左右滑動查看完整表格。"]</p><div class="host-table" tabindex="0" role="region" aria-label="日誌表格，可左右捲動"><table><thead><tr><th>接收時間（UTC）</th><th>來源</th><th>內容</th></tr></thead><tbody>
-                @foreach (var item in logs.Items) { <tr @key="(item.AgentId, item.MessageId)"><td>@DisplayTime(item.ReceivedAt)</td><td>@item.SourceName</td><td>@if (item.Gap is not null) { <strong>採集缺口：</strong> } @item.Content</td></tr> }
+            <p class="host-scroll-hint">@L["左右滑動查看完整表格。"]</p><div class="host-table" tabindex="0" role="region" aria-label="@L["日誌表格，可左右捲動"]"><table><thead><tr><th>@L["接收時間（UTC）"]</th><th>@L["來源"]</th><th>@L["內容"]</th></tr></thead><tbody>
+                @foreach (var item in logs.Items) { <tr @key="(item.AgentId, item.MessageId)"><td>@DisplayTime(item.ReceivedAt)</td><td>@item.SourceName</td><td>@if (item.Gap is not null) { <strong>@L["採集缺口："]</strong> } @item.Content</td></tr> }
             </tbody></table></div>
         }
-        else { <p>這段時間沒有主機日誌。</p> }
-        @if (logs is not null && (logCursors.Count > 0 || logs.NextCursor is not null)) { <button type="button" disabled="@(logCursors.Count == 0)" @onclick="PreviousLogsAsync">較新紀錄</button><button type="button" disabled="@(logs.NextCursor is null)" @onclick="NextLogsAsync">較早紀錄</button> }
+        else { <p>@L["這段時間沒有主機日誌。"]</p> }
+        @if (logs is not null && (logCursors.Count > 0 || logs.NextCursor is not null)) { <button type="button" disabled="@(logCursors.Count == 0)" @onclick="PreviousLogsAsync">@L["較新紀錄"]</button><button type="button" disabled="@(logs.NextCursor is null)" @onclick="NextLogsAsync">@L["較早紀錄"]</button> }
     }
     else if (tab == "detections")
     {
-        <p>顯示已啟用規則的命中與未評估紀錄；沒有紀錄不代表設備沒有異常。</p>
+        <p>@L["顯示已啟用規則的命中與未評估紀錄；沒有紀錄不代表設備沒有異常。"]</p>
         @if (detectionPage?.Items.Count > 0)
         {
-            <p class="host-scroll-hint">@L["左右滑動查看完整表格。"]</p><div class="host-table" tabindex="0" role="region" aria-label="行為偵測紀錄，可左右捲動">
-                <table><thead><tr><th>接收時間（UTC）</th><th>規則</th><th>結果與證據</th></tr></thead><tbody>
+            <p class="host-scroll-hint">@L["左右滑動查看完整表格。"]</p><div class="host-table" tabindex="0" role="region" aria-label="@L["行為偵測紀錄，可左右捲動"]">
+                <table><thead><tr><th>@L["接收時間（UTC）"]</th><th>@L["規則"]</th><th>@L["結果與證據"]</th></tr></thead><tbody>
                 @foreach (var item in detectionPage.Items)
                 {
                     <tr @key="(item.AgentId, item.MessageId, item.TestId, item.ActivationVersion)"><td>@DisplayTime(item.ReceivedAt)</td><td>@item.RulePath</td><td>
-                        <span class="detection-status @(item.Outcome == SigmaExpectedOutcome.Match ? "detection-match" : "detection-unknown")">@(item.Outcome == SigmaExpectedOutcome.Match ? "命中" : "未評估")</span>
-                        @if (item.Correlation is { } evidence) { <div>@evidence.Count 筆事件 · @DisplayTime(evidence.FirstEventAt) 至 @DisplayTime(evidence.LastEventAt)（UTC）</div> }
-                        <details><summary>查看來源與事件識別</summary><div>來源版本：@item.RevisionId</div><div>規則摘要：@item.RuleSha256</div><div>Agent：@item.AgentId</div><div>事件：@item.MessageId</div></details>
+                        <span class="detection-status @(item.Outcome == SigmaExpectedOutcome.Match ? "detection-match" : "detection-unknown")">@(item.Outcome == SigmaExpectedOutcome.Match ? L["命中"].Value : L["未評估"].Value)</span>
+                        @if (item.Correlation is { } evidence) { <div>@L["{0} 筆事件 · {1} 至 {2}（UTC）", evidence.Count, DisplayTime(evidence.FirstEventAt), DisplayTime(evidence.LastEventAt)]</div> }
+                        <details><summary>@L["查看來源與事件識別"]</summary><div>@L["來源版本：{0}", item.RevisionId]</div><div>@L["規則摘要：{0}", item.RuleSha256]</div><div>Agent：@item.AgentId</div><div>@L["事件：{0}", item.MessageId]</div></details>
                     </td></tr>
                 }
                 </tbody></table>
             </div>
         }
-        else { <p>這段時間沒有偵測紀錄。</p> }
-        @if (detectionPage is not null && (detectionCursors.Count > 0 || detectionPage.NextCursor is not null)) { <button type="button" disabled="@(detectionCursors.Count == 0)" @onclick="PreviousDetectionsAsync">較新紀錄</button><button type="button" disabled="@(detectionPage.NextCursor is null)" @onclick="NextDetectionsAsync">較早紀錄</button> }
-        <h3>IOC 比對線索</h3>
-        <p><a href="@($"/devices/{DeviceId:D}/yara-scans")">查看 YARA 掃描</a></p>
-        <p>僅顯示已啟用比對後收到的事件；命中需要調查，並不代表已入侵。@if (iocDetections is not null) { <text>線索依 Log 政策保存 @iocDetections.RetentionDays 天。</text> }</p>
+        else { <p>@L["這段時間沒有偵測紀錄。"]</p> }
+        @if (detectionPage is not null && (detectionCursors.Count > 0 || detectionPage.NextCursor is not null)) { <button type="button" disabled="@(detectionCursors.Count == 0)" @onclick="PreviousDetectionsAsync">@L["較新紀錄"]</button><button type="button" disabled="@(detectionPage.NextCursor is null)" @onclick="NextDetectionsAsync">@L["較早紀錄"]</button> }
+        <h3>@L["IOC 比對線索"]</h3>
+        <p><a href="@($"/devices/{DeviceId:D}/yara-scans")">@L["查看 YARA 掃描"]</a></p>
+        <p>@L["僅顯示已啟用比對後收到的事件；命中需要調查，並不代表已入侵。"] @if (iocDetections is not null) { <text>@L["線索依 Log 政策保存 {0} 天。", iocDetections.RetentionDays]</text> }</p>
         @if (iocDetections?.Items.Count > 0)
         {
-            <div class="host-table" tabindex="0" role="region" aria-label="IOC 比對線索，可左右捲動"><table><thead><tr><th>接收時間（UTC）</th><th>指標</th><th>來源與證據</th></tr></thead><tbody>
+            <div class="host-table" tabindex="0" role="region" aria-label="@L["IOC 比對線索，可左右捲動"]"><table><thead><tr><th>@L["接收時間（UTC）"]</th><th>@L["指標"]</th><th>@L["來源與證據"]</th></tr></thead><tbody>
             @foreach (var item in iocDetections.Items)
             {
-                <tr><td>@DisplayTime(item.ReceivedAt)</td><td>@item.Kind：@item.Value</td><td>@item.Field · 事件 @item.MessageId<br /><a href="@item.SourceUrl" target="_blank" rel="noopener noreferrer">查看來源</a> · <a href="@item.LicenseUrl" target="_blank" rel="noopener noreferrer">授權</a></td></tr>
+                <tr><td>@DisplayTime(item.ReceivedAt)</td><td>@item.Kind：@item.Value</td><td>@item.Field · @L["事件 {0}", item.MessageId]<br /><a href="@item.SourceUrl" target="_blank" rel="noopener noreferrer">@L["查看來源"]</a> · <a href="@item.LicenseUrl" target="_blank" rel="noopener noreferrer">@L["授權"]</a></td></tr>
             }
             </tbody></table></div>
         }
-        else { <p>這段時間沒有 IOC 命中紀錄。</p> }
+        else { <p>@L["這段時間沒有 IOC 命中紀錄。"]</p> }
         @if (iocDetections is not null && (iocDetections.Page > 1 || iocDetections.HasMore))
         {
-            <button type="button" disabled="@(iocDetections.Page <= 1)" @onclick="() => NavigateIocAsync(iocDetections.Page - 1)">較新線索</button>
-            <button type="button" disabled="@(!iocDetections.HasMore)" @onclick="() => NavigateIocAsync(iocDetections.Page + 1)">較早線索</button>
+            <button type="button" disabled="@(iocDetections.Page <= 1)" @onclick="() => NavigateIocAsync(iocDetections.Page - 1)">@L["較新線索"]</button>
+            <button type="button" disabled="@(!iocDetections.HasMore)" @onclick="() => NavigateIocAsync(iocDetections.Page + 1)">@L["較早線索"]</button>
         }
-        <h3>資料缺口</h3>
+        <h3>@L["資料缺口"]</h3>
         @if (detectionGaps?.Items.Count > 0)
         {
-            <div class="host-table" tabindex="0" role="region" aria-label="偵測資料缺口，可左右捲動"><table><thead><tr><th>紀錄時間（UTC）</th><th>原因</th><th>事件</th></tr></thead><tbody>
-            @foreach (var gap in detectionGaps.Items) { <tr><td>@DisplayTime(gap.RecordedAt)</td><td>@(gap.Kind == SigmaDetectionGapKind.OriginalEventUnavailable ? "原始日誌無法取得" : "規則無法使用")</td><td>@gap.MessageId</td></tr> }
+            <div class="host-table" tabindex="0" role="region" aria-label="@L["偵測資料缺口，可左右捲動"]"><table><thead><tr><th>@L["紀錄時間（UTC）"]</th><th>@L["原因"]</th><th>@L["事件"]</th></tr></thead><tbody>
+            @foreach (var gap in detectionGaps.Items) { <tr><td>@DisplayTime(gap.RecordedAt)</td><td>@(gap.Kind == SigmaDetectionGapKind.OriginalEventUnavailable ? L["原始日誌無法取得"].Value : L["規則無法使用"].Value)</td><td>@gap.MessageId</td></tr> }
             </tbody></table></div>
         }
-        else { <p>這段時間沒有已記錄的資料缺口。</p> }
-        @if (detectionGaps is not null && (gapCursors.Count > 0 || detectionGaps.NextCursor is not null)) { <button type="button" disabled="@(gapCursors.Count == 0)" @onclick="PreviousGapsAsync">較新缺口</button><button type="button" disabled="@(detectionGaps.NextCursor is null)" @onclick="NextGapsAsync">較早缺口</button> }
+        else { <p>@L["這段時間沒有已記錄的資料缺口。"]</p> }
+        @if (detectionGaps is not null && (gapCursors.Count > 0 || detectionGaps.NextCursor is not null)) { <button type="button" disabled="@(gapCursors.Count == 0)" @onclick="PreviousGapsAsync">@L["較新缺口"]</button><button type="button" disabled="@(detectionGaps.NextCursor is null)" @onclick="NextGapsAsync">@L["較早缺口"]</button> }
     }
     else if (tab == "integrity")
     {

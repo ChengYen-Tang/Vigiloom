@@ -78,4 +78,49 @@
   <data name="未提供" xml:space="preserve"><value>Not provided</value></data>
   <data name="內容雜湊" xml:space="preserve"><value>Content hash</value></data>
   <data name="安全性雜湊" xml:space="preserve"><value>Security hash</value></data>
+  <data name="依中央接收時間排序；記錄來源時間可能未知。" xml:space="preserve"><value>Sorted by central reception time; the source time may be unknown.</value></data>
+  <data name="保存期限 {0} 天；安全偵測所需資料可能延長保留。" xml:space="preserve"><value>Retention: {0} days; data needed for security detection may be retained longer.</value></data>
+  <data name="日誌表格，可左右捲動" xml:space="preserve"><value>Logs table, scroll horizontally</value></data>
+  <data name="接收時間（UTC）" xml:space="preserve"><value>Received (UTC)</value></data>
+  <data name="來源" xml:space="preserve"><value>Source</value></data>
+  <data name="內容" xml:space="preserve"><value>Content</value></data>
+  <data name="採集缺口：" xml:space="preserve"><value>Collection gap:</value></data>
+  <data name="這段時間沒有主機日誌。" xml:space="preserve"><value>No host logs in this period.</value></data>
+  <data name="較新紀錄" xml:space="preserve"><value>Newer records</value></data>
+  <data name="較早紀錄" xml:space="preserve"><value>Older records</value></data>
+  <data name="顯示已啟用規則的命中與未評估紀錄；沒有紀錄不代表設備沒有異常。" xml:space="preserve"><value>Shows matches and unevaluated records for enabled rules; no records do not mean the device has no issues.</value></data>
+  <data name="行為偵測紀錄，可左右捲動" xml:space="preserve"><value>Behavior detections, scroll horizontally</value></data>
+  <data name="規則" xml:space="preserve"><value>Rule</value></data>
+  <data name="結果與證據" xml:space="preserve"><value>Result and evidence</value></data>
+  <data name="命中" xml:space="preserve"><value>Match</value></data>
+  <data name="未評估" xml:space="preserve"><value>Not evaluated</value></data>
+  <data name="{0} 筆事件 · {1} 至 {2}（UTC）" xml:space="preserve"><value>{0} events · {1} to {2} (UTC)</value></data>
+  <data name="查看來源與事件識別" xml:space="preserve"><value>View source and event identifiers</value></data>
+  <data name="來源版本：{0}" xml:space="preserve"><value>Source version: {0}</value></data>
+  <data name="規則摘要：{0}" xml:space="preserve"><value>Rule hash: {0}</value></data>
+  <data name="事件：{0}" xml:space="preserve"><value>Event: {0}</value></data>
+  <data name="這段時間沒有偵測紀錄。" xml:space="preserve"><value>No detection records in this period.</value></data>
+  <data name="IOC 比對線索" xml:space="preserve"><value>IOC matching leads</value></data>
+  <data name="查看 YARA 掃描" xml:space="preserve"><value>View YARA scans</value></data>
+  <data name="僅顯示已啟用比對後收到的事件；命中需要調查，並不代表已入侵。" xml:space="preserve"><value>Only events received after matching was enabled are shown. Matches require investigation and do not prove compromise.</value></data>
+  <data name="線索依 Log 政策保存 {0} 天。" xml:space="preserve"><value>Leads are retained for {0} days under the log policy.</value></data>
+  <data name="IOC 比對線索，可左右捲動" xml:space="preserve"><value>IOC matching leads, scroll horizontally</value></data>
+  <data name="指標" xml:space="preserve"><value>Indicator</value></data>
+  <data name="來源與證據" xml:space="preserve"><value>Source and evidence</value></data>
+  <data name="事件 {0}" xml:space="preserve"><value>Event {0}</value></data>
+  <data name="查看來源" xml:space="preserve"><value>View source</value></data>
+  <data name="授權" xml:space="preserve"><value>License</value></data>
+  <data name="這段時間沒有 IOC 命中紀錄。" xml:space="preserve"><value>No IOC matches in this period.</value></data>
+  <data name="較新線索" xml:space="preserve"><value>Newer leads</value></data>
+  <data name="較早線索" xml:space="preserve"><value>Older leads</value></data>
+  <data name="資料缺口" xml:space="preserve"><value>Data gaps</value></data>
+  <data name="偵測資料缺口，可左右捲動" xml:space="preserve"><value>Detection data gaps, scroll horizontally</value></data>
+  <data name="紀錄時間（UTC）" xml:space="preserve"><value>Recorded (UTC)</value></data>
+  <data name="原因" xml:space="preserve"><value>Reason</value></data>
+  <data name="事件" xml:space="preserve"><value>Event</value></data>
+  <data name="原始日誌無法取得" xml:space="preserve"><value>Original log unavailable</value></data>
+  <data name="規則無法使用" xml:space="preserve"><value>Rule unavailable</value></data>
+  <data name="這段時間沒有已記錄的資料缺口。" xml:space="preserve"><value>No recorded data gaps in this period.</value></data>
+  <data name="較新缺口" xml:space="preserve"><value>Newer gaps</value></data>
+  <data name="較早缺口" xml:space="preserve"><value>Older gaps</value></data>
 </root>
