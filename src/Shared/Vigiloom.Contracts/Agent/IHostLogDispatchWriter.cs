@@ -7,6 +7,7 @@ public sealed record HostLogDispatch(Guid AgentId, Guid DeviceId, long DeviceGen
 {
     public const string MessageType = "agent.host-log.received.v1";
     public const string IocMessageType = "agent.host-log.ioc.v1";
+    public const string CombinedMessageType = "agent.host-log.analysis.v2";
 }
 
 /// <summary>Stages background work in the caller's transaction; commit remains with the receiver.</summary>
