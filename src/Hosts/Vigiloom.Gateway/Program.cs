@@ -55,6 +55,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("DenyUnmappedDeviceMethod", policy => policy.RequireAssertion(_ => false));
 });
 builder.Services.AddServiceDiscovery();
+builder.Services.AddSingleton<AgentTransportLimits>();
 builder.Services.ConfigureHttpClientDefaults(client => client.AddServiceDiscovery());
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
@@ -86,6 +87,14 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/otlp"), 
             await OtlpErrors.WriteAsync(context, context.Response.StatusCode);
     }));
 app.UseAuthentication();
+app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/heartbeat") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/update-results") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/queue-capacity") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/metric-settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/log-settings"),
+    agent => agent.Use(async (context, next) => await context.RequestServices.GetRequiredService<AgentTransportLimits>().InvokeAsync(context, next)));
 app.UseAuthorization();
 app.MapReverseProxy();
 app.Run();
