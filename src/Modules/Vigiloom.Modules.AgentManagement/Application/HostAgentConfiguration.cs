@@ -28,7 +28,7 @@ public sealed class HostAgentConfiguration(IDbContextFactory<HostMonitoringDbCon
         catch (FormatException) { return null; }
         if (version.Length is not (0 or 8)) return null;
         await using var db = await contexts.CreateDbContextAsync(token);
-        return await AgentSettingsStore.UpdateAsync(db, deviceId, update, actorId, clock.GetUtcNow(), version, token);
+        return await AgentTransportSettingsWriter.UpdateAsync(db, deviceId, update, actorId, clock.GetUtcNow(), version, token);
     }
 
     public async Task<AgentSettingsSnapshot?> GetForAgentAsync(RegisteredAgentIdentity identity, CancellationToken token)

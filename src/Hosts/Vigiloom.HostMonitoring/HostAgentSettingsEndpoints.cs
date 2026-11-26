@@ -9,6 +9,13 @@ internal static class HostAgentSettingsEndpoints
 {
     public static void MapHostAgentSettingsEndpoints(this WebApplication app)
     {
+        app.MapGet("/internal/v1/agent-settings/platform", (HostAgentConfiguration settings, CancellationToken token) => settings.GetAsync(null, token));
+        app.MapGet("/internal/v1/agent-settings/devices/{deviceId:guid}", async (Guid deviceId, HostAgentConfiguration settings, IHttpClientFactory clients, CancellationToken token) =>
+            await ExistsAsync(clients, deviceId, token) ? Results.Ok(await settings.GetAsync(deviceId, token)) : Results.NotFound());
+        app.MapPost("/internal/v1/agent-settings/platform", (AgentSettingsCommand command, HostAgentConfiguration settings, CancellationToken token) =>
+            UpdateInternalAsync(settings, null, command, token));
+        app.MapPost("/internal/v1/agent-settings/devices/{deviceId:guid}", async (Guid deviceId, AgentSettingsCommand command, HostAgentConfiguration settings, IHttpClientFactory clients, CancellationToken token) =>
+            await ExistsAsync(clients, deviceId, token) ? await UpdateInternalAsync(settings, deviceId, command, token) : Results.NotFound());
         var admin = app.MapGroup("/api/v1/agent-management/settings").RequireAuthorization("Administrator");
         admin.MapGet("/platform", (HostAgentConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token));
         admin.MapPut("/platform", (AgentSettingsUpdate input, HostAgentConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token));
@@ -22,6 +29,13 @@ internal static class HostAgentSettingsEndpoints
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok((await settings.GetAsync(deviceId, token)).Effective);
         }).RequireAuthorization("MonitoringApiRead");
+    }
+
+    private static async Task<IResult> UpdateInternalAsync(HostAgentConfiguration settings, Guid? deviceId, AgentSettingsCommand command, CancellationToken token)
+    {
+        if (command.Actor == Guid.Empty || command.Input is null || !AgentConfiguration.Valid(command.Input.Overrides)) return Results.BadRequest();
+        var saved = await settings.UpdateAsync(deviceId, command.Input, command.Actor, token);
+        return saved is null ? Results.Conflict() : Results.Ok(saved);
     }
 
     private static async Task<bool> ExistsAsync(IHttpClientFactory clients, Guid id, CancellationToken token)

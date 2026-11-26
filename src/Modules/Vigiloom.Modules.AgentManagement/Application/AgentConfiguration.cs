@@ -8,7 +8,7 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Resolves and audits administrator-managed Agent transport scheduling.</summary>
-public sealed class AgentConfiguration(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, AgentIdentity identity, TimeProvider clock)
+public sealed class AgentConfiguration(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, AgentIdentity identity, TimeProvider clock) : IAgentSettings
 {
     /// <summary>Read a layer and its effective values; null means the device does not exist.</summary>
     public async Task<AgentSettingsView?> GetAsync(Guid? deviceId, CancellationToken token)
@@ -50,7 +50,7 @@ public sealed class AgentConfiguration(IDbContextFactory<AgentManagementDbContex
         if (version.Length is not (0 or 8)) return null;
         if (deviceId is { } id && await devices.GetAsync(id, token) is null) return null;
         await using var db = await contexts.CreateDbContextAsync(token);
-        return await AgentSettingsStore.UpdateAsync(db, deviceId, update, actorId, clock.GetUtcNow(), version, token);
+        return await AgentTransportSettingsWriter.UpdateAsync(db, deviceId, update, actorId, clock.GetUtcNow(), version, token);
     }
 
     public static bool Valid(AgentSettingsOverrides? layer) => layer is not null && Resolve(AgentSettings.Default, layer).IsValid();

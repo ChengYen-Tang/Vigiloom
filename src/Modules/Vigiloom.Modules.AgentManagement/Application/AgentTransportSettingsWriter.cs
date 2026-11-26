@@ -7,7 +7,7 @@ using Vigiloom.Modules.AgentManagement.Domain;
 namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Persists Agent setting changes and their audit in the owning database.</summary>
-internal static class AgentSettingsStore
+internal static class AgentTransportSettingsWriter
 {
     internal static async Task<AgentSettingsView?> UpdateAsync(DbContext db, Guid? deviceId, AgentSettingsUpdate update,
         Guid actorId, DateTimeOffset now, byte[] version, CancellationToken token)
