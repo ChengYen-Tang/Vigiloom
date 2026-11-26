@@ -4,8 +4,13 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 
+public interface IDeviceInventoryAgent
+{
+    Task<(bool Exists, Guid? AgentId)> ResolveAsync(Guid deviceId, CancellationToken token);
+}
+
 /// <summary>Resolves inventory ownership without using a hostname or network address.</summary>
-public sealed class DeviceInventoryAgent(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices)
+public sealed class DeviceInventoryAgent(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices) : IDeviceInventoryAgent
 {
     public async Task<(bool Exists, Guid? AgentId)> ResolveAsync(Guid deviceId, CancellationToken token)
     {

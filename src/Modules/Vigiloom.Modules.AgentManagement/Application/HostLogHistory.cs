@@ -7,7 +7,7 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Reads bounded pages of private host observations by central receipt time.</summary>
-public sealed class HostLogHistory(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices)
+public sealed class HostLogHistory(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices) : IHostLogHistory
 {
     public const int PageSize = 25;
     private static readonly TimeSpan MaximumRange = TimeSpan.FromDays(31);

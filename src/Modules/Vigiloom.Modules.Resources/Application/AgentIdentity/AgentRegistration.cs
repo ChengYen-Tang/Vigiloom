@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using static Vigiloom.Infrastructure.Authentication.AgentCredentials;
@@ -12,6 +13,28 @@ namespace Vigiloom.Modules.Resources.Application.AgentIdentity;
 /// <summary>Owns device-bound Agent registration and credentials.</summary>
 public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, ResourceWork outbox)
 {
+    public async Task<Guid[]> ActiveAsync(IReadOnlyList<Guid> agentIds, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        return await (from agent in db.Agents.AsNoTracking()
+            join device in db.Devices.AsNoTracking() on agent.DeviceId equals device.Id
+            where agentIds.Contains(agent.Id) && agent.RevokedAt == null && agent.DeviceGeneration == device.AgentAuthorizationGeneration &&
+                device.DeepMonitoring && device.IsEnabled && !device.IsArchived
+            select agent.Id).ToArrayAsync(token);
+    }
+
+    public async Task<IReadOnlyList<DeviceAgentOverview>> OverviewAsync(IReadOnlyList<Guid> deviceIds, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var devices = await db.Devices.AsNoTracking().Where(d => deviceIds.Contains(d.Id))
+            .Select(d => new DeviceAgentState(d.Id, d.AgentAuthorizationGeneration, d.DeepMonitoring && d.IsEnabled && !d.IsArchived)).ToArrayAsync(token);
+        var agents = await db.Agents.AsNoTracking().Where(a => deviceIds.Contains(a.DeviceId) && a.RevokedAt == null)
+            .Select(a => new { a.DeviceId, Summary = new AgentRegistrationSummary(a.Id, a.DeviceGeneration, a.CreatedAt, a.RevokedAt) }).ToArrayAsync(token);
+        var byDevice = agents.ToLookup(a => a.DeviceId);
+        return devices.Select(device => new DeviceAgentOverview(device,
+            byDevice[device.DeviceId].Select(x => x.Summary).SingleOrDefault(x => x.DeviceGeneration == device.Generation))).ToArray();
+    }
+
     public async Task<DeviceAgentRegistrations?> ListAsync(Guid deviceId, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
@@ -22,6 +45,19 @@ public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> cont
         var enrollments = await db.AgentEnrollments.AsNoTracking().Where(e => e.DeviceId == deviceId).OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.RowId)
             .Take(50).Select(e => new AgentEnrollmentSummary(e.Id, e.DeviceGeneration, e.CreatedAt, e.ExpiresAt, e.RevokedAt, e.AgentId != null)).ToArrayAsync(token);
         return new(agents, enrollments, generation.Value);
+    }
+
+    public async Task<DeviceAgentOwnership?> GetOwnershipAsync(Guid deviceId, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var device = await db.Devices.AsNoTracking().Where(x => x.Id == deviceId)
+            .Select(x => new DeviceAgentState(x.Id, x.AgentAuthorizationGeneration, x.DeepMonitoring && x.IsEnabled && !x.IsArchived))
+            .SingleOrDefaultAsync(token);
+        if (device is null) return null;
+        var agent = await db.Agents.AsNoTracking().Where(x => x.DeviceId == deviceId && x.DeviceGeneration == device.Generation)
+            .OrderBy(x => x.RevokedAt != null).ThenByDescending(x => x.CreatedAt).ThenByDescending(x => x.RowId)
+            .Select(x => new AgentRegistrationSummary(x.Id, x.DeviceGeneration, x.CreatedAt, x.RevokedAt)).FirstOrDefaultAsync(token);
+        return new(device, agent);
     }
 
     public async Task<AgentEnrollmentIssue> IssueAsync(Guid deviceId, Guid actorId, CancellationToken token)

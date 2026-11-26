@@ -11,15 +11,34 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
 {
     public async Task<AuditFeedPage> QueryAsync(AuditFeedSource source, OperationAuditQuery query, CancellationToken token)
     {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        return await AgentAuditFeedCore.QueryAsync(db, source, query, token);
+    }
+}
+
+public sealed class HostAuditFeed(IDbContextFactory<HostMonitoringDbContext> contexts)
+{
+    public async Task<AuditFeedPage> QueryAsync(AuditFeedSource source, OperationAuditQuery query, CancellationToken token)
+    {
+        if (source is not (AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostMetricThresholds or AuditFeedSource.HostLogSources))
+            throw new ArgumentException("Unsupported host audit source.");
+        await using var db = await contexts.CreateDbContextAsync(token);
+        return await AgentAuditFeedCore.QueryAsync(db, source, query, token);
+    }
+}
+
+internal static class AgentAuditFeedCore
+{
+    public static async Task<AuditFeedPage> QueryAsync(DbContext db, AuditFeedSource source, OperationAuditQuery query, CancellationToken token)
+    {
         if (!AuditFeedLimits.Valid(query) || source is not (AuditFeedSource.AgentIdentity or AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostLogSources or AuditFeedSource.HostMetricThresholds))
             throw new ArgumentException("Invalid audit source or range.");
-        await using var db = await contexts.CreateDbContextAsync(token);
         var skip = (query.Page - 1) * AuditFeedLimits.PageSize;
         AuditFeedEntry[] entries;
         bool more;
         if (source == AuditFeedSource.AgentIdentity)
         {
-            var rows = await db.Audits.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
+            var rows = await db.Set<AgentAudit>().AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
                 .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId).Skip(skip).Take(AuditFeedLimits.PageSize + 1)
                 .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.AgentId, x.Action, x.PreviousPackageId, x.PackageId }).ToArrayAsync(token);
             more = rows.Length > AuditFeedLimits.PageSize;
@@ -40,8 +59,8 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
         }
         else if (source == AuditFeedSource.HostMetricThresholds)
         {
-            var rows = await (from audit in db.HostMetricThresholdAudits.AsNoTracking()
-                join threshold in db.HostMetricThresholds.AsNoTracking() on audit.ThresholdId equals threshold.Id
+            var rows = await (from audit in db.Set<HostMetricThresholdAudit>().AsNoTracking()
+                join threshold in db.Set<HostMetricThreshold>().AsNoTracking() on audit.ThresholdId equals threshold.Id
                 where audit.OccurredAt >= query.From && audit.OccurredAt < query.To
                 orderby audit.OccurredAt descending, audit.RowId descending
                 select new { audit.OccurredAt, audit.ActorId, audit.DeviceId, audit.ThresholdId, audit.Enabled, audit.Comparison,
@@ -62,7 +81,7 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
         }
         else if (source == AuditFeedSource.HostLogSources)
         {
-            var rows = await db.HostLogSourceAudits.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
+            var rows = await db.Set<HostLogSourceAudit>().AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
                 .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId).Skip(skip).Take(AuditFeedLimits.PageSize + 1)
                 .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.SourceId, x.Action, x.Generation, x.Enabled, x.Version }).ToArrayAsync(token);
             more = rows.Length > AuditFeedLimits.PageSize;
@@ -82,7 +101,7 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
         }
         else if (source == AuditFeedSource.AgentMetricSettings)
         {
-            var rows = await db.MetricSettingAudits.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
+            var rows = await db.Set<AgentMetricSettingAudit>().AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
                 .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId).Skip(skip).Take(AuditFeedLimits.PageSize + 1)
                 .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.HostIntervalSeconds, x.ProcessIntervalSeconds, x.CpuMillisecondsPerMinute, x.WorkingSetLimitMiB, x.ProcessCollectionBudgetMs, x.IoLimitMiBPerMinute,
                     x.EffectiveHostIntervalSeconds, x.EffectiveProcessIntervalSeconds, x.EffectiveCpuMillisecondsPerMinute, x.EffectiveWorkingSetLimitMiB, x.EffectiveProcessCollectionBudgetMs, x.EffectiveIoLimitMiBPerMinute, x.EffectiveRevision, x.ChangeVersion }).ToArrayAsync(token);
@@ -116,7 +135,7 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
         }
         else if (source == AuditFeedSource.AgentQueueCapacity)
         {
-            var rows = await db.QueueCapacityAudits.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
+            var rows = await db.Set<AgentQueueCapacityAudit>().AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
                 .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId).Skip(skip).Take(AuditFeedLimits.PageSize + 1)
                 .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.PayloadBytes, x.BatchCount,
                     x.EffectivePayloadBytes, x.EffectiveBatchCount, x.EffectiveRevision, x.ChangeVersion }).ToArrayAsync(token);
@@ -136,7 +155,7 @@ public sealed class AgentAuditFeed(IDbContextFactory<AgentManagementDbContext> c
         }
         else
         {
-            var rows = await db.SettingAudits.AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
+            var rows = await db.Set<AgentSettingAudit>().AsNoTracking().Where(x => x.OccurredAt >= query.From && x.OccurredAt < query.To)
                 .OrderByDescending(x => x.OccurredAt).ThenByDescending(x => x.RowId).Skip(skip).Take(AuditFeedLimits.PageSize + 1)
                 .Select(x => new { x.OccurredAt, x.ActorId, x.DeviceId, x.HeartbeatSeconds, x.SettingsPollSeconds, x.BatchIntervalSeconds,
                     x.EffectiveHeartbeatSeconds, x.EffectiveSettingsPollSeconds, x.EffectiveBatchIntervalSeconds, x.EffectiveRevision, x.ChangeVersion })

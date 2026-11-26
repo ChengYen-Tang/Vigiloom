@@ -6,7 +6,7 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Reports desired and observed transport settings independently of Ping.</summary>
-public sealed class AgentSettingsMonitoring(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, TimeProvider clock)
+public sealed class AgentSettingsMonitoring(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, TimeProvider clock) : IAgentSettingsStatusReader
 {
     public async Task<AgentSettingsStatus?> GetAsync(Guid deviceId, CancellationToken token)
     {
@@ -15,16 +15,30 @@ public sealed class AgentSettingsMonitoring(IDbContextFactory<AgentManagementDbC
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var agent = await db.Agents.AsNoTracking().Where(x => x.DeviceId == deviceId && x.DeviceGeneration == device.Generation && x.RevokedAt == null)
-            .Select(x => new { x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds, x.ConfigurationReportedAt,
+            .Select(x => new AgentSettingsObservation(x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds, x.ConfigurationReportedAt,
                 x.AppliedConfigurationRevision, x.AppliedHeartbeatSeconds, x.AppliedSettingsPollSeconds, x.AppliedBatchIntervalSeconds,
-                x.ConfigurationAppliedAt, x.ConfigurationFailure })
+                x.ConfigurationAppliedAt, x.ConfigurationFailure))
             .SingleOrDefaultAsync(token);
         var rows = await db.Settings.FromSqlInterpolated($"SELECT * FROM [agent].[Settings] WITH (HOLDLOCK) WHERE [DeviceId] IS NULL OR [DeviceId] = {deviceId}")
             .AsNoTracking().ToListAsync(token);
         var desired = AgentConfiguration.ToView(deviceId, rows).Effective;
+        var result = AgentSettingsStatusFormatter.Create(device, desired, agent, clock.GetUtcNow());
+        await transaction.CommitAsync(token);
+        return result;
+    }
+}
+
+internal sealed record AgentSettingsObservation(DateTimeOffset CreatedAt, DateTimeOffset? LastHeartbeatAt, int HeartbeatSafetyIntervalSeconds,
+    DateTimeOffset? ConfigurationReportedAt, string? AppliedConfigurationRevision, int? AppliedHeartbeatSeconds,
+    int? AppliedSettingsPollSeconds, int? AppliedBatchIntervalSeconds, DateTimeOffset? ConfigurationAppliedAt, AgentConfigurationFailure? ConfigurationFailure);
+
+internal static class AgentSettingsStatusFormatter
+{
+    internal static AgentSettingsStatus Create(DeviceAgentState device, AgentSettingsSnapshot desired, AgentSettingsObservation? agent, DateTimeOffset now)
+    {
+        var deviceId = device.DeviceId;
         if (!device.Eligible) return new(deviceId, AgentSettingsApplyState.Disabled, desired, null, null, null, null);
         if (agent is null) return new(deviceId, AgentSettingsApplyState.NotRegistered, desired, null, null, null, null);
-        var now = clock.GetUtcNow();
         var basis = agent.LastHeartbeatAt ?? agent.CreatedAt;
         var offlineAfter = Math.Max(AgentMonitoring.OfflineAfterSeconds, agent.HeartbeatSafetyIntervalSeconds * 3);
         var state = basis > now ? AgentSettingsApplyState.ClockUncertain
@@ -41,8 +55,6 @@ public sealed class AgentSettingsMonitoring(IDbContextFactory<AgentManagementDbC
             ? new AgentSettingsSnapshot(AgentSettingsSnapshot.CurrentSchema, revision, new AgentSettings(heartbeat, poll, batch)) : null;
         if (applied is not null && !applied.IsValid()) applied = null;
         if (state == AgentSettingsApplyState.Applied && applied is null) state = AgentSettingsApplyState.WaitingForReport;
-        var result = new AgentSettingsStatus(deviceId, state, desired, applied, agent.ConfigurationAppliedAt, agent.ConfigurationReportedAt, agent.ConfigurationFailure);
-        await transaction.CommitAsync(token);
-        return result;
+        return new AgentSettingsStatus(deviceId, state, desired, applied, agent.ConfigurationAppliedAt, agent.ConfigurationReportedAt, agent.ConfigurationFailure);
     }
 }

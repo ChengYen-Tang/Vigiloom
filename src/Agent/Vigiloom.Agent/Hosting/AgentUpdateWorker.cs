@@ -8,7 +8,7 @@ namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Polls the desired Agent version and sends it to the local updater when configured.</summary>
 internal sealed class AgentUpdateWorker(AgentVersionClient client, AgentSettingsRuntime settings, IConfiguration configuration,
-    TimeProvider clock, ILogger<AgentUpdateWorker> logger) : BackgroundService
+    TimeProvider clock, ILogger<AgentUpdateWorker> logger, AgentWorkNotifications? notifications = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -65,7 +65,11 @@ internal sealed class AgentUpdateWorker(AgentVersionClient client, AgentSettings
                 }
             }
             var seconds = settings.Current.SettingsPollSeconds * (0.8 + Random.Shared.NextDouble() * 0.4);
-            try { await Task.Delay(TimeSpan.FromSeconds(seconds), clock, stoppingToken); }
+            try
+            {
+                if (notifications is null) await Task.Delay(TimeSpan.FromSeconds(seconds), clock, stoppingToken);
+                else await notifications.WaitForUpdateAsync(TimeSpan.FromSeconds(seconds), clock, stoppingToken);
+            }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }

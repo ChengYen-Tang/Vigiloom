@@ -8,12 +8,12 @@
 @using Vigiloom.Modules.AgentManagement.Application
 @using Vigiloom.Modules.Resources.Application
 @using Vigiloom.Modules.SecurityAnalysis.Application.Inventory
-@inject AgentConfiguration Settings
-@inject AgentQueueCapacityConfiguration CapacitySettings
-@inject AgentMetricConfiguration MetricSettings
+@inject IAgentSettings Settings
+@inject IAgentQueueCapacitySettings CapacitySettings
+@inject IAgentMetricSettings MetricSettings
 @inject InventoryConfiguration InventorySettings
 @inject AgentInventorySettingsMonitoring InventoryMonitoring
-@inject AgentReplayPolicyService ReplayPolicy
+@inject IAgentReplayPolicy ReplayPolicy
 @inject IDeviceManagement Devices
 @inject ILogger<AgentSettingsPage> Logger
 

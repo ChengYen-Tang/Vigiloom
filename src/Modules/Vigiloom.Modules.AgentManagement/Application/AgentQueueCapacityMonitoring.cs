@@ -6,7 +6,7 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Compares desired and independently reported applied queue capacity.</summary>
-public sealed class AgentQueueCapacityMonitoring(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, TimeProvider clock)
+public sealed class AgentQueueCapacityMonitoring(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, TimeProvider clock) : IAgentQueueCapacityStatusReader
 {
     public async Task<AgentQueueCapacityStatus?> GetAsync(Guid deviceId, CancellationToken token)
     {
@@ -15,13 +15,29 @@ public sealed class AgentQueueCapacityMonitoring(IDbContextFactory<AgentManageme
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         var agent = await db.Agents.AsNoTracking().Where(x => x.DeviceId == deviceId && x.DeviceGeneration == device.Generation && x.RevokedAt == null)
-            .Select(x => new { x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds, x.QueueReportEpoch, x.QueueReportSequence,
+            .Select(x => new QueueCapacityObservation(x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds, x.QueueReportEpoch, x.QueueReportSequence,
                 x.QueueCapacityReportEpoch, x.QueueCapacityReportSequence, x.QueueCapacityReportedAt, x.QueueCapacityAppliedRevision,
-                x.QueueCapacityAppliedBytes, x.QueueCapacityAppliedBatches, x.QueueCapacityAppliedAt, x.QueueCapacityFailure })
+                x.QueueCapacityAppliedBytes, x.QueueCapacityAppliedBatches, x.QueueCapacityAppliedAt, x.QueueCapacityFailure))
             .SingleOrDefaultAsync(token);
         var rows = await db.QueueCapacitySettings.FromSqlInterpolated($"SELECT * FROM [agent].[QueueCapacitySettings] WITH (HOLDLOCK) WHERE [DeviceId] IS NULL OR [DeviceId] = {deviceId}")
             .AsNoTracking().ToListAsync(token);
         var desired = AgentQueueCapacityConfiguration.ToView(deviceId, rows).Effective;
+        var result = QueueCapacityStatusFormatter.Create(device, desired, agent, clock.GetUtcNow());
+        await transaction.CommitAsync(token);
+        return result;
+    }
+}
+
+internal sealed record QueueCapacityObservation(DateTimeOffset CreatedAt, DateTimeOffset? LastHeartbeatAt, int HeartbeatSafetyIntervalSeconds,
+    Guid? QueueReportEpoch, long? QueueReportSequence, Guid? QueueCapacityReportEpoch, long? QueueCapacityReportSequence,
+    DateTimeOffset? QueueCapacityReportedAt, string? QueueCapacityAppliedRevision, long? QueueCapacityAppliedBytes,
+    int? QueueCapacityAppliedBatches, DateTimeOffset? QueueCapacityAppliedAt, AgentConfigurationFailure? QueueCapacityFailure);
+
+internal static class QueueCapacityStatusFormatter
+{
+    internal static AgentQueueCapacityStatus Create(DeviceAgentState device, AgentQueueCapacitySnapshot desired, QueueCapacityObservation? agent, DateTimeOffset now)
+    {
+        var deviceId = device.DeviceId;
         if (!device.Eligible) return new(deviceId, AgentSettingsApplyState.Disabled, desired, null, null, null, null);
         if (agent is null) return new(deviceId, AgentSettingsApplyState.NotRegistered, desired, null, null, null, null);
         var matching = agent.QueueReportEpoch is not null && agent.QueueReportSequence is not null &&
@@ -32,7 +48,6 @@ public sealed class AgentQueueCapacityMonitoring(IDbContextFactory<AgentManageme
             agent.QueueCapacityAppliedBytes is { } bytes && agent.QueueCapacityAppliedBatches is { } batches
                 ? new(AgentQueueCapacitySnapshot.CurrentSchema, revision, new(bytes, batches)) : null;
         if (applied is not null && !applied.IsValid()) applied = null;
-        var now = clock.GetUtcNow();
         var basis = agent.LastHeartbeatAt ?? agent.CreatedAt;
         var offlineAfter = Math.Max(AgentMonitoring.OfflineAfterSeconds, agent.HeartbeatSafetyIntervalSeconds * 3);
         var state = basis > now ? AgentSettingsApplyState.ClockUncertain
@@ -45,8 +60,6 @@ public sealed class AgentQueueCapacityMonitoring(IDbContextFactory<AgentManageme
             : applied is null ? AgentSettingsApplyState.WaitingForReport
             : string.Equals(applied.Revision, desired.Revision, StringComparison.Ordinal) ? AgentSettingsApplyState.Applied
             : AgentSettingsApplyState.Pending;
-        var result = new AgentQueueCapacityStatus(deviceId, state, desired, applied, matching ? agent.QueueCapacityAppliedAt : null, reportedAt, failure);
-        await transaction.CommitAsync(token);
-        return result;
+        return new AgentQueueCapacityStatus(deviceId, state, desired, applied, matching ? agent.QueueCapacityAppliedAt : null, reportedAt, failure);
     }
 }

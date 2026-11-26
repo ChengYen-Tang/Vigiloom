@@ -10,12 +10,12 @@ internal static class AgentReplayPolicyEndpoints
     {
         var admin = app.MapGroup("/api/v1/agent-management/replay-policy")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
-        admin.MapGet("/", async (HttpContext context, AgentReplayPolicyService policy, CancellationToken token) =>
+        admin.MapGet("/", async (HttpContext context, IAgentReplayPolicy policy, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok(await policy.GetAsync(token));
         }).Produces<AgentReplayPolicyView>().ProducesProblem(401).ProducesProblem(403);
-        admin.MapPut("/", async (AgentReplayPolicyUpdate update, HttpContext context, AgentReplayPolicyService policy, CancellationToken token) =>
+        admin.MapPut("/", async (AgentReplayPolicyUpdate update, HttpContext context, IAgentReplayPolicy policy, CancellationToken token) =>
         {
             if (update.Target is not (AgentReplayPhase.Grace or AgentReplayPhase.Enforced) || !update.ConfirmedReceiversUpgraded)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["policy"] = ["請先確認所有接收節點已更新，並選擇有效的政策階段。"] });

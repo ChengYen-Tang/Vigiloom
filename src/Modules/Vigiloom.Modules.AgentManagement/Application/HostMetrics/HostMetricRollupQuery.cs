@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Agent;
-using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.AgentManagement.Domain;
 
 namespace Vigiloom.Modules.AgentManagement.Application.HostMetrics;
 
@@ -10,7 +10,7 @@ internal static class HostMetricRollupQuery
 {
     private static readonly long WindowTicks = TimeSpan.FromMinutes(5).Ticks;
 
-    public static async Task<HostMetricAggregate> AggregateAsync(AgentManagementDbContext db, Guid agentId,
+    public static async Task<HostMetricAggregate> AggregateAsync(DbContext db, Guid agentId,
         DateTimeOffset from, DateTimeOffset until, AgentMetricKind kind, string source, string? dimension,
         int bucketSeconds, DateTimeOffset anchor, CancellationToken token)
     {
@@ -31,13 +31,13 @@ internal static class HostMetricRollupQuery
         var fullStart = from == startWindow ? from :
             startWindow.Ticks <= DateTimeOffset.MaxValue.Ticks - WindowTicks ? startWindow.AddTicks(WindowTicks) : until;
         var fullEnd = endWindow;
-        var raw = db.HostMetrics.AsNoTracking().Where(x => x.AgentId == agentId && x.Kind == kind &&
+        var raw = db.Set<HostMetric>().AsNoTracking().Where(x => x.AgentId == agentId && x.Kind == kind &&
             EF.Functions.Collate(x.Source, "Latin1_General_100_BIN2") == source &&
             EF.Functions.DataLength(x.Source) == EF.Functions.DataLength(source) &&
             (dimension == null ? x.Dimension == null : x.Dimension != null &&
                 EF.Functions.Collate(x.Dimension, "Latin1_General_100_BIN2") == dimension &&
                 EF.Functions.DataLength(x.Dimension) == EF.Functions.DataLength(dimension)));
-        var rollups = db.HostMetricRollups.AsNoTracking().Where(x => x.AgentId == agentId && x.Kind == kind &&
+        var rollups = db.Set<HostMetricRollup>().AsNoTracking().Where(x => x.AgentId == agentId && x.Kind == kind &&
             EF.Functions.Collate(x.Source, "Latin1_General_100_BIN2") == source &&
             EF.Functions.DataLength(x.Source) == EF.Functions.DataLength(source) &&
             (dimension == null ? x.Dimension == null : x.Dimension != null &&

@@ -8,7 +8,7 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Reads non-secret Agent connectivity independently of network Ping.</summary>
-public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, TimeProvider clock)
+public sealed class AgentMonitoring(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, TimeProvider clock) : IAgentStatusReader
 {
     public const int OfflineAfterSeconds = 90;
 

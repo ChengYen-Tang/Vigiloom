@@ -7,9 +7,13 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 namespace Vigiloom.Modules.AgentManagement.Application;
 
 public sealed record HostLogStatusView(DateTimeOffset ReceivedAt, int OfflineAfterSeconds, AgentLogStatusReport Report);
+public interface IHostLogMonitoring
+{
+    Task<HostLogStatusView?> GetAsync(Guid deviceId, CancellationToken token);
+}
 
 /// <summary>Reads the last non-secret source observations for the current Agent session.</summary>
-public sealed class HostLogMonitoring(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices)
+public sealed class HostLogMonitoring(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices) : IHostLogMonitoring
 {
     public async Task<HostLogStatusView?> GetAsync(Guid deviceId, CancellationToken token)
     {

@@ -7,3 +7,8 @@ public enum AgentSettingsApplyState { Disabled, NotRegistered, WaitingForHeartbe
 public sealed record AgentSettingsStatus(Guid DeviceId, AgentSettingsApplyState State, AgentSettingsSnapshot Desired,
     AgentSettingsSnapshot? Applied, DateTimeOffset? AppliedAt, DateTimeOffset? ReportedAt,
     AgentConfigurationFailure? Failure);
+
+public interface IAgentSettingsStatusReader
+{
+    Task<AgentSettingsStatus?> GetAsync(Guid deviceId, CancellationToken token);
+}

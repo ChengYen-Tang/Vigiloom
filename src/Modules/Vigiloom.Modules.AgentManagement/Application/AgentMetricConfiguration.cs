@@ -1,5 +1,4 @@
 using System.Data;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Resources;
@@ -10,7 +9,7 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Resolves platform and device overrides for metric collection.</summary>
 public sealed class AgentMetricConfiguration(IDbContextFactory<AgentManagementDbContext> contexts,
-    IDeviceAgentSource devices, AgentIdentity identity, TimeProvider clock)
+    IDeviceAgentSource devices, AgentIdentity identity, TimeProvider clock) : IAgentMetricSettings
 {
     public async Task<AgentMetricSettingsView?> GetAsync(Guid? deviceId, CancellationToken token)
     {
@@ -46,56 +45,7 @@ public sealed class AgentMetricConfiguration(IDbContextFactory<AgentManagementDb
         if (version.Length is not (0 or 8)) return null;
         if (deviceId is { } id && await devices.GetAsync(id, token) is null) return null;
         await using var db = await contexts.CreateDbContextAsync(token);
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
-        var rows = await db.MetricSettings.FromSqlInterpolated($"SELECT * FROM [agent].[MetricSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [DeviceId] IS NULL OR [DeviceId] = {deviceId}").ToListAsync(token);
-        var setting = rows.SingleOrDefault(x => x.DeviceId == deviceId);
-        if (setting is null)
-        {
-            if (version.Length != 0) return null;
-            setting = new AgentMetricSetting { DeviceId = deviceId };
-            db.MetricSettings.Add(setting);
-            rows.Add(setting);
-        }
-        else
-        {
-            if (version.Length != 8 || !version.AsSpan().SequenceEqual(setting.Version)) return null;
-            db.Entry(setting).Property(x => x.Version).OriginalValue = version;
-        }
-        setting.HostIntervalSeconds = update.Overrides.HostIntervalSeconds;
-        setting.ProcessIntervalSeconds = update.Overrides.ProcessIntervalSeconds;
-        setting.CpuMillisecondsPerMinute = update.Overrides.CpuMillisecondsPerMinute;
-        setting.WorkingSetLimitMiB = update.Overrides.WorkingSetLimitMiB;
-        setting.ProcessCollectionBudgetMs = update.Overrides.ProcessCollectionBudgetMs;
-        setting.IoLimitMiBPerMinute = update.Overrides.IoLimitMiBPerMinute;
-        setting.UpdatedAt = clock.GetUtcNow();
-        setting.UpdatedBy = actorId;
-        db.Entry(setting).Property(x => x.UpdatedAt).IsModified = true;
-        var view = ToView(deviceId, rows);
-        try
-        {
-            await db.SaveChangesAsync(token);
-            db.MetricSettingAudits.Add(new AgentMetricSettingAudit
-            {
-                SettingId = setting.Id, DeviceId = deviceId, ActorId = actorId, OccurredAt = setting.UpdatedAt,
-                HostIntervalSeconds = setting.HostIntervalSeconds, ProcessIntervalSeconds = setting.ProcessIntervalSeconds,
-                CpuMillisecondsPerMinute = setting.CpuMillisecondsPerMinute,
-                WorkingSetLimitMiB = setting.WorkingSetLimitMiB,
-                ProcessCollectionBudgetMs = setting.ProcessCollectionBudgetMs,
-                IoLimitMiBPerMinute = setting.IoLimitMiBPerMinute,
-                EffectiveHostIntervalSeconds = view.Effective.Settings.HostIntervalSeconds,
-                EffectiveProcessIntervalSeconds = view.Effective.Settings.ProcessIntervalSeconds,
-                EffectiveCpuMillisecondsPerMinute = view.Effective.Settings.CpuMillisecondsPerMinute,
-                EffectiveWorkingSetLimitMiB = view.Effective.Settings.WorkingSetLimitMiB,
-                EffectiveProcessCollectionBudgetMs = view.Effective.Settings.ProcessCollectionBudgetMs,
-                EffectiveIoLimitMiBPerMinute = view.Effective.Settings.IoLimitMiBPerMinute,
-                EffectiveRevision = view.Effective.Revision, ChangeVersion = setting.Version.ToArray()
-            });
-            await db.SaveChangesAsync(token);
-            await transaction.CommitAsync(token);
-            return ToView(deviceId, rows);
-        }
-        catch (DbUpdateConcurrencyException) { return null; }
-        catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { return null; }
+        return await AgentMetricSettingsWriter.UpdateAsync(db, deviceId, update, actorId, clock.GetUtcNow(), version, token);
     }
 
     public static bool Valid(AgentMetricSettingsOverrides? layer) => layer is not null && Resolve(AgentMetricSettings.Default, layer).IsValid();

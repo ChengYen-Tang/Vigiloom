@@ -39,6 +39,7 @@ public sealed record AuditFeedEntry(DateTimeOffset OccurredAt, Guid? ActorId, Gu
     InventorySettingsAuditDetails? InventorySettings = null, HostMetricThresholdAuditDetails? MetricThreshold = null,
     AgentVersionAuditDetails? AgentVersion = null);
 public sealed record AuditFeedPage(AuditFeedSource Source, IReadOnlyList<AuditFeedEntry> Items, int Page, bool HasMore, bool LimitReached);
+public sealed record AuditFeedRequest(AuditFeedSource Source, OperationAuditQuery Query);
 
 public static class AuditFeedLimits
 {

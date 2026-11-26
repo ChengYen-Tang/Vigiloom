@@ -17,7 +17,7 @@ internal sealed record PlatformStatusSnapshot(
 /// <summary>Combines independent, non-secret observations without equating liveness and health.</summary>
 internal sealed class PlatformStatus(
     HealthCheckService checks, SchedulingHealth scheduling, WorkerDiagnosticsStore workers,
-    AgentReceiverMonitoring receiver, Vigiloom.Web.Services.ReceptionManagement telemetry, TimeProvider clock, ILogger<PlatformStatus> logger,
+    IAgentReceiverMonitoring receiver, Vigiloom.Web.Services.ReceptionManagement telemetry, TimeProvider clock, ILogger<PlatformStatus> logger,
     IConfiguration configuration, IServiceProvider services)
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);

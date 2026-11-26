@@ -13,3 +13,11 @@ public sealed record AgentSettingsView(Guid? DeviceId, AgentSettingsOverrides Ov
 
 /// <summary>Optimistic version is empty when the layer has never been saved.</summary>
 public sealed record AgentSettingsUpdate([property: JsonRequired] AgentSettingsOverrides Overrides, [property: JsonRequired] string Version);
+
+public sealed record AgentSettingsCommand(AgentSettingsUpdate Input, Guid Actor);
+
+public interface IAgentSettings
+{
+    Task<AgentSettingsView?> GetAsync(Guid? deviceId, CancellationToken token);
+    Task<AgentSettingsView?> UpdateAsync(Guid? deviceId, AgentSettingsUpdate update, Guid actorId, CancellationToken token);
+}

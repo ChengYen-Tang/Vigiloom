@@ -43,7 +43,19 @@ public sealed record AgentQueueCapacityOverrides([property: JsonRequired] long? 
 public sealed record AgentQueueCapacityView(Guid? DeviceId, AgentQueueCapacityOverrides Overrides, string Version,
     AgentQueueCapacitySnapshot Effective, AgentQueueCapacitySnapshot Inherited);
 public sealed record AgentQueueCapacityUpdate([property: JsonRequired] AgentQueueCapacityOverrides Overrides, [property: JsonRequired] string Version);
+public sealed record AgentQueueCapacityCommand(AgentQueueCapacityUpdate Input, Guid Actor);
+
+public interface IAgentQueueCapacitySettings
+{
+    Task<AgentQueueCapacityView?> GetAsync(Guid? deviceId, CancellationToken token);
+    Task<AgentQueueCapacityView?> UpdateAsync(Guid? deviceId, AgentQueueCapacityUpdate update, Guid actorId, CancellationToken token);
+}
 
 /// <summary>Desired capacity and the latest independently reported applied group.</summary>
 public sealed record AgentQueueCapacityStatus(Guid DeviceId, AgentSettingsApplyState State, AgentQueueCapacitySnapshot Desired,
     AgentQueueCapacitySnapshot? Applied, DateTimeOffset? AppliedAt, DateTimeOffset? ReportedAt, AgentConfigurationFailure? Failure);
+
+public interface IAgentQueueCapacityStatusReader
+{
+    Task<AgentQueueCapacityStatus?> GetAsync(Guid deviceId, CancellationToken token);
+}

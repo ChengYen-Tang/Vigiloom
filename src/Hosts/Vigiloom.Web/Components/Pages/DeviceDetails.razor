@@ -13,9 +13,9 @@
 @using Vigiloom.Modules.AgentManagement.Application
 @inject IDeviceManagement DevicesService
 @inject IPingStatusReader Ping
-@inject AgentMonitoring AgentMonitoring
-@inject AgentSettingsMonitoring AgentSettingsMonitoring
-@inject AgentQueueCapacityMonitoring QueueCapacityMonitoring
+@inject IAgentStatusReader AgentMonitoring
+@inject IAgentSettingsStatusReader AgentSettingsMonitoring
+@inject IAgentQueueCapacityStatusReader QueueCapacityMonitoring
 @inject TimeProvider Clock
 @inject NavigationManager Navigation
 @inject ILogger<DeviceDetails> Logger
