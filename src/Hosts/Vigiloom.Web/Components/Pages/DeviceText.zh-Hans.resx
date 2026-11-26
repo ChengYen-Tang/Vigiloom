@@ -99,4 +99,103 @@
   <data xml:space="preserve" name="第 {0} 頁">
     <value>第 {0} 页</value>
   </data>
+  <data xml:space="preserve" name="編輯設備">
+    <value>编辑设备</value>
+  </data>
+  <data xml:space="preserve" name="← 返回">
+    <value>← 返回</value>
+  </data>
+  <data xml:space="preserve" name="設定設備目標與監控模式；設備預設為私人。">
+    <value>设置设备目标与监控模式；设备默认为私有。</value>
+  </data>
+  <data xml:space="preserve" name="無法載入設備，請確認設備存在且未封存。">
+    <value>无法加载设备，请确认设备存在且未归档。</value>
+  </data>
+  <data xml:space="preserve" name="設備名稱">
+    <value>设备名称</value>
+  </data>
+  <data xml:space="preserve" name="主要 Ping 目標">
+    <value>主要 Ping 目标</value>
+  </data>
+  <data xml:space="preserve" name="IPv4、IPv6 或 DNS 名稱">
+    <value>IPv4、IPv6 或 DNS 名称</value>
+  </data>
+  <data xml:space="preserve" name="額外 Ping 目標（選填，每行一個）">
+    <value>额外 Ping 目标（选填，每行一个）</value>
+  </data>
+  <data xml:space="preserve" name="兩種模式都會 Ping；深入監控需要另外註冊 Agent。">
+    <value>两种模式都会 Ping；深入监控需要另外注册 Agent。</value>
+  </data>
+  <data xml:space="preserve" name="啟用監控">
+    <value>启用监控</value>
+  </data>
+  <data xml:space="preserve" name="儲存後設定公開資訊">
+    <value>保存后设置公开信息</value>
+  </data>
+  <data xml:space="preserve" name="設備先以 Private 建立；下一步可確認公開名稱與範本。">
+    <value>设备先以私有状态创建；下一步可确认公开名称与模板。</value>
+  </data>
+  <data xml:space="preserve" name="部分目標已被其他設備使用：{0}。設備不會自動合併。">
+    <value>部分目标已被其他设备使用：{0}。设备不会自动合并。</value>
+  </data>
+  <data xml:space="preserve" name="仍要使用這些目標">
+    <value>仍要使用这些目标</value>
+  </data>
+  <data xml:space="preserve" name="目標變更會用新目標進行未來量測；設備身分與歷史資料會保留。">
+    <value>目标变更后将使用新目标进行未来测量；设备身份与历史数据会保留。</value>
+  </data>
+  <data xml:space="preserve" name="我了解目標變更的影響">
+    <value>我了解目标变更的影响</value>
+  </data>
+  <data xml:space="preserve" name="儲存設備">
+    <value>保存设备</value>
+  </data>
+  <data xml:space="preserve" name="取消">
+    <value>取消</value>
+  </data>
+  <data xml:space="preserve" name="所屬群組">
+    <value>所属群组</value>
+  </data>
+  <data xml:space="preserve" name="加入或移出設備請到群組頁操作；離開前請先儲存設備的變更。">
+    <value>添加或移出设备请到群组页面操作；离开前请先保存设备的变更。</value>
+  </data>
+  <data xml:space="preserve" name="無法載入所屬群組，請重新整理後再試。">
+    <value>无法加载所属群组，请刷新后重试。</value>
+  </data>
+  <data xml:space="preserve" name="此設備尚未加入群組。">
+    <value>此设备尚未加入群组。</value>
+  </data>
+  <data xml:space="preserve" name="共 {0} 個群組。">
+    <value>共 {0} 个群组。</value>
+  </data>
+  <data xml:space="preserve" name="此頁沒有群組，請回到上一頁。">
+    <value>此页没有群组，请返回上一页。</value>
+  </data>
+  <data xml:space="preserve" name="所屬群組分頁">
+    <value>所属群组分页</value>
+  </data>
+  <data xml:space="preserve" name="管理群組">
+    <value>管理群组</value>
+  </data>
+  <data xml:space="preserve" name="設備已變更或不存在，請重新整理後再試。">
+    <value>设备已变更或不存在，请刷新后重试。</value>
+  </data>
+  <data xml:space="preserve" name="無法確認儲存結果，請返回清單確認後再試。">
+    <value>无法确认保存结果，请返回清单确认后重试。</value>
+  </data>
+  <data xml:space="preserve" name="請重新整理後再試。">
+    <value>请刷新后重试。</value>
+  </data>
+  <data xml:space="preserve" name="請輸入 1 至 256 個字元的設備名稱。">
+    <value>请输入 1 至 256 个字符的设备名称。</value>
+  </data>
+  <data xml:space="preserve" name="請輸入有效的 IPv4、IPv6 或 DNS 名稱。">
+    <value>请输入有效的 IPv4、IPv6 或 DNS 名称。</value>
+  </data>
+  <data xml:space="preserve" name="額外目標最多 16 個。">
+    <value>额外目标最多 16 个。</value>
+  </data>
+  <data xml:space="preserve" name="額外目標須為有效且不重複的 IPv4、IPv6 或 DNS 名稱。">
+    <value>额外目标须为有效且不重复的 IPv4、IPv6 或 DNS 名称。</value>
+  </data>
 </root>

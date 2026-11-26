@@ -85,6 +85,15 @@ public sealed class DeviceManagementTests
             Assert.AreEqual("Test router", invalidDocument.QuerySelector("#device-name")!.GetAttribute("value"));
             Assert.AreEqual("https://invalid.example", invalidDocument.QuerySelector("#device-address")!.GetAttribute("value"));
         }
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var invalid = await admin.PostAsync("/devices/new", new FormUrlEncodedContent(fields), token))
+        {
+            var invalidDocument = await new HtmlParser().ParseDocumentAsync(await invalid.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Enter a valid IPv4, IPv6 or DNS name.", invalidDocument.Body!.TextContent);
+            Assert.AreEqual("Test router", invalidDocument.QuerySelector("#device-name")!.GetAttribute("value"));
+            Assert.AreEqual("https://invalid.example", invalidDocument.QuerySelector("#device-address")!.GetAttribute("value"));
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         fields["Input.Address"] = "EXAMPLE.COM";
         using var create = await admin.PostAsync("/devices/new", new FormUrlEncodedContent(fields), token);
         Assert.AreEqual(HttpStatusCode.Redirect, create.StatusCode, (await new HtmlParser().ParseDocumentAsync(await create.Content.ReadAsStringAsync(token), token)).Body?.TextContent);

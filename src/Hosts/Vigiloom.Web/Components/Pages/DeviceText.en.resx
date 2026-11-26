@@ -99,4 +99,103 @@
   <data xml:space="preserve" name="第 {0} 頁">
     <value>Page {0}</value>
   </data>
+  <data xml:space="preserve" name="編輯設備">
+    <value>Edit device</value>
+  </data>
+  <data xml:space="preserve" name="← 返回">
+    <value>← Back</value>
+  </data>
+  <data xml:space="preserve" name="設定設備目標與監控模式；設備預設為私人。">
+    <value>Configure targets and monitoring mode. Devices are private by default.</value>
+  </data>
+  <data xml:space="preserve" name="無法載入設備，請確認設備存在且未封存。">
+    <value>Unable to load the device. Check that it exists and is not archived.</value>
+  </data>
+  <data xml:space="preserve" name="設備名稱">
+    <value>Device name</value>
+  </data>
+  <data xml:space="preserve" name="主要 Ping 目標">
+    <value>Primary Ping target</value>
+  </data>
+  <data xml:space="preserve" name="IPv4、IPv6 或 DNS 名稱">
+    <value>IPv4, IPv6 or DNS name</value>
+  </data>
+  <data xml:space="preserve" name="額外 Ping 目標（選填，每行一個）">
+    <value>Additional Ping targets (optional, one per line)</value>
+  </data>
+  <data xml:space="preserve" name="兩種模式都會 Ping；深入監控需要另外註冊 Agent。">
+    <value>Both modes use Ping. Host monitoring also requires a registered Agent.</value>
+  </data>
+  <data xml:space="preserve" name="啟用監控">
+    <value>Enable monitoring</value>
+  </data>
+  <data xml:space="preserve" name="儲存後設定公開資訊">
+    <value>Configure public visibility after saving</value>
+  </data>
+  <data xml:space="preserve" name="設備先以 Private 建立；下一步可確認公開名稱與範本。">
+    <value>The device is created as private. You can configure its public name and template next.</value>
+  </data>
+  <data xml:space="preserve" name="部分目標已被其他設備使用：{0}。設備不會自動合併。">
+    <value>Some targets are already used by other devices: {0}. Devices will not be merged automatically.</value>
+  </data>
+  <data xml:space="preserve" name="仍要使用這些目標">
+    <value>Use these targets anyway</value>
+  </data>
+  <data xml:space="preserve" name="目標變更會用新目標進行未來量測；設備身分與歷史資料會保留。">
+    <value>Future measurements will use the new targets. The device identity and history will be retained.</value>
+  </data>
+  <data xml:space="preserve" name="我了解目標變更的影響">
+    <value>I understand the effect of changing targets</value>
+  </data>
+  <data xml:space="preserve" name="儲存設備">
+    <value>Save device</value>
+  </data>
+  <data xml:space="preserve" name="取消">
+    <value>Cancel</value>
+  </data>
+  <data xml:space="preserve" name="所屬群組">
+    <value>Groups</value>
+  </data>
+  <data xml:space="preserve" name="加入或移出設備請到群組頁操作；離開前請先儲存設備的變更。">
+    <value>Manage group membership on the group page. Save device changes before leaving.</value>
+  </data>
+  <data xml:space="preserve" name="無法載入所屬群組，請重新整理後再試。">
+    <value>Unable to load groups. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="此設備尚未加入群組。">
+    <value>This device is not in any groups.</value>
+  </data>
+  <data xml:space="preserve" name="共 {0} 個群組。">
+    <value>Groups: {0}.</value>
+  </data>
+  <data xml:space="preserve" name="此頁沒有群組，請回到上一頁。">
+    <value>No groups on this page. Go to the previous page.</value>
+  </data>
+  <data xml:space="preserve" name="所屬群組分頁">
+    <value>Group pages</value>
+  </data>
+  <data xml:space="preserve" name="管理群組">
+    <value>Manage groups</value>
+  </data>
+  <data xml:space="preserve" name="設備已變更或不存在，請重新整理後再試。">
+    <value>The device changed or no longer exists. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="無法確認儲存結果，請返回清單確認後再試。">
+    <value>Unable to confirm the save result. Check the device list before retrying.</value>
+  </data>
+  <data xml:space="preserve" name="請重新整理後再試。">
+    <value>Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="請輸入 1 至 256 個字元的設備名稱。">
+    <value>Enter a device name of 1 to 256 characters.</value>
+  </data>
+  <data xml:space="preserve" name="請輸入有效的 IPv4、IPv6 或 DNS 名稱。">
+    <value>Enter a valid IPv4, IPv6 or DNS name.</value>
+  </data>
+  <data xml:space="preserve" name="額外目標最多 16 個。">
+    <value>At most 16 additional targets are allowed.</value>
+  </data>
+  <data xml:space="preserve" name="額外目標須為有效且不重複的 IPv4、IPv6 或 DNS 名稱。">
+    <value>Additional targets must be valid and distinct IPv4, IPv6 or DNS names.</value>
+  </data>
 </root>
