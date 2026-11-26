@@ -111,6 +111,11 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 1, null), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
             Assert.AreEqual(epoch, (await client.GetFromJsonAsync<AgentQueueSession>("/api/v1/agent/queue-session", token))!.Epoch);
+            var command = new AgentSettingsCommand(new AgentSettingsUpdate(new AgentSettingsOverrides(90, null, null), ""), Guid.CreateVersion7());
+            using (var updated = await client.PostAsJsonAsync($"/internal/v1/agent-settings/devices/{identity.DeviceId:D}", command, token))
+                Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
+            using (var effective = await client.GetAsync("/api/v1/agent/settings", token))
+                Assert.AreEqual(90, (await effective.Content.ReadFromJsonAsync<AgentSettingsSnapshot>(cancellationToken: token))!.Settings.HeartbeatSeconds);
             client.DefaultRequestHeaders.Authorization = null;
             var nowUtc = DateTimeOffset.UtcNow;
             var metric = new AgentMetricPoint(Guid.CreateVersion7(), nowUtc, AgentMetricKind.CpuTotalPercent, "cpu", null, 25);
