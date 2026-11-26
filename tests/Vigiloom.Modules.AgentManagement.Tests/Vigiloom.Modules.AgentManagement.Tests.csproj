@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.AgentManagement/Vigiloom.Modules.AgentManagement.csproj" />
+    <ProjectReference Include="../../src/Hosts/Vigiloom.Migrator/Vigiloom.Migrator.csproj" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.Resources/Vigiloom.Modules.Resources.csproj" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.AlertingOperations/Vigiloom.Modules.AlertingOperations.csproj" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.SecurityAnalysis/Vigiloom.Modules.SecurityAnalysis.csproj" />
