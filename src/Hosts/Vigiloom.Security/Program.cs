@@ -149,7 +149,9 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
     builder.Services.AddScoped(provider => new OutboxWriter([provider.GetRequiredService<TemporalOutboxHandler>()]));
     builder.Services.AddScoped<ISigmaCatalog, SigmaCatalog>();
     builder.Services.AddHostDetection();
-    builder.Services.AddScoped<INotificationWriter, TemporalNotificationWriter>();
+    builder.Services.AddScoped<INotificationWriter>(services =>
+        new TemporalNotificationWriter(new OutboxWriter([services.GetRequiredService<TemporalOutboxHandler>()], maxPayloadLength: null),
+            services.GetRequiredService<IConfiguration>()));
     builder.Services.AddVigiloomTemporalWorker<SecurityWorkHandler>(builder.Configuration["Work:SecurityQueue"] ?? "vigiloom.security.agent");
     builder.Services.AddVigiloomTemporalWorker<SecurityWorkHandler>(builder.Configuration["Work:SecurityLogQueue"] ?? "vigiloom.security.logs");
     builder.Services.AddScoped<IYaraScanNotifier, YaraScanNotifier>();
