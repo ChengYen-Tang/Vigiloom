@@ -71,6 +71,19 @@ public sealed class TwoFactorHttpTests
             Assert.AreEqual(HttpStatusCode.Redirect, login.StatusCode);
             Assert.IsNotNull(login.Headers.Location);
             var challenge = login.Headers.Location.PathAndQuery;
+            client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var page = await client.GetAsync(challenge, token))
+            {
+                var document = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("Two-factor authentication", document.Body!.TextContent);
+                Assert.Contains("Sign in with a recovery code", document.Body.TextContent);
+            }
+            using (var empty = await Post(challenge, recovery ? "recovery-login" : "totp-login",
+                recovery ? "RecoveryInput.Code" : "TotpInput.Code", ""))
+            {
+                var document = await new HtmlParser().ParseDocumentAsync(await empty.Content.ReadAsStringAsync(token), token);
+                Assert.Contains("Enter a code.", document.Body!.TextContent);
+            }
             var invalid = validCode == "000000" ? "111111" : "000000";
             for (var attempt = 0; attempt < 5; attempt++)
             {
