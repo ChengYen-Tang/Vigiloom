@@ -4,8 +4,14 @@ using Microsoft.AspNetCore.SignalR;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.HostMonitoring;
 using Vigiloom.Infrastructure.Work;
+using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Modules.AgentManagement.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddModuleSqlServer<HostMonitoringDbContext>(services =>
+    services.GetRequiredService<IConfiguration>().GetConnectionString("HostMonitoring")
+        ?? throw new InvalidOperationException("ConnectionStrings:HostMonitoring is required."),
+    "agent", pooled: true, migrationHistory: HostMonitoringDbContext.MigrationHistory);
 builder.Services.AddServiceDiscovery();
 builder.Services.AddHttpClient("resources", (services, client) =>
 {
