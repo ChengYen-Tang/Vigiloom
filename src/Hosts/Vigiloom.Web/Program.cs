@@ -121,6 +121,10 @@ builder.Services.AddHttpClient<Vigiloom.Modules.AlertingOperations.Application.L
 builder.Services.AddScoped<Vigiloom.Infrastructure.Scheduling.Outbox.IOutboxHandler, Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryHandler>();
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryQueue>();
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryStatus>();
+builder.Services.AddScoped<Vigiloom.Web.Operations.LineManagement>();
+builder.Services.AddHttpClient<Vigiloom.Web.Operations.RemoteLine>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddVigiloomIdentity();
 builder.Services.AddScoped<AccountLogin>();
 builder.Services.AddScoped<CredentialManagement>();
@@ -185,6 +189,13 @@ builder.Services.AddScoped<IGroupManagement>(services =>
         ? services.GetRequiredService<GroupManagement>()
         : services.GetRequiredService<Vigiloom.Web.Groups.RemoteGroupManagement>());
 builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineReader>();
+builder.Services.AddScoped<Vigiloom.Web.Operations.AuditQueryReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Operations.RemoteAuditQuery>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<Vigiloom.Web.Events.RemoteTimelineReader>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineAudit>();
 builder.Services.AddScoped<ServiceMembership>();
 builder.Services.AddHttpClient<RemoteServiceMembership>((services, client) =>
@@ -344,7 +355,11 @@ builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IKevCatalog, Vigiloom
 builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IAdvisoryCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories.AdvisoryCatalog>();
 builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.ISigmaCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma.SigmaCatalog>();
 builder.Services.AddHostDetection();
-builder.Services.AddScoped<Vigiloom.Contracts.Notifications.INotificationReader, Vigiloom.Modules.AlertingOperations.Application.NotificationReader>();
+builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.NotificationReader>();
+builder.Services.AddScoped<Vigiloom.Contracts.Notifications.INotificationReader, Vigiloom.Web.Operations.OperationsNotificationReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Operations.RemoteNotificationReader>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IBaselineSource, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines.BaselineSource>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePolicy>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePublication>();
@@ -370,6 +385,10 @@ builder.Services.AddScoped<InventoryChangeQuery>();
 builder.Services.AddScoped<AgentReceiverMonitoring>();
 builder.Services.AddScoped<WorkerDiagnosticsStore>();
 builder.Services.AddScoped<PlatformStatus>();
+builder.Services.AddScoped<Vigiloom.Web.Diagnostics.JobOverview>();
+builder.Services.AddHttpClient<Vigiloom.Web.Diagnostics.RemoteJobOverview>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingRetentionSettings>();

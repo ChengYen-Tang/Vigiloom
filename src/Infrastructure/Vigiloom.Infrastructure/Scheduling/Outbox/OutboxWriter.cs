@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 namespace Vigiloom.Infrastructure.Scheduling.Outbox;
 
 /// <summary>Appends a message to the same SQL transaction as its owning module's business change.</summary>
-public sealed class OutboxWriter(IEnumerable<IOutboxHandler> handlers)
+public sealed class OutboxWriter(IEnumerable<IOutboxHandler> handlers, int? maxPayloadLength = 16384)
 {
     private readonly HashSet<string> messageTypes = handlers.Select(handler => handler.MessageType).ToHashSet(StringComparer.Ordinal);
 
@@ -31,8 +31,8 @@ public sealed class OutboxWriter(IEnumerable<IOutboxHandler> handlers)
             throw new ArgumentException("MessageId must be a UUID v7.", nameof(message));
         if (!messageTypes.Contains(message.MessageType) || message.MessageType.Length > 128)
             throw new ArgumentException("The message type must have a registered handler.", nameof(message));
-        if (string.IsNullOrWhiteSpace(message.Payload) || message.Payload.Length > 16384)
-            throw new ArgumentException("The JSON payload must be between 1 and 16384 characters.", nameof(message));
+        if (string.IsNullOrWhiteSpace(message.Payload) || maxPayloadLength is { } limit && message.Payload.Length > limit)
+            throw new ArgumentException("The JSON payload is empty or exceeds its configured limit.", nameof(message));
         using var json = JsonDocument.Parse(message.Payload);
         if (connection.State != ConnectionState.Open || transaction.Connection != connection)
             throw new ArgumentException("An open connection and its active business transaction are required.", nameof(transaction));

@@ -16,6 +16,8 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Microsoft.Extensions.Hosting;
 using Hangfire;
 using Vigiloom.Infrastructure.Scheduling;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Infrastructure.Work;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Retention;
 using Vigiloom.Contracts.Resources;
@@ -118,7 +120,15 @@ public static class WorkerHost
         builder.Services.AddScoped<InventoryExpiry>();
         builder.Services.AddScoped<IntelligenceRefresh>();
         builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingTransitionSink, Vigiloom.Modules.AlertingOperations.Application.PingAlertSink>();
-        builder.Services.AddScoped<Vigiloom.Contracts.Notifications.INotificationWriter, Vigiloom.Modules.AlertingOperations.Application.NotificationWriter>();
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Operations:Url"]))
+            builder.Services.AddScoped<Vigiloom.Contracts.Notifications.INotificationWriter, Vigiloom.Modules.AlertingOperations.Application.NotificationWriter>();
+        else
+        {
+            builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233", builder.Configuration["Temporal:Namespace"] ?? "default");
+            builder.Services.AddScoped<TemporalOutboxHandler>();
+            builder.Services.AddScoped<Vigiloom.Contracts.Notifications.INotificationWriter>(services =>
+                new TemporalNotificationWriter(new OutboxWriter([services.GetRequiredService<TemporalOutboxHandler>()], maxPayloadLength: null), services.GetRequiredService<IConfiguration>()));
+        }
         builder.Services.AddSingleton<Vigiloom.Contracts.Resources.IServiceGroupSource, Vigiloom.Modules.Resources.Application.ServiceGroupSource>();
         builder.Services.AddSingleton<Vigiloom.Contracts.Services.IHealthTransitionSink, Vigiloom.Modules.AlertingOperations.Application.ServiceHealthAlertSink>();
         builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligencePublication>();
