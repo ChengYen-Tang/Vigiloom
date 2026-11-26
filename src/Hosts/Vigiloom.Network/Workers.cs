@@ -7,7 +7,7 @@ using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 
 namespace Vigiloom.Network;
 
-internal abstract class PollingWorker<T>(IServiceScopeFactory scopes, ILogger logger, TimeSpan interval) : BackgroundService where T : notnull
+internal abstract class PollingWorker<T>(IServiceScopeFactory scopes, ILogger logger, TimeSpan interval, NetworkDiagnostics? diagnostics = null, bool isPing = false) : BackgroundService where T : notnull
 {
     protected abstract Task RunAsync(T worker, CancellationToken token);
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -19,18 +19,19 @@ internal abstract class PollingWorker<T>(IServiceScopeFactory scopes, ILogger lo
             {
                 await using var scope = scopes.CreateAsyncScope();
                 await RunAsync(scope.ServiceProvider.GetRequiredService<T>(), stoppingToken);
+                diagnostics?.Record(isPing, null);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception error) { logger.LogWarning(error, "Network worker {Worker} failed; retrying.", typeof(T).Name); }
+            catch (Exception error) { diagnostics?.Record(isPing, error); logger.LogWarning(error, "Network worker {Worker} failed; retrying.", typeof(T).Name); }
         } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 }
 
-internal sealed class PingWorker(IServiceScopeFactory scopes, ILogger<PingWorker> logger) : PollingWorker<PingRunner>(scopes, logger, TimeSpan.FromSeconds(1))
+internal sealed class PingWorker(IServiceScopeFactory scopes, ILogger<PingWorker> logger, NetworkDiagnostics diagnostics) : PollingWorker<PingRunner>(scopes, logger, TimeSpan.FromSeconds(1), diagnostics, true)
 {
     protected override Task RunAsync(PingRunner worker, CancellationToken token) => worker.RunOnceAsync(token);
 }
-internal sealed class SpeedWorker(IServiceScopeFactory scopes, ILogger<SpeedWorker> logger) : PollingWorker<SpeedRunner>(scopes, logger, TimeSpan.FromSeconds(1))
+internal sealed class SpeedWorker(IServiceScopeFactory scopes, ILogger<SpeedWorker> logger, NetworkDiagnostics diagnostics) : PollingWorker<SpeedRunner>(scopes, logger, TimeSpan.FromSeconds(1), diagnostics)
 {
     protected override Task RunAsync(SpeedRunner worker, CancellationToken token) => worker.RunOnceAsync(token);
 }

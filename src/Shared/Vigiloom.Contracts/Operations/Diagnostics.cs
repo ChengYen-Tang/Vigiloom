@@ -6,3 +6,4 @@ public sealed record ScannerDiagnosticInfo(DateTimeOffset? LastSuccess, DateTime
 public sealed record WorkerDiagnosticInfo(Guid BootId, DateTimeOffset? ObservedAt, DateTimeOffset? LeaseUntil,
     ScannerDiagnosticInfo Ping, ScannerDiagnosticInfo Speed);
 public sealed record WorkerDiagnosticsInfo(DateTimeOffset ObservedAt, IReadOnlyList<WorkerDiagnosticInfo> Workers);
+public sealed record NetworkDiagnosticUpdate(Guid BootId, ScannerDiagnosticInfo Ping, ScannerDiagnosticInfo Speed);

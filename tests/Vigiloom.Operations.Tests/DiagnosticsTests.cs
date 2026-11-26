@@ -42,12 +42,7 @@ public sealed class DiagnosticsTests(TestContext context)
             }
             var operationsFactory = provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
             await using (var db = await operationsFactory.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-            var workerStore = new WorkerDiagnosticsStore(operationsFactory);
             var bootId = Guid.CreateVersion7();
-            var slot = await workerStore.ClaimAsync(bootId, token);
-            Assert.IsNotNull(slot);
-            Assert.IsTrue(await workerStore.UpdateAsync(slot.Value, bootId,
-                new WorkerObservation(new ScannerObservation(DateTimeOffset.UtcNow, null, 0), new ScannerObservation(null, DateTimeOffset.UtcNow, 2, ScannerFailureKind.Timeout)), token));
             await HangfireSchemaInstaller.InstallAsync(scheduling.ConnectionString, token);
             await using (var connection = new SqlConnection(scheduling.ConnectionString))
             {
@@ -65,6 +60,16 @@ public sealed class DiagnosticsTests(TestContext context)
                 web.ConfigureTestServices(HostWorkers.RemoveBackgroundWork);
             });
             using var client = host.CreateClient();
+            using var sent = await client.PostAsJsonAsync("/internal/v1/diagnostics/workers", new NetworkDiagnosticUpdate(bootId,
+                new(DateTimeOffset.UtcNow, null, 0, ScannerDiagnosticFailure.None), new(null, DateTimeOffset.UtcNow, 2, ScannerDiagnosticFailure.Timeout)), token);
+            sent.EnsureSuccessStatusCode();
+            var secondBoot = Guid.CreateVersion7();
+            using var second = await client.PostAsJsonAsync("/internal/v1/diagnostics/workers", new NetworkDiagnosticUpdate(secondBoot,
+                new(DateTimeOffset.UtcNow, null, 0, ScannerDiagnosticFailure.None), new(null, null, 0, ScannerDiagnosticFailure.None)), token);
+            second.EnsureSuccessStatusCode();
+            using var updated = await client.PostAsJsonAsync("/internal/v1/diagnostics/workers", new NetworkDiagnosticUpdate(bootId,
+                new(DateTimeOffset.UtcNow, null, 0, ScannerDiagnosticFailure.None), new(null, DateTimeOffset.UtcNow, 2, ScannerDiagnosticFailure.Timeout)), token);
+            updated.EnsureSuccessStatusCode();
             var overview = await client.GetFromJsonAsync<WorkOverview>("/internal/v1/diagnostics/jobs", token);
             Assert.IsNotNull(overview);
             Assert.AreEqual(1, overview.PendingMessages);
@@ -73,9 +78,14 @@ public sealed class DiagnosticsTests(TestContext context)
             Assert.HasCount(1, heartbeat!.Values);
             Assert.IsNotNull(heartbeat.Values[0]);
             var workers = await client.GetFromJsonAsync<WorkerDiagnosticsInfo>("/internal/v1/diagnostics/workers", token);
-            Assert.HasCount(1, workers!.Workers);
-            Assert.AreEqual(bootId, workers.Workers[0].BootId);
-            Assert.AreEqual(2, workers.Workers[0].Speed.ConsecutiveFailures);
-            Assert.AreEqual(ScannerDiagnosticFailure.Timeout, workers.Workers[0].Speed.FailureKind);
+            Assert.HasCount(2, workers!.Workers);
+            var actual = workers.Workers.Single(item => item.BootId == bootId);
+            Assert.AreEqual(2, actual.Speed.ConsecutiveFailures);
+            Assert.AreEqual(ScannerDiagnosticFailure.Timeout, actual.Speed.FailureKind);
+            await using (var db = await operationsFactory.CreateDbContextAsync(token))
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [operations].[NetworkDiagnostics] SET [LeaseUntil] = DATEADD(second, -1, SYSDATETIMEOFFSET()) WHERE [Id] = {secondBoot}", token);
+            Assert.AreEqual(1, await new NetworkDiagnosticsStore(operationsFactory).CleanupExpiredAsync(token));
+            workers = await client.GetFromJsonAsync<WorkerDiagnosticsInfo>("/internal/v1/diagnostics/workers", token);
+            Assert.AreEqual(bootId, Assert.ContainsSingle(workers!.Workers).BootId);
         }, outerToken), context.CancellationToken);
 }

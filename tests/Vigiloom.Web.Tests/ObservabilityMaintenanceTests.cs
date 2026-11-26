@@ -57,8 +57,18 @@ public sealed class ObservabilityMaintenanceTests(TestContext context)
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             var path = request.RequestUri!.AbsolutePath;
-            Assert.IsTrue(path is "/internal/v1/application-logs/cleanup" or "/internal/v1/legacy-host-logs/cleanup");
+            Assert.IsTrue(path is "/internal/v1/application-logs/cleanup" or "/internal/v1/legacy-host-logs/cleanup" or "/internal/v1/timeline/health-cleanup" or "/internal/v1/timeline/trace-cleanup");
             var input = await request.Content!.ReadFromJsonAsync<ApplicationLogCleanupRequest>(cancellationToken: token);
+            if (path.EndsWith("timeline/trace-cleanup", StringComparison.Ordinal))
+            {
+                Assert.AreEqual(7, input!.RetentionDays);
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(0) };
+            }
+            if (path.EndsWith("timeline/health-cleanup", StringComparison.Ordinal))
+            {
+                Assert.AreEqual(365, input!.RetentionDays);
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(0) };
+            }
             Assert.AreEqual(45, input!.RetentionDays);
             if (path.EndsWith("legacy-host-logs/cleanup", StringComparison.Ordinal))
             {

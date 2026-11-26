@@ -5,6 +5,7 @@
     <Compile Include="../Fixtures/SpeedTests/ControlledPhaseTransport.cs" Link="Fixtures/ControlledPhaseTransport.cs" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.NetworkMonitoring/Vigiloom.Modules.NetworkMonitoring.csproj" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Network/Vigiloom.Network.csproj" Aliases="NetworkHost" />
+    <ProjectReference Include="../../src/Hosts/Vigiloom.Operations/Vigiloom.Operations.csproj" Aliases="OperationsHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Gateway/Vigiloom.Gateway.csproj" Aliases="GatewayHost" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.Resources/Vigiloom.Modules.Resources.csproj" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.AlertingOperations/Vigiloom.Modules.AlertingOperations.csproj" />
