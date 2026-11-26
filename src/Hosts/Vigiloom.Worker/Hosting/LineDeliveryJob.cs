@@ -4,21 +4,15 @@ using Vigiloom.Modules.AlertingOperations.Application.Line;
 
 namespace Vigiloom.Worker.Hosting;
 
-internal sealed class LineDeliveryJob(LineDeliveryQueue queue, IConfiguration configuration)
+internal sealed class LineDeliveryJob(LineDeliveryQueue queue)
 {
-    public Task RunAsync(CancellationToken token) => string.IsNullOrWhiteSpace(configuration["Services:Operations:Url"])
-        ? queue.EnqueueNewAsync(token) : Task.CompletedTask;
+    public Task RunAsync(CancellationToken token) => queue.EnqueueNewAsync(token);
 }
 
-internal sealed class LineDeliverySchedule(IRecurringJobManager jobs, IConfiguration configuration) : IHostedService
+internal sealed class LineDeliverySchedule(IRecurringJobManager jobs) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(configuration["Services:Operations:Url"]))
-        {
-            jobs.RemoveIfExists("vigiloom-line-delivery");
-            return Task.CompletedTask;
-        }
         jobs.AddOrUpdate("vigiloom-line-delivery", Job.FromExpression<LineDeliveryJob>(job => job.RunAsync(CancellationToken.None)),
             Cron.Minutely(), new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
         return Task.CompletedTask;
