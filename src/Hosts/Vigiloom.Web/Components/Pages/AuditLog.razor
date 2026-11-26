@@ -55,7 +55,7 @@
     {
         <section class="audit-panel" aria-labelledby="audit-results-title">
             <h2 id="audit-results-title">@L["查詢結果"]</h2>
-            <p>此來源收錄成功儲存的@(sourceText switch { "audit-retention" => "操作紀錄保存設定", "host-metric-retention" => "主機效能資料保存設定", "telemetry-retention" => "應用服務資料保存設定", "ping" => " Ping 設定", "agent-replay" => " Agent 補送政策", "agent-inbox" => " Agent 收據保存及清理啟用", "agent-packages" => " Agent 套件來源、信任初始化及清單刷新", "service-approvals" => "服務核准", "service-sources" => "服務來源憑證", "groups" => "群組操作", "publications" => "公開設定", "instance-policy" => "執行個體容量設定", "log-quota" => "Log 配額設定", "trace-quota" => "Trace 配額設定", "service-instances" => "執行個體操作", "service-collections" => "服務收集操作", "health-targets" => "健康檢查設定", "health-networks" => "健康檢查網段", "collectors" => "Collector 管理", "intelligence" => "情報與安全基準", "events" => "事件查詢與匯出", "line" => " LINE 通知設定", _ => "網路測速設定" })紀錄。其他來源可由上方選擇。</p>
+            <p>@L["此來源收錄成功儲存的 {0} 紀錄。其他來源可由上方選擇。", L[sourceText switch { "audit-retention" => "操作紀錄保存設定", "host-metric-retention" => "主機效能資料保存設定", "telemetry-retention" => "應用服務資料保存設定", "ping" => " Ping 設定", "agent-replay" => " Agent 補送政策", "agent-inbox" => " Agent 收據保存及清理啟用", "agent-packages" => " Agent 套件來源、信任初始化及清單刷新", "service-approvals" => "服務核准", "service-sources" => "服務來源憑證", "groups" => "群組操作", "publications" => "公開設定", "instance-policy" => "執行個體容量設定", "log-quota" => "Log 配額設定", "trace-quota" => "Trace 配額設定", "service-instances" => "執行個體操作", "service-collections" => "服務收集操作", "health-targets" => "健康檢查設定", "health-networks" => "健康檢查網段", "collectors" => "Collector 管理", "intelligence" => "情報與安全基準", "events" => "事件查詢與匯出", "line" => " LINE 通知設定", _ => "網路測速設定" }].Value]</p>
             @if (actorLookupFailed) { <p role="status">@L["目前無法取得帳號名稱，改以帳號 ID 顯示。"]</p> }
             @if (result.Items.Count == 0) { <p>@(result.Page > 1 ? L["此頁沒有紀錄，請返回上一頁。"].Value : L["此日期範圍沒有稽核紀錄。"].Value)</p> }
             else
@@ -68,7 +68,7 @@
                             <td>@entry.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
                             <td>@Actor(entry.ActorId)</td>
                             <td><span class="audit-badge audit-badge-action">@L[Operation(entry)]</span></td>
-                            <td>@(entry.EventTimeline is not null || entry.EventEvidence is not null ? "事件中心" : entry.TelemetryRetention is not null ? "應用服務資料保存" : entry.HostMetricRetention is not null ? "主機效能資料保存" : entry.AuditRetention is not null ? "操作紀錄保存" : entry.LineSettings is not null ? "LINE 通知" : entry.BaselineException is not null ? "安全基準" : (entry.IntelligenceRevision is not null || entry.IntelligenceRevocation is not null || entry.IntelligenceOfflineImport is not null || entry.IntelligencePolicy is not null || entry.AdvisoryImport is not null || entry.AdvisoryCredential is not null) ? "情報來源" : entry.PublicationTemplate is not null ? "公開範本" : entry.Publication is not null ? "公開設定" : entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.SpeedRetention is not null ? "測速保存期限" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.AgentInboxSettings is not null || entry.AgentInboxActivation is not null ? "Agent 收據保存" : entry.AgentPackageSource is not null || entry.AgentPackageCatalogue is not null || entry.AgentPackageTrust is not null ? "Agent 套件管理" : entry.HealthNetworkPolicy is not null ? "健康檢查網段" : entry.HealthTarget is not null ? "健康檢查" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.LogQuota is not null ? "Log 配額" : entry.TraceQuota is not null ? "Trace 配額" : entry.DeploymentLink is not null ? "部署關聯" : entry.ServiceInstance is not null ? "服務執行個體" : entry.Collector is not null ? "Collector" : "未知")@if (entry.IntelligenceRevision is not null || entry.IntelligenceRevocation is not null || entry.IntelligenceOfflineImport is not null || entry.IntelligencePolicy is not null || entry.AdvisoryImport is not null || entry.AdvisoryCredential is not null) { <div>@entry.ResourceId</div> }</td>
+                            <td>@L[entry.EventTimeline is not null || entry.EventEvidence is not null ? "事件中心" : entry.TelemetryRetention is not null ? "應用服務資料保存" : entry.HostMetricRetention is not null ? "主機效能資料保存" : entry.AuditRetention is not null ? "操作紀錄保存" : entry.LineSettings is not null ? "LINE 通知" : entry.BaselineException is not null ? "安全基準" : (entry.IntelligenceRevision is not null || entry.IntelligenceRevocation is not null || entry.IntelligenceOfflineImport is not null || entry.IntelligencePolicy is not null || entry.AdvisoryImport is not null || entry.AdvisoryCredential is not null) ? "情報來源" : entry.PublicationTemplate is not null ? "公開範本" : entry.Publication is not null ? "公開設定" : entry.PingSettings is not null ? "Ping 設定" : entry.SpeedSettings is not null ? "網路測速設定" : entry.SpeedRetention is not null ? "測速保存期限" : entry.AgentReplayPolicy is not null ? "Agent 補送政策" : entry.AgentInboxSettings is not null || entry.AgentInboxActivation is not null ? "Agent 收據保存" : entry.AgentPackageSource is not null || entry.AgentPackageCatalogue is not null || entry.AgentPackageTrust is not null ? "Agent 套件管理" : entry.HealthNetworkPolicy is not null ? "健康檢查網段" : entry.HealthTarget is not null ? "健康檢查" : entry.ServiceApproval is not null || entry.ServiceCollection is not null ? "應用服務" : entry.ServiceSource is not null ? "服務來源" : entry.Group is not null ? "群組" : entry.InstancePolicy is not null ? "執行個體容量" : entry.LogQuota is not null ? "Log 配額" : entry.TraceQuota is not null ? "Trace 配額" : entry.DeploymentLink is not null ? "部署關聯" : entry.ServiceInstance is not null ? "服務執行個體" : entry.Collector is not null ? "Collector" : "未知"]@if (entry.IntelligenceRevision is not null || entry.IntelligenceRevocation is not null || entry.IntelligenceOfflineImport is not null || entry.IntelligencePolicy is not null || entry.AdvisoryImport is not null || entry.AdvisoryCredential is not null) { <div>@entry.ResourceId</div> }</td>
                             <td>
                                 @if (entry.EventEvidence is { } evidenceAccess)
                                 {
@@ -82,151 +82,151 @@
                                 }
                                 else if (entry.TelemetryRetention is { } telemetryRetention)
                                 {
-                                    <div>應用與主機 Logs 保存：@telemetryRetention.PreviousLogDays → @telemetryRetention.CurrentLogDays 天</div>
-                                    <div>應用 Traces 保存：@telemetryRetention.PreviousTraceDays → @telemetryRetention.CurrentTraceDays 天</div>
+                                    <div>@L["應用與主機 Logs 保存：{0} → {1} 天", telemetryRetention.PreviousLogDays, telemetryRetention.CurrentLogDays]</div>
+                                    <div>@L["應用 Traces 保存：{0} → {1} 天", telemetryRetention.PreviousTraceDays, telemetryRetention.CurrentTraceDays]</div>
                                     @if (telemetryRetention.PreviousMetricRawDays is not null)
                                     {
-                                        <div>應用指標原始資料保存：@telemetryRetention.PreviousMetricRawDays → @telemetryRetention.CurrentMetricRawDays 天</div>
-                                        <div>應用指標五分鐘彙總保存：@telemetryRetention.PreviousMetricRollupDays → @telemetryRetention.CurrentMetricRollupDays 天</div>
+                                        <div>@L["應用指標原始資料保存：{0} → {1} 天", telemetryRetention.PreviousMetricRawDays?.ToString() ?? "", telemetryRetention.CurrentMetricRawDays?.ToString() ?? ""]</div>
+                                        <div>@L["應用指標五分鐘彙總保存：{0} → {1} 天", telemetryRetention.PreviousMetricRollupDays?.ToString() ?? "", telemetryRetention.CurrentMetricRollupDays?.ToString() ?? ""]</div>
                                     }
                                     @if (telemetryRetention.PreviousHealthDays is not null)
                                     {
-                                        <div>服務健康歷史保存：@telemetryRetention.PreviousHealthDays → @telemetryRetention.CurrentHealthDays 天</div>
+                                        <div>@L["服務健康歷史保存：{0} → {1} 天", telemetryRetention.PreviousHealthDays?.ToString() ?? "", telemetryRetention.CurrentHealthDays?.ToString() ?? ""]</div>
                                     }
-                                    <details><summary>版本資訊</summary><span>@telemetryRetention.PreviousVersion → @telemetryRetention.CurrentVersion</span></details>
+                                    <details><summary>@L["版本資訊"]</summary><span>@telemetryRetention.PreviousVersion → @telemetryRetention.CurrentVersion</span></details>
                                 }
                                 else if (entry.HostMetricRetention is { } metricRetention)
                                 {
-                                    <div>原始樣本保存：@metricRetention.PreviousRawDays → @metricRetention.CurrentRawDays 天</div>
-                                    <div>五分鐘彙總保存：@metricRetention.PreviousRollupDays → @metricRetention.CurrentRollupDays 天</div>
-                                    <details><summary>版本資訊</summary><span>@metricRetention.PreviousVersion → @metricRetention.CurrentVersion</span></details>
+                                    <div>@L["原始樣本保存：{0} → {1} 天", metricRetention.PreviousRawDays, metricRetention.CurrentRawDays]</div>
+                                    <div>@L["五分鐘彙總保存：{0} → {1} 天", metricRetention.PreviousRollupDays, metricRetention.CurrentRollupDays]</div>
+                                    <details><summary>@L["版本資訊"]</summary><span>@metricRetention.PreviousVersion → @metricRetention.CurrentVersion</span></details>
                                 }
                                 else if (entry.AuditRetention is { } auditRetention)
                                 {
-                                    <div>操作紀錄保存：@auditRetention.PreviousDays → @auditRetention.CurrentDays 天（目前亦適用於告警與通知）</div>
-                                    <details><summary>版本資訊</summary><span>@auditRetention.PreviousVersion → @auditRetention.CurrentVersion</span></details>
+                                    <div>@L["操作紀錄保存：{0} → {1} 天（目前亦適用於告警與通知）", auditRetention.PreviousDays, auditRetention.CurrentDays]</div>
+                                    <details><summary>@L["版本資訊"]</summary><span>@auditRetention.PreviousVersion → @auditRetention.CurrentVersion</span></details>
                                 }
                                 else if (entry.SpeedSettings is { } change)
                                 {
-                                    <div>排程：@Enabled(change.Previous.Automatic) → @Enabled(change.Current.Automatic)</div>
-                                    <div>間隔：@change.Previous.IntervalHours → @change.Current.IntervalHours 小時</div>
-                                    <div>流量：@change.Previous.MaxMiB → @change.Current.MaxMiB MiB</div>
-                                    <div>逾時：@change.Previous.TimeoutSeconds → @change.Current.TimeoutSeconds 秒</div>
-                                    <details><summary>版本資訊</summary><span>@change.PreviousVersion → @change.CurrentVersion</span></details>
+                                    <div>@L["排程：{0} → {1}", L[Enabled(change.Previous.Automatic)].Value, L[Enabled(change.Current.Automatic)].Value]</div>
+                                    <div>@L["間隔：{0} → {1} 小時", change.Previous.IntervalHours, change.Current.IntervalHours]</div>
+                                    <div>@L["流量：{0} → {1} MiB", change.Previous.MaxMiB, change.Current.MaxMiB]</div>
+                                    <div>@L["逾時：{0} → {1} 秒", change.Previous.TimeoutSeconds, change.Current.TimeoutSeconds]</div>
+                                    <details><summary>@L["版本資訊"]</summary><span>@change.PreviousVersion → @change.CurrentVersion</span></details>
                                 }
                                 else if (entry.SpeedRetention is { } retention)
                                 {
-                                    <div>保存期限：@retention.PreviousDays → @retention.CurrentDays 天</div>
-                                    <details><summary>版本資訊</summary><span>@retention.PreviousVersion → @retention.CurrentVersion</span></details>
+                                    <div>@L["保存期限：{0} → {1} 天", retention.PreviousDays, retention.CurrentDays]</div>
+                                    <details><summary>@L["版本資訊"]</summary><span>@retention.PreviousVersion → @retention.CurrentVersion</span></details>
                                 }
                                 else if (entry.PingSettings is { } ping)
                                 {
-                                    <div>間隔：@ping.Previous.IntervalSeconds → @ping.Current.IntervalSeconds 秒</div>
-                                    <div>逾時：@ping.Previous.TimeoutSeconds → @ping.Current.TimeoutSeconds 秒</div>
-                                    <div>失敗門檻：@ping.Previous.FailureThreshold → @ping.Current.FailureThreshold</div>
-                                    <div>成功門檻：@ping.Previous.SuccessThreshold → @ping.Current.SuccessThreshold</div>
-                                    <div>並行上限：@ping.Previous.MaxConcurrency → @ping.Current.MaxConcurrency</div>
+                                    <div>@L["間隔：{0} → {1} 秒", ping.Previous.IntervalSeconds, ping.Current.IntervalSeconds]</div>
+                                    <div>@L["逾時：{0} → {1} 秒", ping.Previous.TimeoutSeconds, ping.Current.TimeoutSeconds]</div>
+                                    <div>@L["失敗門檻：{0} → {1}", ping.Previous.FailureThreshold, ping.Current.FailureThreshold]</div>
+                                    <div>@L["成功門檻：{0} → {1}", ping.Previous.SuccessThreshold, ping.Current.SuccessThreshold]</div>
+                                    <div>@L["並行上限：{0} → {1}", ping.Previous.MaxConcurrency, ping.Current.MaxConcurrency]</div>
                                     @if (ping.Previous.RawRetentionDays is { } oldRaw && ping.Current.RawRetentionDays is { } newRaw && oldRaw != newRaw)
-                                    { <div>原始 Ping 保存：@oldRaw → @newRaw 天</div> }
+                                    { <div>@L["原始 Ping 保存：{0} → {1} 天", oldRaw, newRaw]</div> }
                                     @if (ping.Previous.RollupRetentionDays is { } oldRollup && ping.Current.RollupRetentionDays is { } newRollup && oldRollup != newRollup)
-                                    { <div>Ping 彙總保存：@oldRollup → @newRollup 天</div> }
-                                    <details><summary>版本資訊</summary><span>@(string.IsNullOrEmpty(ping.PreviousVersion) ? "初始設定" : ping.PreviousVersion) → @ping.CurrentVersion</span></details>
+                                    { <div>@L["Ping 彙總保存：{0} → {1} 天", oldRollup, newRollup]</div> }
+                                    <details><summary>@L["版本資訊"]</summary><span>@(string.IsNullOrEmpty(ping.PreviousVersion) ? L["初始設定"].Value : ping.PreviousVersion) → @ping.CurrentVersion</span></details>
                                 }
                                 else if (entry.AgentReplayPolicy is { } replay)
                                 {
-                                    <div>狀態：@ReplayPhase(replay.Previous) → @ReplayPhase(replay.Current)</div>
-                                    <div>過渡期截止（UTC）：@replay.GraceUntil.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</div>
-                                    <details><summary>版本資訊</summary><span>@replay.PreviousVersion → @replay.CurrentVersion</span></details>
+                                    <div>@L["狀態：{0} → {1}", L[ReplayPhase(replay.Previous)].Value, L[ReplayPhase(replay.Current)].Value]</div>
+                                    <div>@L["過渡期截止（UTC）："]@replay.GraceUntil.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</div>
+                                    <details><summary>@L["版本資訊"]</summary><span>@replay.PreviousVersion → @replay.CurrentVersion</span></details>
                                 }
                                 else if (entry.AgentInboxSettings is { } inbox)
                                 {
-                                    <div>重送期限：@inbox.PreviousReplaySeconds → @inbox.CurrentReplaySeconds 秒</div>
-                                    <div>收據保存：@inbox.PreviousRetentionDays → @inbox.CurrentRetentionDays 天</div>
-                                    <details><summary>版本資訊</summary><span>@inbox.PreviousVersion → @inbox.CurrentVersion</span></details>
+                                    <div>@L["重送期限：{0} → {1} 秒", inbox.PreviousReplaySeconds, inbox.CurrentReplaySeconds]</div>
+                                    <div>@L["收據保存：{0} → {1} 天", inbox.PreviousRetentionDays, inbox.CurrentRetentionDays]</div>
+                                    <details><summary>@L["版本資訊"]</summary><span>@inbox.PreviousVersion → @inbox.CurrentVersion</span></details>
                                 }
                                 else if (entry.AgentInboxActivation is { } activation)
                                 {
-                                    <div>收據清理已啟用</div>
-                                    <div>舊收據保護至（UTC）：@activation.LegacyRetainUntil.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</div>
-                                    <details><summary>版本資訊</summary><span>@activation.PreviousVersion → @activation.CurrentVersion</span></details>
+                                    <div>@L["收據清理已啟用"]</div>
+                                    <div>@L["舊收據保護至（UTC）："]@activation.LegacyRetainUntil.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</div>
+                                    <details><summary>@L["版本資訊"]</summary><span>@activation.PreviousVersion → @activation.CurrentVersion</span></details>
                                 }
                                 else if (entry.AgentPackageSource is { } source)
                                 {
-                                    <div>來源網址：@(source.AddressChanged ? "已變更" : "未變更")</div>
-                                    <div>來源憑證：@(source.CredentialChanged ? "已變更" : "未變更")</div>
-                                    <details><summary>版本資訊</summary><span>@source.PreviousVersion → @source.CurrentVersion</span></details>
+                                    <div>@L["來源網址："]@(source.AddressChanged ? L["已變更"].Value : L["未變更"].Value)</div>
+                                    <div>@L["來源憑證："]@(source.CredentialChanged ? L["已變更"].Value : L["未變更"].Value)</div>
+                                    <details><summary>@L["版本資訊"]</summary><span>@source.PreviousVersion → @source.CurrentVersion</span></details>
                                 }
                                 else if (entry.AgentPackageCatalogue is { } catalogue)
                                 {
-                                    <div>已驗證套件：@catalogue.PackageCount 個</div>
-                                    <details><summary>版本資訊</summary><span>@catalogue.SourceVersion</span></details>
+                                    <div>@L["已驗證套件：{0} 個", catalogue.PackageCount]</div>
+                                    <details><summary>@L["版本資訊"]</summary><span>@catalogue.SourceVersion</span></details>
                                 }
                                 else if (entry.AgentPackageTrust is { } trust)
                                 {
-                                    <div>信任根版本：@trust.RootVersion</div>
+                                    <div>@L["信任根版本："]@trust.RootVersion</div>
                                     <details><summary>SHA-256 指紋</summary><span>@trust.Sha256</span></details>
                                 }
                                 else if (entry.ServiceApproval is { } approval)
                                 {
-                                    <div>服務識別碼：@entry.ResourceId</div><div>來源識別碼：@approval.SourceId</div>
+                                    <div>@L["服務識別碼："]@entry.ResourceId</div><div>@L["來源識別碼："]@approval.SourceId</div>
                                 }
                                 else if (entry.ServiceSource is not null)
                                 {
-                                    <div>來源識別碼：@entry.ResourceId</div>
+                                    <div>@L["來源識別碼："]@entry.ResourceId</div>
                                 }
                                 else if (entry.Group is { } groupChange)
                                 {
-                                    <div>群組識別碼：@entry.ResourceId</div>
-                                    @if (groupChange.Action is GroupAction.DevicesChanged or GroupAction.ServicesChanged) { <div>加入 @groupChange.Added，移出 @groupChange.Removed</div> }
+                                    <div>@L["群組識別碼："]@entry.ResourceId</div>
+                                    @if (groupChange.Action is GroupAction.DevicesChanged or GroupAction.ServicesChanged) { <div>@L["加入 {0}，移出 {1}", groupChange.Added, groupChange.Removed]</div> }
                                 }
                                 else if (entry.InstancePolicy is { } instancePolicy)
                                 {
                                     <div>每個服務：@instancePolicy.Previous.PerService → @instancePolicy.Current.PerService</div>
                                     <div>全平台：@instancePolicy.Previous.Total → @instancePolicy.Current.Total</div>
-                                    <details><summary>版本資訊</summary><span>@(string.IsNullOrEmpty(instancePolicy.PreviousVersion) ? "初始設定" : instancePolicy.PreviousVersion) → @instancePolicy.CurrentVersion</span></details>
+                                    <details><summary>@L["版本資訊"]</summary><span>@(string.IsNullOrEmpty(instancePolicy.PreviousVersion) ? L["初始設定"].Value : instancePolicy.PreviousVersion) → @instancePolicy.CurrentVersion</span></details>
                                 }
                                 else if (entry.ServiceInstance is { } instance)
                                 {
-                                    <div>服務識別碼：@instance.ServiceId</div><div>執行個體識別碼：@entry.ResourceId</div>
+                                    <div>@L["服務識別碼："]@instance.ServiceId</div><div>@L["執行個體識別碼："]@entry.ResourceId</div>
                                 }
                                 else if (entry.DeploymentLink is { } deployment)
                                 {
-                                    <div>設備識別碼：@deployment.DeviceId</div><div>執行個體識別碼：@deployment.ServiceInstanceId</div>
+                                    <div>@L["設備識別碼："]@deployment.DeviceId</div><div>@L["執行個體識別碼："]@deployment.ServiceInstanceId</div>
                                 }
                                 else if (entry.LogQuota is { } quota)
                                 {
                                     <div>每來源：@quota.Previous.SourceRate → @quota.Current.SourceRate 筆／秒，突發 @quota.Previous.SourceBurst → @quota.Current.SourceBurst 筆</div>
                                     <div>全平台：@quota.Previous.GlobalRate → @quota.Current.GlobalRate 筆／秒，突發 @quota.Previous.GlobalBurst → @quota.Current.GlobalBurst 筆</div>
-                                    <details><summary>版本資訊</summary><span>@(string.IsNullOrEmpty(quota.PreviousVersion) ? "初始設定" : quota.PreviousVersion) → @quota.CurrentVersion</span></details>
+                                    <details><summary>@L["版本資訊"]</summary><span>@(string.IsNullOrEmpty(quota.PreviousVersion) ? L["初始設定"].Value : quota.PreviousVersion) → @quota.CurrentVersion</span></details>
                                 }
                                 else if (entry.TraceQuota is { } traceQuota)
                                 {
                                     <div>每服務來源：@traceQuota.Previous.SourceRate → @traceQuota.Current.SourceRate 筆／秒，突發 @traceQuota.Previous.SourceBurst → @traceQuota.Current.SourceBurst 筆</div>
                                     <div>全平台：@traceQuota.Previous.GlobalRate → @traceQuota.Current.GlobalRate 筆／秒，突發 @traceQuota.Previous.GlobalBurst → @traceQuota.Current.GlobalBurst 筆</div>
-                                    <details><summary>版本資訊</summary><span>@(string.IsNullOrEmpty(traceQuota.PreviousVersion) ? "初始設定" : traceQuota.PreviousVersion) → @traceQuota.CurrentVersion</span></details>
+                                    <details><summary>@L["版本資訊"]</summary><span>@(string.IsNullOrEmpty(traceQuota.PreviousVersion) ? L["初始設定"].Value : traceQuota.PreviousVersion) → @traceQuota.CurrentVersion</span></details>
                                 }
-                                else if (entry.ServiceCollection is not null) { <div>服務識別碼：@entry.ResourceId</div> }
+                                else if (entry.ServiceCollection is not null) { <div>@L["服務識別碼："]@entry.ResourceId</div> }
                                 else if (entry.HealthTarget is { } health)
                                 {
-                                    <div>檢查識別碼：@entry.ResourceId</div><div>服務識別碼：@health.ServiceId</div>
+                                    <div>檢查識別碼：@entry.ResourceId</div><div>@L["服務識別碼："]@health.ServiceId</div>
                                     <div>間隔：@health.Current.IntervalSeconds 秒，逾時：@health.Current.TimeoutSeconds 秒</div>
                                     <div>失敗／恢復門檻：@health.Current.FailureThreshold／@health.Current.RecoveryThreshold，@Enabled(health.Current.Enabled)</div>
                                     @if (health.EndpointChanged) { <div>檢查網址已變更。</div> }
-                                    <details><summary>版本資訊</summary><span>@(string.IsNullOrEmpty(health.PreviousVersion) ? "初始設定" : health.PreviousVersion) → @health.CurrentVersion</span></details>
+                                    <details><summary>@L["版本資訊"]</summary><span>@(string.IsNullOrEmpty(health.PreviousVersion) ? L["初始設定"].Value : health.PreviousVersion) → @health.CurrentVersion</span></details>
                                 }
                                 else if (entry.Publication is { } publication) { <div>類型：@publication.ResourceKind</div><div>公開：@Enabled(publication.PreviousPublic) → @Enabled(publication.CurrentPublic)</div>@if (publication.NameChanged) { <div>公開名稱已變更。</div> } @if (publication.TemplateChanged) { <div>公開範本已變更。</div> } @if (publication.PolicyChanged) { <div>公開歷史設定已變更。</div> } }
                                 else if (entry.PublicationTemplate is { } template) { <div>範本識別碼：@entry.ResourceId</div><div>受影響設備：@template.AffectedDevices</div> }
                                 else if (entry.HealthNetworkPolicy is { } networks) { <div>網段政策版本：@networks.PreviousGeneration → @networks.CurrentGeneration</div> }
-                                else if (entry.Collector is { } collector) { <div>Collector 識別碼：@entry.ResourceId</div><div>監控服務識別碼：@collector.MonitoringServiceId</div>@if (collector.SourceId is { } sourceId) { <div>來源識別碼：@sourceId</div> } }
+                                else if (entry.Collector is { } collector) { <div>Collector 識別碼：@entry.ResourceId</div><div>監控服務識別碼：@collector.MonitoringServiceId</div>@if (collector.SourceId is { } sourceId) { <div>@L["來源識別碼："]@sourceId</div> } }
                                 else if (entry.IntelligenceRevision is { } intelRevision) { <div>選用版本：@intelRevision.RevisionId</div>@if (intelRevision.PreviousRevisionId is { } previousRevision) { <div>先前版本：@previousRevision</div> } @if (intelRevision.OfflineSourceConfirmed) { <div>管理員已確認離線來源與使用條件。</div> } }
                                 else if (entry.BaselineException is { } baselineException) { <div>設備：@entry.ResourceId</div><div>檢查：@baselineException.CheckId</div><div>版本：@baselineException.RevisionId</div><div>說明：@baselineException.Reason</div> }
                                 else if (entry.LineSettings is { } line) { <div>狀態：@Enabled(line.Enabled)</div><div>憑證已更新：@(line.AccessTokenChanged || line.ChannelSecretChanged ? "是" : "否")</div> }
                                 else if (entry.IntelligenceRevocation is { } intelRevocation) { <div>撤銷版本：@intelRevocation.RevisionId</div> }
                                 else if (entry.IntelligenceOfflineImport is { } intelOffline) { <div>匯入版本：@intelOffline.RevisionId</div><div>由管理員提供；上游來源未經驗證。</div> }
-                                else if (entry.IntelligencePolicy is { } intelPolicy) { <div>啟用：@Enabled(intelPolicy.Previous.Enabled) → @Enabled(intelPolicy.Current.Enabled)</div>@if (intelPolicy.Previous.IocDetectionEnabled is { } beforeIoc && intelPolicy.Current.IocDetectionEnabled is { } afterIoc) { <div>IOC 比對：@Enabled(beforeIoc) → @Enabled(afterIoc)</div> }<div>更新間隔：@intelPolicy.Previous.UpdateIntervalSeconds → @intelPolicy.Current.UpdateIntervalSeconds 秒</div><div>資料過期：@intelPolicy.Previous.StaleAfterSeconds → @intelPolicy.Current.StaleAfterSeconds 秒</div><div>容量上限：@intelPolicy.Previous.MaximumBytes → @intelPolicy.Current.MaximumBytes 位元組</div><div>筆數上限：@intelPolicy.Previous.MaximumRecords → @intelPolicy.Current.MaximumRecords 筆</div><details><summary>版本資訊</summary><span>@intelPolicy.PreviousVersion → @intelPolicy.CurrentVersion</span></details> }
+                                else if (entry.IntelligencePolicy is { } intelPolicy) { <div>啟用：@Enabled(intelPolicy.Previous.Enabled) → @Enabled(intelPolicy.Current.Enabled)</div>@if (intelPolicy.Previous.IocDetectionEnabled is { } beforeIoc && intelPolicy.Current.IocDetectionEnabled is { } afterIoc) { <div>IOC 比對：@Enabled(beforeIoc) → @Enabled(afterIoc)</div> }<div>更新間隔：@intelPolicy.Previous.UpdateIntervalSeconds → @intelPolicy.Current.UpdateIntervalSeconds 秒</div><div>資料過期：@intelPolicy.Previous.StaleAfterSeconds → @intelPolicy.Current.StaleAfterSeconds 秒</div><div>容量上限：@intelPolicy.Previous.MaximumBytes → @intelPolicy.Current.MaximumBytes 位元組</div><div>筆數上限：@intelPolicy.Previous.MaximumRecords → @intelPolicy.Current.MaximumRecords 筆</div><details><summary>@L["版本資訊"]</summary><span>@intelPolicy.PreviousVersion → @intelPolicy.CurrentVersion</span></details> }
                                 else if (entry.AdvisoryImport is { } intelImport) { <div>匯入識別碼：@intelImport.ImportId</div> }
-                                else if (entry.AdvisoryCredential is { } intelCredential) { <div>來源憑證：@(intelCredential.Configured ? "已設定" : "已清除")</div> }
-                                else { <span>無法顯示此紀錄的內容。</span> }
+                                else if (entry.AdvisoryCredential is { } intelCredential) { <div>@L["來源憑證："]@(intelCredential.Configured ? "已設定" : "已清除")</div> }
+                                else { <span>@L["無法顯示此紀錄的內容。"]</span> }
                             </td>
                             <td>@if (Operation(entry) == "未支援的紀錄") { <span>@L["未知"]</span> } else { <span class="audit-badge audit-badge-success">@L["已儲存"]</span> }</td>
                         </tr>

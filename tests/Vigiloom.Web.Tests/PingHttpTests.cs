@@ -101,6 +101,15 @@ public sealed class PingHttpTests
         var from = Uri.EscapeDataString(now.AddDays(-1).ToString("O")); var until = Uri.EscapeDataString(now.AddDays(1).ToString("O"));
         var hostLogs = await reader.GetFromJsonAsync<HostLogPage>($"/api/v1/devices/{device.Id:D}/host-logs?from={from}&until={until}", token);
         Assert.AreEqual(10, hostLogs?.RetentionDays);
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var englishAudit = await admin.GetAsync("/settings/audit?source=telemetry-retention", token))
+        {
+            var auditText = await TextAsync(englishAudit, token);
+            Assert.Contains("Application and host log retention: 14 → 10 days", auditText);
+            Assert.Contains("Service health history retention: 365 → 180 days", auditText);
+            Assert.Contains("Version information", auditText);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var audit = await admin.GetAsync("/settings/audit?source=telemetry-retention", token);
         Assert.Contains("應用與主機 Logs 保存：14 → 10 天", await TextAsync(audit, token));
         Assert.Contains("應用 Traces 保存：7 → 5 天", await TextAsync(audit, token));
