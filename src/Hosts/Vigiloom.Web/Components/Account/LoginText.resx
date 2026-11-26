@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="PageTitle">
+    <value>登入</value>
+  </data>
+  <data xml:space="preserve" name="Heading">
+    <value>登入 Vigiloom</value>
+  </data>
+  <data xml:space="preserve" name="Description">
+    <value>使用你的帳號查看監控資訊。</value>
+  </data>
+  <data xml:space="preserve" name="SetupComplete">
+    <value>設定已完成，請登入。</value>
+  </data>
+  <data xml:space="preserve" name="UserName">
+    <value>帳號</value>
+  </data>
+  <data xml:space="preserve" name="Password">
+    <value>密碼</value>
+  </data>
+  <data xml:space="preserve" name="RememberMe">
+    <value>記住登入</value>
+  </data>
+  <data xml:space="preserve" name="SignIn">
+    <value>登入</value>
+  </data>
+  <data xml:space="preserve" name="ResetPassword">
+    <value>使用代碼設定密碼</value>
+  </data>
+  <data xml:space="preserve" name="FirstSetup">
+    <value>首次設定</value>
+  </data>
+  <data xml:space="preserve" name="LoginFailed">
+    <value>帳號或密碼錯誤，或帳號暫時無法登入。</value>
+  </data>
+  <data xml:space="preserve" name="RequiredUserName">
+    <value>請輸入帳號。</value>
+  </data>
+  <data xml:space="preserve" name="UserNameLength">
+    <value>帳號不能超過 {1} 個字元。</value>
+  </data>
+  <data xml:space="preserve" name="RequiredPassword">
+    <value>請輸入密碼。</value>
+  </data>
+  <data xml:space="preserve" name="PasswordLength">
+    <value>密碼不能超過 {1} 個字元。</value>
+  </data>
+</root>
