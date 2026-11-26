@@ -54,4 +54,28 @@
   <data xml:space="preserve" name="PasswordMismatch">
     <value>Passwords do not match.</value>
   </data>
+  <data xml:space="preserve" name="Identity.PasswordTooShort">
+    <value>The password is too short. Check the password requirements.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresNonAlphanumeric">
+    <value>The password must contain a symbol.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresDigit">
+    <value>The password must contain a number.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresLower">
+    <value>The password must contain a lowercase letter.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresUpper">
+    <value>The password must contain an uppercase letter.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresUniqueChars">
+    <value>The password must contain more distinct characters.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.InvalidUserName">
+    <value>The username contains unsupported characters.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.DuplicateUserName">
+    <value>The username is already in use.</value>
+  </data>
 </root>

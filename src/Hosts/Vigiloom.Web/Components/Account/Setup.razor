@@ -63,9 +63,17 @@
         }
         error = result.Status switch
         {
-            InitialAdministratorStatus.ValidationFailed => string.Join(" ", result.Errors),
+            InitialAdministratorStatus.ValidationFailed => string.Join(" ", result.Errors.Select((message, index) =>
+                LocalizeError(result.ErrorCodes is { } codes && index < codes.Count ? codes[index] : null, message))),
             _ => L["SetupFailed"]
         };
+    }
+
+    private string LocalizeError(string? code, string fallback)
+    {
+        if (code is null) return fallback;
+        var message = L[$"Identity.{code}"];
+        return message.ResourceNotFound ? fallback : message.Value;
     }
 
     private sealed class SetupInput

@@ -34,6 +34,13 @@ public sealed class InitialAdministratorEndpointTests
             await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await RoleInitializer.InitializeAsync(contexts, token);
             using var client = factory.CreateClient();
+            using (var invalid = await client.PostAsJsonAsync("/internal/identity/accounts/initialize", new InitialAdministratorRequest(setupToken, "admin", "short"), token))
+            {
+                var result = await invalid.Content.ReadFromJsonAsync<InitialAdministratorResult>(cancellationToken: token);
+                Assert.IsNotNull(result?.ErrorCodes);
+                Assert.Contains("PasswordTooShort", result.ErrorCodes);
+                Assert.HasCount(result.Errors.Count, result.ErrorCodes);
+            }
             var request = new InitialAdministratorRequest(setupToken, "admin", "Admin-Password-123");
             using (var first = await client.PostAsJsonAsync("/internal/identity/accounts/initialize", request, token))
             {
