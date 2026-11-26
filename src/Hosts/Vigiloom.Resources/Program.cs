@@ -92,6 +92,8 @@ builder.Services.AddScoped<IApplicationSourceVerifier>(services => services.GetR
 var app = builder.Build();
 var internalApi = app.MapGroup("/internal/v1");
 internalApi.MapGet("/ping-targets", (DevicePingSource source, CancellationToken token) => source.ReadEnabledAsync(token));
+internalApi.MapPost("/ping-targets/verify", async (PingTargetVerification target, DevicePingSource source, CancellationToken token) =>
+    await source.VerifyAsync(target, token) is { } context ? Results.Ok(context) : Results.NotFound());
 internalApi.MapGet("/devices/{id:guid}/agent", async (Guid id, DeviceAgentSource source, CancellationToken token) =>
     await source.GetAsync(id, token) is { } device ? Results.Ok(device) : Results.NotFound());
 internalApi.MapGet("/groups/{id:guid}/members", async (Guid id, GroupMembersReader source, CancellationToken token) =>

@@ -13,3 +13,4 @@ public interface IDevicePingSource
 
 public sealed record PingDeviceSnapshot(Guid Id, byte[] Version, IReadOnlyList<string> Targets);
 public sealed record PingDeviceContext(string Name, IReadOnlyList<ResourceGroupSnapshot> Groups);
+public sealed record PingTargetVerification(Guid DeviceId, byte[] Version, string Target);
