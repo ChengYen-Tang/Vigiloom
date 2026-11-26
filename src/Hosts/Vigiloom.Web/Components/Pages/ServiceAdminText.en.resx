@@ -522,4 +522,39 @@
   <data name="設定儲存後會由 Agent 定期同步；目標值不代表設備已套用。" xml:space="preserve"><value>Agents synchronize settings periodically; a target value does not mean it has been applied.</value></data>
   <data name="設定會由 Agent 定期同步；目標值不代表設備已套用。" xml:space="preserve"><value>Agents synchronize settings periodically; a target value does not mean it has been applied.</value></data>
   <data name="這是批次內容的邏輯容量，資料庫與暫存檔會使用額外磁碟空間。" xml:space="preserve"><value>This is logical batch payload capacity; databases and temporary files use additional disk space.</value></data>
+  <data name="使用預設值" xml:space="preserve"><value>Use default</value></data>
+  <data name="繼承平台設定" xml:space="preserve"><value>Inherit platform settings</value></data>
+  <data name="收集路徑，所有參數遮罩" xml:space="preserve"><value>Collect paths, mask all arguments</value></data>
+  <data name="收集路徑，參數遮罩" xml:space="preserve"><value>Collect paths, mask arguments</value></data>
+  <data name="不收集" xml:space="preserve"><value>Do not collect</value></data>
+  <data name="目前目標值：{0}。參數不會傳送到平台。" xml:space="preserve"><value>Current target: {0}. Arguments are not sent to the platform.</value></data>
+  <data name="停用後，新盤點不再收集路徑；之前已保存的資料仍依保存政策處理。" xml:space="preserve"><value>After disabling, new inventory scans do not collect paths; retained data follows the retention policy.</value></data>
+  <data name="設定狀態：{0}" xml:space="preserve"><value>Settings status: {0}</value></data>
+  <data name="Agent 已採用：{0} 秒；程序執行資訊：{1}。進行中的盤點會繼續完成。" xml:space="preserve"><value>Agent applied: {0} seconds; process execution information: {1}. An in-progress inventory scan continues to completion.</value></data>
+  <data name="無法讀取 Agent 設定狀態，請稍後重新整理。" xml:space="preserve"><value>Unable to load Agent settings status. Refresh and try again.</value></data>
+  <data name="設備已停用" xml:space="preserve"><value>Device disabled</value></data>
+  <data name="Agent 尚未註冊" xml:space="preserve"><value>Agent not registered</value></data>
+  <data name="等待 Agent 心跳" xml:space="preserve"><value>Waiting for Agent heartbeat</value></data>
+  <data name="等待 Agent 回報設定" xml:space="preserve"><value>Waiting for Agent settings report</value></data>
+  <data name="等待 Agent 套用新設定" xml:space="preserve"><value>Waiting for Agent to apply new settings</value></data>
+  <data name="Agent 已採用目標設定" xml:space="preserve"><value>Agent applied target settings</value></data>
+  <data name="設定同步失敗，Agent 繼續使用最後有效設定" xml:space="preserve"><value>Settings synchronization failed; Agent continues using its last valid settings</value></data>
+  <data name="Agent 離線" xml:space="preserve"><value>Agent offline</value></data>
+  <data name="回報時間異常" xml:space="preserve"><value>Invalid report time</value></data>
+  <data name="設定回報已過期" xml:space="preserve"><value>Settings report is stale</value></data>
+  <data name="目前狀態：{0}" xml:space="preserve"><value>Current status: {0}</value></data>
+  <data name="尚未啟用期限" xml:space="preserve"><value>Deadline not enabled</value></data>
+  <data name="過渡期間" xml:space="preserve"><value>Grace period</value></data>
+  <data name="期限已啟用" xml:space="preserve"><value>Deadline enabled</value></data>
+  <data name="期限啟用後，平台接受設定的期限內入列的新批次；已提交的批次仍可確認重送。支援此功能的 Agent 會保留遭拒收的超期資料。" xml:space="preserve"><value>Once enabled, the platform accepts new batches queued within the deadline; previously submitted batches can still be acknowledged on retry. Supporting Agents retain rejected expired data.</value></data>
+  <data name="過渡期結束時間（UTC）：{0}" xml:space="preserve"><value>Grace period ends (UTC): {0}</value></data>
+  <data name="操作前請確認所有接收節點都已更新，舊節點及其執行中的接收工作已停止。" xml:space="preserve"><value>Before continuing, confirm all reception nodes are updated and old nodes and their in-flight reception work have stopped.</value></data>
+  <data name="我已確認所有接收節點完成更新" xml:space="preserve"><value>I confirm that all reception nodes are updated</value></data>
+  <data name="開始過渡期" xml:space="preserve"><value>Start grace period</value></data>
+  <data name="啟用 24 小時期限" xml:space="preserve"><value>Enable 24-hour deadline</value></data>
+  <data name="請先確認所有接收節點完成更新。" xml:space="preserve"><value>First confirm all reception nodes are updated.</value></data>
+  <data name="過渡期已開始。請在結束後啟用期限。" xml:space="preserve"><value>Grace period started. Enable the deadline after it ends.</value></data>
+  <data name="24 小時補送期限已啟用。" xml:space="preserve"><value>The 24-hour replay deadline is enabled.</value></data>
+  <data name="政策狀態已變更或過渡期尚未結束，請重新整理後再試。" xml:space="preserve"><value>The policy changed or the grace period has not ended. Refresh and try again.</value></data>
+  <data name="無法確認政策是否已儲存，請重新整理並檢查。" xml:space="preserve"><value>Unable to confirm whether the policy was saved. Refresh and check.</value></data>
 </root>

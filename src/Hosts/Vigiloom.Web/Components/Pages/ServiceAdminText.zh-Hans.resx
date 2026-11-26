@@ -522,4 +522,39 @@
   <data name="設定儲存後會由 Agent 定期同步；目標值不代表設備已套用。" xml:space="preserve"><value>保存设置后 Agent 会定期同步；目标值不代表设备已应用。</value></data>
   <data name="設定會由 Agent 定期同步；目標值不代表設備已套用。" xml:space="preserve"><value>Agent 会定期同步设置；目标值不代表设备已应用。</value></data>
   <data name="這是批次內容的邏輯容量，資料庫與暫存檔會使用額外磁碟空間。" xml:space="preserve"><value>这是批次内容的逻辑容量，数据库与临时文件会使用额外磁盘空间。</value></data>
+  <data name="使用預設值" xml:space="preserve"><value>使用默认值</value></data>
+  <data name="繼承平台設定" xml:space="preserve"><value>继承平台设置</value></data>
+  <data name="收集路徑，所有參數遮罩" xml:space="preserve"><value>收集路径，屏蔽所有参数</value></data>
+  <data name="收集路徑，參數遮罩" xml:space="preserve"><value>收集路径，屏蔽参数</value></data>
+  <data name="不收集" xml:space="preserve"><value>不收集</value></data>
+  <data name="目前目標值：{0}。參數不會傳送到平台。" xml:space="preserve"><value>当前目标值：{0}。参数不会发送到平台。</value></data>
+  <data name="停用後，新盤點不再收集路徑；之前已保存的資料仍依保存政策處理。" xml:space="preserve"><value>停用后，新清单不再收集路径；之前保存的数据仍按保留策略处理。</value></data>
+  <data name="設定狀態：{0}" xml:space="preserve"><value>设置状态：{0}</value></data>
+  <data name="Agent 已採用：{0} 秒；程序執行資訊：{1}。進行中的盤點會繼續完成。" xml:space="preserve"><value>Agent 已采用：{0} 秒；进程执行信息：{1}。进行中的清单会继续完成。</value></data>
+  <data name="無法讀取 Agent 設定狀態，請稍後重新整理。" xml:space="preserve"><value>无法读取 Agent 设置状态，请稍后刷新。</value></data>
+  <data name="設備已停用" xml:space="preserve"><value>设备已停用</value></data>
+  <data name="Agent 尚未註冊" xml:space="preserve"><value>Agent 尚未注册</value></data>
+  <data name="等待 Agent 心跳" xml:space="preserve"><value>等待 Agent 心跳</value></data>
+  <data name="等待 Agent 回報設定" xml:space="preserve"><value>等待 Agent 报告设置</value></data>
+  <data name="等待 Agent 套用新設定" xml:space="preserve"><value>等待 Agent 应用新设置</value></data>
+  <data name="Agent 已採用目標設定" xml:space="preserve"><value>Agent 已采用目标设置</value></data>
+  <data name="設定同步失敗，Agent 繼續使用最後有效設定" xml:space="preserve"><value>设置同步失败，Agent 继续使用最后有效设置</value></data>
+  <data name="Agent 離線" xml:space="preserve"><value>Agent 离线</value></data>
+  <data name="回報時間異常" xml:space="preserve"><value>报告时间异常</value></data>
+  <data name="設定回報已過期" xml:space="preserve"><value>设置报告已过期</value></data>
+  <data name="目前狀態：{0}" xml:space="preserve"><value>当前状态：{0}</value></data>
+  <data name="尚未啟用期限" xml:space="preserve"><value>尚未启用期限</value></data>
+  <data name="過渡期間" xml:space="preserve"><value>过渡期间</value></data>
+  <data name="期限已啟用" xml:space="preserve"><value>期限已启用</value></data>
+  <data name="期限啟用後，平台接受設定的期限內入列的新批次；已提交的批次仍可確認重送。支援此功能的 Agent 會保留遭拒收的超期資料。" xml:space="preserve"><value>期限启用后，平台接受在设定期限内入列的新批次；已提交的批次仍可确认重传。支持此功能的 Agent 会保留被拒收的过期数据。</value></data>
+  <data name="過渡期結束時間（UTC）：{0}" xml:space="preserve"><value>过渡期结束时间（UTC）：{0}</value></data>
+  <data name="操作前請確認所有接收節點都已更新，舊節點及其執行中的接收工作已停止。" xml:space="preserve"><value>操作前请确认所有接收节点都已更新，旧节点及其执行中的接收工作已停止。</value></data>
+  <data name="我已確認所有接收節點完成更新" xml:space="preserve"><value>我已确认所有接收节点完成更新</value></data>
+  <data name="開始過渡期" xml:space="preserve"><value>开始过渡期</value></data>
+  <data name="啟用 24 小時期限" xml:space="preserve"><value>启用 24 小时期限</value></data>
+  <data name="請先確認所有接收節點完成更新。" xml:space="preserve"><value>请先确认所有接收节点完成更新。</value></data>
+  <data name="過渡期已開始。請在結束後啟用期限。" xml:space="preserve"><value>过渡期已开始。请在结束后启用期限。</value></data>
+  <data name="24 小時補送期限已啟用。" xml:space="preserve"><value>24 小时补传期限已启用。</value></data>
+  <data name="政策狀態已變更或過渡期尚未結束，請重新整理後再試。" xml:space="preserve"><value>策略状态已更改或过渡期尚未结束，请刷新后重试。</value></data>
+  <data name="無法確認政策是否已儲存，請重新整理並檢查。" xml:space="preserve"><value>无法确认策略是否已保存，请刷新并检查。</value></data>
 </root>

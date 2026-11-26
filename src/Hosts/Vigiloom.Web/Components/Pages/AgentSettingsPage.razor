@@ -102,20 +102,20 @@
                 <small class="agent-settings-hint">@L["目前目標值：{0} 秒（預設 6 小時）。較短的間隔會增加設備負擔。", inventoryCurrent.Effective.Settings.ScanIntervalSeconds]</small>
                 <label for="agent-process-command">@L["程序執行資訊"]</label>
                 <select id="agent-process-command" name="InventoryInput.CollectCommandLine">
-                    <option value="" selected="@(InventoryInput.CollectCommandLine is null)">@(Id is null ? "使用預設值" : "繼承平台設定")</option>
+                    <option value="" selected="@(InventoryInput.CollectCommandLine is null)">@(Id is null ? L["使用預設值"].Value : L["繼承平台設定"].Value)</option>
                     <option value="false" selected="@(InventoryInput.CollectCommandLine == false)">@L["不收集執行路徑"]</option>
                     <option value="true" selected="@(InventoryInput.CollectCommandLine == true)">@L["收集執行路徑，遮罩所有參數"]</option>
                 </select>
-                <small class="agent-settings-hint">目前目標值：@(inventoryCurrent.Effective.Settings.CollectCommandLine ? "收集路徑，所有參數遮罩" : "不收集")。參數不會傳送到平台。</small>
-                <small class="agent-settings-hint">停用後，新盤點不再收集路徑；之前已保存的資料仍依保存政策處理。</small>
+                <small class="agent-settings-hint">@L["目前目標值：{0}。參數不會傳送到平台。", inventoryCurrent.Effective.Settings.CollectCommandLine ? L["收集路徑，所有參數遮罩"].Value : L["不收集"].Value]</small>
+                <small class="agent-settings-hint">@L["停用後，新盤點不再收集路徑；之前已保存的資料仍依保存政策處理。"]</small>
                 @if (Id is not null)
                 {
-                    <p>設定狀態：@InventoryStateText(inventoryStatus?.State)</p>
+                    <p>@L["設定狀態：{0}", InventoryStateText(inventoryStatus?.State)]</p>
                     @if (inventoryStatus?.Applied is { } applied)
                     {
-                        <p>Agent 已採用：@applied.Settings.ScanIntervalSeconds 秒；程序執行資訊：@(applied.Settings.CollectCommandLine ? "收集路徑，參數遮罩" : "不收集")。進行中的盤點會繼續完成。</p>
+                        <p>@L["Agent 已採用：{0} 秒；程序執行資訊：{1}。進行中的盤點會繼續完成。", applied.Settings.ScanIntervalSeconds, applied.Settings.CollectCommandLine ? L["收集路徑，參數遮罩"].Value : L["不收集"].Value]</p>
                     }
-                    @if (inventoryStatusLoadError) { <p role="status">無法讀取 Agent 設定狀態，請稍後重新整理。</p> }
+                    @if (inventoryStatusLoadError) { <p role="status">@L["無法讀取 Agent 設定狀態，請稍後重新整理。"]</p> }
                 }
                 else { <p>@L["設定會由 Agent 定期同步；目標值不代表設備已套用。"]</p> }
                 <div class="device-actions"><button type="submit">@L["儲存盤點設定"]</button></div>
@@ -154,17 +154,17 @@
             @if (replayLoadError) { <p class="device-alert" role="alert">@L["無法讀取補送政策，請稍後重新整理。"]</p> }
             else if (replay is not null)
             {
-                <p>目前狀態：@(replay.Phase switch { AgentReplayPhase.Disabled => "尚未啟用期限", AgentReplayPhase.Grace => "過渡期間", AgentReplayPhase.Enforced => "期限已啟用", _ => "未知" })</p>
-                <p>期限啟用後，平台接受設定的期限內入列的新批次；已提交的批次仍可確認重送。支援此功能的 Agent 會保留遭拒收的超期資料。</p>
-                @if (replay.GraceUntil is { } deadline) { <p>過渡期結束時間（UTC）：@deadline.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</p> }
+                <p>@L["目前狀態：{0}", replay.Phase switch { AgentReplayPhase.Disabled => L["尚未啟用期限"].Value, AgentReplayPhase.Grace => L["過渡期間"].Value, AgentReplayPhase.Enforced => L["期限已啟用"].Value, _ => L["未知"].Value }]</p>
+                <p>@L["期限啟用後，平台接受設定的期限內入列的新批次；已提交的批次仍可確認重送。支援此功能的 Agent 會保留遭拒收的超期資料。"]</p>
+                @if (replay.GraceUntil is { } deadline) { <p>@L["過渡期結束時間（UTC）：{0}", deadline.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")]</p> }
                 @if (replayMessage is not null) { <p role="status">@replayMessage</p> }
                 @if (replay.Phase is AgentReplayPhase.Disabled or AgentReplayPhase.Grace)
                 {
                     <EditForm Model="ReplayInput" FormName="agent-replay" method="post" OnSubmit="SaveReplayAsync">
                         <InputHidden @bind-Value="ReplayInput.Version" />
-                        <p>操作前請確認所有接收節點都已更新，舊節點及其執行中的接收工作已停止。</p>
-                        <label><InputCheckbox @bind-Value="ReplayInput.Confirmed" /> 我已確認所有接收節點完成更新</label>
-                        <div class="device-actions"><button type="submit">@(replay.Phase == AgentReplayPhase.Disabled ? "開始過渡期" : "啟用 24 小時期限")</button></div>
+                        <p>@L["操作前請確認所有接收節點都已更新，舊節點及其執行中的接收工作已停止。"]</p>
+                        <label><InputCheckbox @bind-Value="ReplayInput.Confirmed" /> @L["我已確認所有接收節點完成更新"]</label>
+                        <div class="device-actions"><button type="submit">@(replay.Phase == AgentReplayPhase.Disabled ? L["開始過渡期"].Value : L["啟用 24 小時期限"].Value)</button></div>
                     </EditForm>
                 }
             }
@@ -264,7 +264,7 @@
 
     private async Task SaveReplayAsync(EditContext context)
     {
-        if (Id is not null || replay is null || !ReplayInput.Confirmed) { replayMessage = "請先確認所有接收節點完成更新。"; return; }
+        if (Id is not null || replay is null || !ReplayInput.Confirmed) { replayMessage = L["請先確認所有接收節點完成更新。"].Value; return; }
         if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
         var target = replay.Phase == AgentReplayPhase.Disabled ? AgentReplayPhase.Grace : AgentReplayPhase.Enforced;
         try
@@ -274,11 +274,11 @@
                 replay = saved;
                 ReplayInput.Version = saved.Version;
                 ReplayInput.Confirmed = false;
-                replayMessage = target == AgentReplayPhase.Grace ? "過渡期已開始。請在結束後啟用期限。" : "24 小時補送期限已啟用。";
+                replayMessage = target == AgentReplayPhase.Grace ? L["過渡期已開始。請在結束後啟用期限。"].Value : L["24 小時補送期限已啟用。"].Value;
             }
-            else replayMessage = "政策狀態已變更或過渡期尚未結束，請重新整理後再試。";
+            else replayMessage = L["政策狀態已變更或過渡期尚未結束，請重新整理後再試。"].Value;
         }
-        catch (Exception exception) { Logger.LogWarning("Could not change Agent replay policy: {ExceptionType}", exception.GetType().Name); replayMessage = "無法確認政策是否已儲存，請重新整理並檢查。"; }
+        catch (Exception exception) { Logger.LogWarning("Could not change Agent replay policy: {ExceptionType}", exception.GetType().Name); replayMessage = L["無法確認政策是否已儲存，請重新整理並檢查。"].Value; }
     }
 
     private sealed class ReplayForm
@@ -350,19 +350,19 @@
         catch (Exception exception) { Logger.LogWarning("Could not save inventory settings: {ExceptionType}", exception.GetType().Name); inventoryMessage = L["無法確認儲存結果，請重新整理並檢查。"].Value; }
     }
 
-    private static string InventoryStateText(AgentSettingsApplyState? state) => state switch
+    private string InventoryStateText(AgentSettingsApplyState? state) => state switch
     {
-        AgentSettingsApplyState.Disabled => "設備已停用",
-        AgentSettingsApplyState.NotRegistered => "Agent 尚未註冊",
-        AgentSettingsApplyState.WaitingForHeartbeat => "等待 Agent 心跳",
-        AgentSettingsApplyState.WaitingForReport => "等待 Agent 回報設定",
-        AgentSettingsApplyState.Pending => "等待 Agent 套用新設定",
-        AgentSettingsApplyState.Applied => "Agent 已採用目標設定",
-        AgentSettingsApplyState.Failed => "設定同步失敗，Agent 繼續使用最後有效設定",
-        AgentSettingsApplyState.Offline => "Agent 離線",
-        AgentSettingsApplyState.ClockUncertain => "回報時間異常",
-        AgentSettingsApplyState.ReportStale => "設定回報已過期",
-        _ => "未知"
+        AgentSettingsApplyState.Disabled => L["設備已停用"].Value,
+        AgentSettingsApplyState.NotRegistered => L["Agent 尚未註冊"].Value,
+        AgentSettingsApplyState.WaitingForHeartbeat => L["等待 Agent 心跳"].Value,
+        AgentSettingsApplyState.WaitingForReport => L["等待 Agent 回報設定"].Value,
+        AgentSettingsApplyState.Pending => L["等待 Agent 套用新設定"].Value,
+        AgentSettingsApplyState.Applied => L["Agent 已採用目標設定"].Value,
+        AgentSettingsApplyState.Failed => L["設定同步失敗，Agent 繼續使用最後有效設定"].Value,
+        AgentSettingsApplyState.Offline => L["Agent 離線"].Value,
+        AgentSettingsApplyState.ClockUncertain => L["回報時間異常"].Value,
+        AgentSettingsApplyState.ReportStale => L["設定回報已過期"].Value,
+        _ => L["未知"].Value
     };
 
     private async Task SaveAsync(EditContext context)
