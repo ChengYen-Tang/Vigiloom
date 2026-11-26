@@ -9,17 +9,17 @@ public static class HostMetricEndpoints
 {
     public static void MapHostMetricEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/v1/settings/host-metrics/retention", async (HostMetricRetentionSettings settings, CancellationToken token) => Results.Ok(await settings.GetAsync(token)))
+        app.MapGet("/api/v1/settings/host-metrics/retention", async (IHostMetricRetentionSettings settings, CancellationToken token) => Results.Ok(await settings.GetAsync(token)))
             .RequireAuthorization(AccessPolicies.Administrator).Produces<HostMetricRetentionSnapshot>().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Get host metric retention settings");
-        app.MapPost("/api/v1/settings/host-metrics/retention/preview", async (HostMetricRetentionPreviewRequest input, HttpContext context, HostMetricRetentionSettings settings, CancellationToken token) =>
+        app.MapPost("/api/v1/settings/host-metrics/retention/preview", async (HostMetricRetentionPreviewRequest input, HttpContext context, IHostMetricRetentionSettings settings, CancellationToken token) =>
         {
             if (!HostMetricRetentionLimits.IsValid(input.RawDays, input.RollupDays)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["Invalid retention period."] });
             return await ApiMutation.ExecuteAsync(context, async actor => await settings.PreviewAsync(input, actor, token) is { } preview
                 ? Results.Ok(preview) : Results.Conflict(), allowApiCredential: false);
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<HostMetricRetentionPreview>().Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Preview host metric retention changes");
-        app.MapPut("/api/v1/settings/host-metrics/retention", async (HostMetricRetentionInput input, HttpContext context, HostMetricRetentionSettings settings, CancellationToken token) =>
+        app.MapPut("/api/v1/settings/host-metrics/retention", async (HostMetricRetentionInput input, HttpContext context, IHostMetricRetentionSettings settings, CancellationToken token) =>
         {
             if (!HostMetricRetentionLimits.IsValid(input.RawDays, input.RollupDays)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["Invalid retention period."] });
             return await ApiMutation.ExecuteAsync(context, async actor =>

@@ -18,6 +18,8 @@ using Microsoft.AspNetCore.Identity;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Infrastructure.Security;
 using Vigiloom.Infrastructure.Telemetry;
+using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Contracts.Operations;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Host");
@@ -67,6 +69,9 @@ builder.Services.AddScoped<HostAgentConfiguration>();
 builder.Services.AddScoped<HostQueueCapacity>();
 builder.Services.AddScoped<HostAgentMonitoring>();
 builder.Services.AddScoped<HostMetricReader>();
+builder.Services.AddScoped<HostOwnedMetricRetentionSettings>();
+builder.Services.AddScoped<OutboxWriter>();
+builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
 builder.Services.AddScoped<HostUpdateResults>();
 builder.Services.AddScoped<HostInboxCleanup>();
 builder.Services.AddScoped<HostLogIdentityCleanup>();
@@ -126,6 +131,7 @@ app.MapHostAgentSettingsEndpoints();
 app.MapHostQueueCapacityEndpoints();
 app.MapHostAgentStatusEndpoints();
 app.MapHostMetricEndpoints();
+app.MapHostMetricRetentionEndpoints();
 app.MapPost("/api/v1/agent/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes));
 app.MapPost("/api/v1/agent/update-results", AgentUpdateResultEndpoint.ReceiveAsync)

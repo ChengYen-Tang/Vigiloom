@@ -4,7 +4,7 @@ using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Web.HostMonitoring;
 
-internal sealed class RemoteHostMetrics(HttpClient client) : IHostMetricHistory
+internal sealed class RemoteHostMetrics(HttpClient client) : IHostMetricHistory, IHostMetricRetentionSettings
 {
     public Task<HostMetricPage?> GetAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, AgentMetricKind? kind, CancellationToken token) =>
         ReadAsync<HostMetricPage>($"internal/v1/devices/{deviceId:D}/host-metrics?from={Escape(from)}&until={Escape(until)}{(cursor is null ? "" : $"&cursor={Escape(cursor)}")}{(kind is null ? "" : $"&kind={(int)kind}")}", token);
@@ -28,4 +28,24 @@ internal sealed class RemoteHostMetrics(HttpClient client) : IHostMetricHistory
 
     private static string Escape(DateTimeOffset value) => Escape(value.ToString("O"));
     private static string Escape(string value) => Uri.EscapeDataString(value);
+
+    public async Task<HostMetricRetentionSnapshot> GetAsync(CancellationToken token) =>
+        await ReadAsync<HostMetricRetentionSnapshot>("internal/v1/host-metrics/retention", token)
+        ?? throw new InvalidOperationException("Host monitoring returned empty retention settings.");
+
+    public Task<HostMetricRetentionPreview?> PreviewAsync(HostMetricRetentionPreviewRequest input, Guid actor, CancellationToken token) =>
+        SendAsync<HostMetricRetentionPreview>("internal/v1/host-metrics/retention/preview", new HostMetricRetentionPreviewCommand(input, actor), token);
+
+    public Task<HostMetricRetentionSnapshot?> UpdateAsync(HostMetricRetentionInput input, Guid actor, CancellationToken token) =>
+        SendAsync<HostMetricRetentionSnapshot>("internal/v1/host-metrics/retention", new HostMetricRetentionCommand(input, actor), token);
+
+    private async Task<T?> SendAsync<T>(string path, object input, CancellationToken token) where T : class
+    {
+        using var response = await client.PostAsJsonAsync(path, input, token);
+        if (response.StatusCode == HttpStatusCode.Conflict) return null;
+        if (response.StatusCode == HttpStatusCode.BadRequest) throw new ArgumentException("Invalid host metric retention settings.");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<T>(cancellationToken: token)
+            ?? throw new InvalidOperationException("Host monitoring returned an empty retention response.");
+    }
 }

@@ -6,6 +6,11 @@ using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Application.HostMetrics;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Vigiloom.Modules.Resources.Domain;
@@ -20,6 +25,30 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 [TestCategory("Database")]
 public sealed class HostObservationMigrationTests(TestContext context)
 {
+    [TestMethod]
+    public Task HostRetentionChangesPersistWithAuditDelivery() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
+        {
+            await HostMonitoringDatabaseCommand.RunAsync(target.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<HostMonitoringDbContext>().UseSqlServer(target.ConnectionString,
+                sql => sql.MigrationsHistoryTable(HostMonitoringDbContext.MigrationHistory, "agent")).Options;
+            var factory = new PooledDbContextFactory<HostMonitoringDbContext>(options);
+            var audit = new TemporalAuditWriter(new OutboxWriter([new TestOutboxHandler()]), new ConfigurationBuilder().Build());
+            var settings = new HostOwnedMetricRetentionSettings(factory, audit, new EphemeralDataProtectionProvider());
+            var actor = Guid.CreateVersion7();
+            var initial = await settings.GetAsync(token);
+            var preview = await settings.PreviewAsync(new(10, 60, initial.Version), actor, token);
+            Assert.IsNotNull(preview);
+            var saved = await settings.UpdateAsync(new(10, 60, initial.Version, preview.ConfirmationToken), actor, token);
+            Assert.IsNotNull(saved);
+            Assert.AreEqual(10, saved.RawDays);
+            await using var db = await factory.CreateDbContextAsync(token);
+            Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
+            await db.Database.ExecuteSqlRawAsync("DROP TABLE scheduling.Outbox", token);
+            await Assert.ThrowsAsync<SqlException>(() => settings.UpdateAsync(new(20, 90, saved.Version, null), actor, token));
+            Assert.AreEqual(saved, await settings.GetAsync(token));
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task RecordsHeartbeatSessionsInHostDatabase() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
@@ -253,5 +282,12 @@ public sealed class HostObservationMigrationTests(TestContext context)
     {
         public Task<RecordedAgentUpdateTarget?> GetAsync(Guid agentId, Guid updateId, CancellationToken token) =>
             Task.FromResult<RecordedAgentUpdateTarget?>(target.AgentId == agentId && target.UpdateId == updateId ? target : null);
+    }
+
+    private sealed class TestOutboxHandler : IOutboxHandler
+    {
+        public string MessageType => TemporalOutboxHandler.Type;
+        public Task HandleAsync(OutboxMessage message, SqlConnection connection, SqlTransaction transaction, CancellationToken token) =>
+            throw new NotSupportedException();
     }
 }

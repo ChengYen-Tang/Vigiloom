@@ -95,6 +95,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 });
             });
             using var client = host.CreateClient();
+            var retention = await client.GetFromJsonAsync<HostMetricRetentionSnapshot>("/internal/v1/host-metrics/retention", token);
+            Assert.AreEqual(30, retention!.RawDays);
             using (var unauthorizedSettings = await client.GetAsync("/api/v1/agent-management/settings/platform", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, unauthorizedSettings.StatusCode);
             using (var unauthorizedHeartbeat = await client.PostAsync("/api/v1/agent/heartbeat", null, token))
