@@ -12,6 +12,7 @@ public sealed class HostMonitoringDbContext(DbContextOptions<HostMonitoringDbCon
     public DbSet<AgentReplayPolicy> ReplayPolicies => Set<AgentReplayPolicy>();
     public DbSet<AgentReplayGeneration> ReplayGenerations => Set<AgentReplayGeneration>();
     public DbSet<ReceivedBatch> ReceivedBatches => Set<ReceivedBatch>();
+    public DbSet<HostLogMessageId> HostLogMessageIds => Set<HostLogMessageId>();
     public DbSet<RuntimeObservation> RuntimeObservations => Set<RuntimeObservation>();
     public DbSet<HostMetric> HostMetrics => Set<HostMetric>();
     public DbSet<HostMetricRollup> HostMetricRollups => Set<HostMetricRollup>();
@@ -59,8 +60,14 @@ public sealed class HostMonitoringDbContext(DbContextOptions<HostMonitoringDbCon
         batch.HasKey(x => x.RowId).IsClustered();
         batch.Property(x => x.RowId).UseIdentityColumn();
         batch.Property(x => x.Digest).HasColumnType("binary(32)").IsRequired();
+        batch.Property<bool>("PendingDelivery").HasDefaultValue(false);
         batch.HasIndex(x => new { x.AgentId, x.BatchId }).IsUnique();
         batch.HasIndex(x => new { x.AgentId, x.ReceivedAt, x.RowId });
+
+        var logId = modelBuilder.Entity<HostLogMessageId>();
+        logId.ToTable("HostLogMessageIds");
+        logId.HasKey(x => new { x.AgentId, x.MessageId }).IsClustered();
+        logId.HasIndex(x => x.ReceivedAt);
 
         var observation = modelBuilder.Entity<RuntimeObservation>();
         observation.ToTable("RuntimeObservations");

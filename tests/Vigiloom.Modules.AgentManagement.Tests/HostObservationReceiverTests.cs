@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -69,5 +70,34 @@ public sealed class HostObservationReceiverTests(TestContext context)
             Assert.AreEqual(2, await snapshot.HostMetrics.CountAsync(token));
             Assert.AreEqual(5, await snapshot.ReceivedBatches.CountAsync(token));
             Assert.IsTrue(await snapshot.ReceivedBatches.AllAsync(x => x.TrustedReceivedAt != null && x.RetainUntil != null, token));
+            var sink = new TestLogSink();
+            var logReceiver = new HostObservationReceiver(factory, TimeProvider.System, sink);
+            var logId = Guid.CreateVersion7();
+            var record = new AgentLogRecord(logId, now, "message", null, null, null, null, null);
+            var log = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                Guid.CreateVersion7(), AgentLogSourceKind.Journal, "System", 1, [record]);
+            var logBytes = AgentLogBatchCodec.Serialize(log);
+            Assert.AreEqual(BatchReceiptStatus.CapacityExceeded, await logReceiver.ReceiveAsync(identity, logBytes, token));
+            var changedLog = AgentLogBatchCodec.Serialize(log with { Items = [record with { Content = "changed" }] });
+            Assert.AreEqual(BatchReceiptStatus.Conflict, await logReceiver.ReceiveAsync(identity, changedLog, token));
+            var crossType = AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [item with { MessageId = logId }] });
+            Assert.AreEqual(BatchReceiptStatus.Conflict, await logReceiver.ReceiveAsync(identity, crossType, token));
+            Assert.AreEqual(BatchReceiptStatus.Accepted, await logReceiver.ReceiveAsync(identity, logBytes, token));
+            Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await logReceiver.ReceiveAsync(identity, logBytes, token));
+            Assert.AreEqual(2, sink.Calls);
+            Assert.AreEqual(1, sink.StoredBatches);
         }, context.CancellationToken);
+
+    private sealed class TestLogSink : IHostLogSink
+    {
+        public int Calls { get; private set; }
+        public int StoredBatches { get; private set; }
+        public Task<LogReceipt> ReceiveAsync(RegisteredAgentIdentity identity, AgentLogBatch batch, CancellationToken token)
+        {
+            Calls++;
+            if (Calls == 1) StoredBatches++;
+            // The first call models an Operations commit whose response was lost.
+            return Task.FromResult(new LogReceipt(Calls == 1 ? LogReceiptStatus.Busy : LogReceiptStatus.Accepted));
+        }
+    }
 }

@@ -21,4 +21,13 @@ public sealed class HostInboxState
     public long? InboxReceiptPayloadBytes { get; set; }
     public AgentReplayIssue? LastReplayIssue { get; set; }
     public DateTimeOffset? LastReplayIssueAt { get; set; }
+
+    public void RecordCommittedBatch(ReceivedBatch receipt)
+    {
+        if (LastBatchReceivedAt is { } last && (receipt.ReceivedAt < last ||
+            receipt.ReceivedAt == last && receipt.RowId <= (LastBatchReceiptRowId ?? 0))) return;
+        LastBatchReceivedAt = receipt.ReceivedAt;
+        LastBatchEnqueuedAt = receipt.EnqueuedAt;
+        LastBatchReceiptRowId = receipt.RowId;
+    }
 }

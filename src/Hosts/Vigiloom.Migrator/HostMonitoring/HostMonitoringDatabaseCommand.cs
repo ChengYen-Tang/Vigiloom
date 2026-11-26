@@ -28,10 +28,15 @@ internal static class HostMonitoringDatabaseCommand
         await using (var db = new HostMonitoringDbContext(options)) await db.Database.MigrateAsync(token);
         if (source is not null)
         {
-            string[] tables = ["ReplayPolicies", "ReplayGenerations", "ReceivedBatches", "RuntimeObservations", "HostMetrics", "HostMetricRollups", "HostMetricRetentionSettings",
+            string[] tables = ["ReplayPolicies", "ReplayGenerations", "RuntimeObservations", "HostMetrics", "HostMetricRollups", "HostMetricRetentionSettings",
                 "HostLogSources", "HostLogSourceAudits", "Settings", "SettingAudits", "QueueCapacitySettings", "QueueCapacityAudits",
                 "HostMetricThresholds", "HostMetricThresholdAudits", "MetricSettings", "MetricSettingAudits"];
-            var mappings = new List<SqlTableDataMigration.TableMapping> { new("agent", "Agents", "agent", "HostInboxStates") };
+            var mappings = new List<SqlTableDataMigration.TableMapping>
+            {
+                new("agent", "Agents", "agent", "HostInboxStates"),
+                new("agent", "ReceivedBatches", "agent", "ReceivedBatches", OptionalSourceColumns: ["PendingDelivery"]),
+                new("agent", "HostLogs", "agent", "HostLogMessageIds")
+            };
             mappings.AddRange(tables.Select(name => new SqlTableDataMigration.TableMapping("agent", name, "agent", name)));
             await SqlTableDataMigration.CopyAsync(source, target, mappings, token);
         }
