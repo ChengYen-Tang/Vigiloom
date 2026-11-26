@@ -37,6 +37,12 @@ public sealed class OperationsWorkHandler(IConfiguration configuration, Notifica
                     ?? throw new InvalidOperationException("Timeline work is empty.");
                 await timeline.AppendAsync(delivery, db, transaction, token);
             }
+            else if (item.Kind == EventTimelineWork.BatchKind)
+            {
+                var batch = JsonSerializer.Deserialize<EventTimelineBatch>(item.Payload)
+                    ?? throw new InvalidOperationException("Timeline batch is empty.");
+                foreach (var delivery in batch.Items) await timeline.AppendAsync(delivery, db, transaction, token);
+            }
             else if (item.Kind == PingTransitionDelivery.Kind)
             {
                 var delivery = JsonSerializer.Deserialize<PingTransitionDelivery>(item.Payload)

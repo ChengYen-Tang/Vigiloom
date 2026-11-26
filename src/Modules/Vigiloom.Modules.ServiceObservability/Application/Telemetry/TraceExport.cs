@@ -8,7 +8,7 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
 /// <summary>Commits all accepted trace groups in one transaction and admits quota once.</summary>
-internal sealed class TraceExport(IDbContextFactory<ServiceObservabilityDbContext> contexts, ICandidateObserver candidates)
+internal sealed class TraceExport(IDbContextFactory<ServiceObservabilityDbContext> contexts, ICandidateObserver candidates, ITraceTimelineSink? timeline = null)
 {
     private const int MaximumRequestBytes = 4 * 1024 * 1024;
     private const int MaximumGroups = 256;
@@ -56,6 +56,7 @@ internal sealed class TraceExport(IDbContextFactory<ServiceObservabilityDbContex
         var received = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         var quota = new List<TraceSource>();
         var serviceNotAuthorized = false;
+        var accepted = new List<(Guid ServiceId, ScopeSpans Scope)>();
         foreach (var group in groups)
         {
             var key = ServiceKey.From(group.Identity);
@@ -70,6 +71,7 @@ internal sealed class TraceExport(IDbContextFactory<ServiceObservabilityDbContex
             if (instance.Status is not (InstanceResolutionStatus.Resolved or InstanceResolutionStatus.Unidentified))
             { rejected += group.Scope.Spans.Count; continue; }
             TraceIngestion.Stage(db, group.Resource, group.Scope, instance, received);
+            if (timeline is not null) accepted.Add((binding.ServiceId, group.Scope));
             quota.Add(new(authenticatedSourceId, binding.ServiceId, group.Scope.Spans.Count));
         }
         if (quota.Count > 0)
@@ -77,6 +79,8 @@ internal sealed class TraceExport(IDbContextFactory<ServiceObservabilityDbContex
             var admission = await TraceAdmission.AdmitAsync(connection, transaction, quota, token);
             if (admission.Status == LogAdmissionStatus.BatchTooLarge) return new(ExportStatus.BatchTooLarge, 0);
             if (admission.Status != LogAdmissionStatus.Accepted) return new(ExportStatus.Retry, 0, admission.RetryAfter);
+            if (timeline is not null)
+                foreach (var group in accepted) await timeline.RecordAsync(group.ServiceId, group.Scope.Spans, connection, transaction, token);
             await db.SaveChangesAsync(token);
             await tx.CommitAsync(token);
         }

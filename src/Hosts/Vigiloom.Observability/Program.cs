@@ -123,6 +123,7 @@ builder.Services.AddHttpClient<IReceptionLogTimes, ReceptionLogTimes>((services,
 builder.Services.AddScoped<ReceptionOverview>();
 builder.Services.AddScoped<ReceptionRejectionReader>();
 builder.Services.AddScoped<TelemetryExports>();
+builder.Services.AddScoped<ITraceTimelineSink, TraceTimelineSink>();
 builder.Services.AddSingleton<OtlpConcurrency>();
 builder.Services.AddSingleton<IHealthTransitionSink, HealthTransitionDispatcher>();
 builder.Services.AddSingleton<IHealthObservationSink, HealthTimelineSink>();

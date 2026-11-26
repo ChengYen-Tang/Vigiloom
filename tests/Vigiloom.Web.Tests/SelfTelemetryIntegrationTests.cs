@@ -330,6 +330,8 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
                 await using var saved = await operationContexts.CreateDbContextAsync(token);
                 Assert.IsTrue(await saved.Set<ServiceHealthAlert>().AnyAsync(row => row.ServiceId == serviceId && row.RecoveredAt == null, token));
                 Assert.IsTrue(await saved.Set<TimelineRecord>().AnyAsync(row => row.ResourceId == serviceId && row.Source == "service-health", token));
+                Assert.IsTrue(await saved.Set<TimelineRecord>().AnyAsync(row => row.ResourceId == serviceId && row.Source == "service-trace", token));
+                Assert.IsTrue(await saved.Set<TimelineRecord>().AnyAsync(row => row.ResourceId == approval.ServiceId && row.Source == "service-trace", token));
             }
             async Task ProjectAsync(Guid id)
             {
