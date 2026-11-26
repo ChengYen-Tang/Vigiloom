@@ -38,6 +38,12 @@ public sealed class HostObservationMigrationTests(TestContext context)
             var agent = new Agent(device.Id, 1, new byte[32], now);
             var batchId = Guid.CreateVersion7();
             var messageId = Guid.CreateVersion7();
+            var settings = new AgentSetting { DeviceId = device.Id, HeartbeatSeconds = 30, UpdatedBy = Guid.CreateVersion7(), UpdatedAt = now };
+            var metricSettings = new AgentMetricSetting { DeviceId = device.Id, HostIntervalSeconds = 60, UpdatedBy = settings.UpdatedBy, UpdatedAt = now };
+            var capacity = new AgentQueueCapacitySetting { DeviceId = device.Id, BatchCount = 100, UpdatedBy = settings.UpdatedBy, UpdatedAt = now };
+            var logSource = new HostLogSource(device.Id, AgentLogSourceKind.Journal, "System", "local", true, null, settings.UpdatedBy, now);
+            var threshold = new HostMetricThreshold { DeviceId = device.Id, AgentId = agent.Id, Kind = AgentMetricKind.CpuTotalPercent,
+                Source = "cpu", SeriesHash = new byte[32], Enabled = true, Comparison = HostMetricComparison.AtLeast, Value = 80, FreshnessSeconds = 60 };
             await using (var legacy = new AgentManagementDbContext(legacyOptions))
             {
                 legacy.Agents.Add(agent);
@@ -51,6 +57,13 @@ public sealed class HostObservationMigrationTests(TestContext context)
                 legacy.RuntimeObservations.Add(new RuntimeObservation(agent.Id, Guid.CreateVersion7(), 0,
                     new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "Windows", "x64", "10"), now));
                 legacy.HostMetricRetentionSettings.Add(new HostMetricRetentionSetting { RawDays = 14, RollupDays = 90 });
+                legacy.Settings.Add(settings);
+                legacy.MetricSettings.Add(metricSettings);
+                legacy.QueueCapacitySettings.Add(capacity);
+                legacy.HostLogSources.Add(logSource);
+                legacy.HostMetricThresholds.Add(threshold);
+                await legacy.SaveChangesAsync(token);
+                legacy.HostLogSourceAudits.Add(new HostLogSourceAudit(logSource, HostLogSourceAction.Created));
                 await legacy.SaveChangesAsync(token);
             }
             await HostMonitoringDatabaseCommand.RunAsync(target.ConnectionString, source.ConnectionString, token);
@@ -62,5 +75,15 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.AreEqual(1L, copiedRollup.Count);
             Assert.AreEqual("Windows", (await copied.RuntimeObservations.SingleAsync(token)).OperatingSystem);
             Assert.AreEqual(14, (await copied.HostMetricRetentionSettings.SingleAsync(token)).RawDays);
+            var copiedSettings = await copied.Set<AgentSetting>().SingleAsync(token);
+            Assert.AreEqual(settings.Id, copiedSettings.Id);
+            Assert.AreEqual(30, copiedSettings.HeartbeatSeconds);
+            var copiedMetricSettings = await copied.Set<AgentMetricSetting>().SingleAsync(token);
+            Assert.AreEqual(metricSettings.Id, copiedMetricSettings.Id);
+            Assert.AreEqual(60, copiedMetricSettings.HostIntervalSeconds);
+            Assert.AreEqual(100, (await copied.Set<AgentQueueCapacitySetting>().SingleAsync(token)).BatchCount);
+            Assert.AreEqual(logSource.Id, (await copied.Set<HostLogSource>().SingleAsync(token)).Id);
+            Assert.AreEqual(logSource.Id, (await copied.Set<HostLogSourceAudit>().SingleAsync(token)).SourceId);
+            Assert.AreEqual(80d, (await copied.Set<HostMetricThreshold>().SingleAsync(token)).Value);
         }, outerToken), context.CancellationToken);
 }

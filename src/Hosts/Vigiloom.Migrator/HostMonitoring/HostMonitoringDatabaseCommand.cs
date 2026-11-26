@@ -27,7 +27,9 @@ internal static class HostMonitoringDatabaseCommand
         await using (var db = new HostMonitoringDbContext(options)) await db.Database.MigrateAsync(token);
         if (source is not null)
             await SqlTableDataMigration.CopyAsync(source, target, "agent",
-                ["ReceivedBatches", "RuntimeObservations", "HostMetrics", "HostMetricRollups", "HostMetricRetentionSettings"], token);
+                ["ReceivedBatches", "RuntimeObservations", "HostMetrics", "HostMetricRollups", "HostMetricRetentionSettings",
+                 "HostLogSources", "HostLogSourceAudits", "Settings", "SettingAudits", "QueueCapacitySettings", "QueueCapacityAudits",
+                 "HostMetricThresholds", "HostMetricThresholdAudits", "MetricSettings", "MetricSettingAudits"], token);
         Console.WriteLine(source is not null ? "Host observations copied successfully." : "Host observation schema initialized successfully.");
     }
 }
