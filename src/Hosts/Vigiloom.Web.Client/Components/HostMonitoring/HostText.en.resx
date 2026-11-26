@@ -332,4 +332,64 @@
   <data name="套件身分或版本不完整" xml:space="preserve"><value>Package identity or version incomplete</value></data>
   <data name="公告資料不足或有歧義" xml:space="preserve"><value>Advisory data incomplete or ambiguous</value></data>
   <data name="判斷原因未知" xml:space="preserve"><value>Assessment reason unknown</value></data>
+  <data name="Windows 更新與公告線索" xml:space="preserve"><value>Windows updates and advisory leads</value></data>
+  <data name="公告候選依 Microsoft 產品範圍取得；Windows Hotfix 與 Update 快取只提供部分修補觀察，沒有觀察到 KB 不代表未安裝。" xml:space="preserve"><value>Candidate advisories are based on Microsoft product scope. Windows Hotfix and Update caches provide partial patch observations; a missing KB does not mean it is not installed.</value></data>
+  <data name="觀察資料已過期、已變更或尚未取得，請確認 Agent 盤點狀態。" xml:space="preserve"><value>Observations are stale, changed or unavailable. Check Agent inventory status.</value></data>
+  <data name="Windows 漏洞公告比對" xml:space="preserve"><value>Windows vulnerability advisory matching</value></data>
+  <data name="尚無評估結果；請確認主機盤點與 Microsoft 漏洞情報已就緒。" xml:space="preserve"><value>No assessment yet. Ensure host inventory and Microsoft vulnerability intelligence are ready.</value></data>
+  <data name="盤點或情報已變更或過期，以下為上次評估。" xml:space="preserve"><value>Inventory or intelligence changed or expired; the following is the previous assessment.</value></data>
+  <data name="部分公告沒有完整的產品範圍，候選清單可能不完整。" xml:space="preserve"><value>Some advisories lack complete product scope; candidates may be incomplete.</value></data>
+  <data name="更新取代關係尚未完整取得或已過期，修補狀態需要進一步確認。" xml:space="preserve"><value>Update supersedence data is incomplete or stale; patch status needs further verification.</value></data>
+  <data name="公告候選需要進一步確認是否適用及是否完成修補；沒有列出並不代表安全。" xml:space="preserve"><value>Candidate advisories need further applicability and patch verification; omissions do not imply safety.</value></data>
+  <data name="依評估狀態及可用的 KEV、EPSS 情報排序；這些資料不代表此設備已遭入侵。" xml:space="preserve"><value>Sorted by assessment status and available KEV/EPSS intelligence; this does not mean the device is compromised.</value></data>
+  <data name="部分風險情報目前不可用或已過期，未使用該情報排序。" xml:space="preserve"><value>Some risk intelligence is unavailable or expired and was not used for sorting.</value></data>
+  <data name="產品或公告" xml:space="preserve"><value>Product or advisory</value></data>
+  <data name="例如 CVE" xml:space="preserve"><value>e.g. CVE</value></data>
+  <data name="沒有符合條件的公告候選。" xml:space="preserve"><value>No matching candidate advisories.</value></data>
+  <data name="更新盤點顯示已修補" xml:space="preserve"><value>Update inventory indicates patched</value></data>
+  <data name="已知遭利用（CISA KEV）" xml:space="preserve"><value>Known exploited (CISA KEV)</value></data>
+  <data name="KEV 命中（來源未驗證）" xml:space="preserve"><value>KEV match (source unverified)</value></data>
+  <data name="Microsoft 公告最高嚴重度：{0}" xml:space="preserve"><value>Highest Microsoft advisory severity: {0}</value></data>
+  <data name="Microsoft 公告最高嚴重度：未提供或無法確認" xml:space="preserve"><value>Highest Microsoft advisory severity: unavailable or unconfirmed</value></data>
+  <data name="Microsoft 將此產品列在受影響範圍。" xml:space="preserve"><value>Microsoft lists this product as affected.</value></data>
+  <data name="已觀察到相關 KB：{0}。" xml:space="preserve"><value>Related KBs observed: {0}.</value></data>
+  <data name="已觀察到取代更新：{0}。" xml:space="preserve"><value>Superseding updates observed: {0}.</value></data>
+  <data name="查看 Microsoft Update Catalog 來源" xml:space="preserve"><value>View Microsoft Update Catalog source</value></data>
+  <data name="KB{0} 取代 KB{1} · 更新 {2} · 取得時間 {3} UTC" xml:space="preserve"><value>KB{0} supersedes KB{1} · Update {2} · Retrieved {3} UTC</value></data>
+  <data name="部分取代關係來源未列出。" xml:space="preserve"><value>Some supersedence sources are omitted.</value></data>
+  <data name="Microsoft 公告標示需要客戶採取行動。" xml:space="preserve"><value>The Microsoft advisory indicates customer action is required.</value></data>
+  <data name="公告標示需要客戶採取行動。" xml:space="preserve"><value>The advisory indicates customer action is required.</value></data>
+  <data name="相關更新回報需要重新啟動。" xml:space="preserve"><value>A related update reports that a restart is required.</value></data>
+  <data name="公告的產品適用範圍有歧義。" xml:space="preserve"><value>The advisory product scope is ambiguous.</value></data>
+  <data name="無法讀取這筆評估的詳細依據。" xml:space="preserve"><value>Unable to load assessment details.</value></data>
+  <data name="查看評估依據" xml:space="preserve"><value>View assessment evidence</value></data>
+  <data name="情報提供者：Microsoft Security Update Guide" xml:space="preserve"><value>Intelligence provider: Microsoft Security Update Guide</value></data>
+  <data name="情報版本：{0} · 比對器：{1}" xml:space="preserve"><value>Intelligence version: {0} · Matcher: {1}</value></data>
+  <data name="無可用快照" xml:space="preserve"><value>No snapshot available</value></data>
+  <data name="主機盤點" xml:space="preserve"><value>Host inventory</value></data>
+  <data name="盤點來源" xml:space="preserve"><value>Inventory source</value></data>
+  <data name="已觀察的更新" xml:space="preserve"><value>Observed updates</value></data>
+  <data name="觀察時間：{0} UTC" xml:space="preserve"><value>Observed: {0} UTC</value></data>
+  <data name="對應產品：{0}" xml:space="preserve"><value>Mapped product: {0}</value></data>
+  <data name="尚無可確認的產品對應，無法比對公告是否提及此主機產品。" xml:space="preserve"><value>No confirmed product mapping is available; advisories cannot be matched to this host product.</value></data>
+  <data name="系統組建：{0}.{1}" xml:space="preserve"><value>System build: {0}.{1}</value></data>
+  <data name="Microsoft 公告目前無法查詢；下方只顯示更新快取提供的 CVE。" xml:space="preserve"><value>Microsoft advisories are unavailable; only CVEs from the update cache are shown below.</value></data>
+  <data name="此頁部分 CVE 未顯示或未查詢，請勿將結果視為完整清單。" xml:space="preserve"><value>Some CVEs were not displayed or queried; do not treat this as a complete list.</value></data>
+  <data name="這次沒有可顯示的更新觀察；不代表沒有漏洞。" xml:space="preserve"><value>No update observations to display; this does not mean there are no vulnerabilities.</value></data>
+  <data name="更新 {0} · 修訂 {1} · {2} · {3}" xml:space="preserve"><value>Update {0} · Revision {1} · {2} · {3}</value></data>
+  <data name="快取顯示已安裝" xml:space="preserve"><value>Cache indicates installed</value></data>
+  <data name="快取顯示未安裝" xml:space="preserve"><value>Cache indicates not installed</value></data>
+  <data name="快取未標示需要重新啟動" xml:space="preserve"><value>Cache does not indicate restart required</value></data>
+  <data name="相關 KB：{0}" xml:space="preserve"><value>Related KBs: {0}</value></data>
+  <data name="（僅列出部分）" xml:space="preserve"><value>(partial list)</value></data>
+  <data name="查看更新取代線索" xml:space="preserve"><value>View update supersedence leads</value></data>
+  <data name="快取回報此更新可能取代下列更新；這些識別碼不含修訂版本，不能證明包含特定漏洞修補。" xml:space="preserve"><value>The cache reports this update may supersede the following updates. IDs omit revisions and do not prove a particular vulnerability is patched.</value></data>
+  <data name="搜尋來源設定：{0}" xml:space="preserve"><value>Search source setting: {0}</value></data>
+  <data name="服務 {0}" xml:space="preserve"><value>Service {0}</value></data>
+  <data name="預設來源（實際服務未確認）" xml:space="preserve"><value>Default source (actual service unconfirmed)</value></data>
+  <data name="受管理的更新伺服器" xml:space="preserve"><value>Managed update server</value></data>
+  <data name="其他更新服務" xml:space="preserve"><value>Other update service</value></data>
+  <data name="未取得" xml:space="preserve"><value>Unavailable</value></data>
+  <data name="僅列出部分取代線索。" xml:space="preserve"><value>Only some supersedence leads are shown.</value></data>
+  <data name="更新資料未列出 CVE，無法判定漏洞狀態。" xml:space="preserve"><value>The update data lists no CVEs; vulnerability status cannot be determined.</value></data>
 </root>
