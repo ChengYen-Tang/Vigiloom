@@ -117,6 +117,8 @@ public sealed class OperationsMigrationTests(TestContext context)
                 await db.SaveChangesAsync(token);
             }
             var agent = new Agent(device.Id, 0, new byte[32], now);
+            var legacyActor = Guid.CreateVersion7();
+            var oldPackage = Guid.CreateVersion7();
             var sigmaWork = Guid.CreateVersion7(); var iocWork = Guid.CreateVersion7(); var finishedWork = Guid.CreateVersion7();
             var eventMessage = Guid.CreateVersion7();
             var workPayload = JsonSerializer.Serialize(new HostLogDispatch(agent.Id, device.Id, 0, [eventMessage]));
@@ -148,6 +150,8 @@ public sealed class OperationsMigrationTests(TestContext context)
             await using (var db = await sourceProvider.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
             {
                 db.Agents.Add(agent); db.HostLogs.Add(new OldHostLog(agent.Id, batch, 0, now));
+                db.Audits.Add(new Vigiloom.Modules.AgentManagement.Domain.AgentAudit(device.Id, agent.Id, null, "AgentEnrolled", now.AddSeconds(-2)));
+                db.Audits.Add(new Vigiloom.Modules.AgentManagement.Domain.AgentAudit(device.Id, agent.Id, legacyActor, "VersionAssignmentCancelled", now.AddSeconds(-1), oldPackage));
                 db.Set<Vigiloom.Modules.AgentManagement.Domain.YaraScan>().AddRange(
                     new() { Id = Guid.CreateVersion7(), AgentId = agent.Id, DeviceId = device.Id, RequestedBy = Guid.CreateVersion7(),
                         FilePath = "C:/sample", Rules = "rule", MaximumBytes = 100, TimeoutSeconds = 10, RequestedAt = now, CompletedAt = now, Outcome = 1 },
@@ -256,6 +260,15 @@ public sealed class OperationsMigrationTests(TestContext context)
             Assert.AreEqual(auditActor, copiedAudit.ActorId);
             Assert.AreEqual(auditGroup, copiedAudit.ResourceId);
             Assert.AreEqual(2, copiedAudit.Group!.Added);
+            var agentHistory = await new OperationAuditQueryService(targetProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>())
+                .QueryAgentRegistrationAsync(new OperationAuditQuery(now.AddMinutes(-1), now.AddMinutes(1)), token);
+            Assert.HasCount(2, agentHistory.Items);
+            var assignmentAudit = agentHistory.Items[0];
+            Assert.AreEqual(legacyActor, assignmentAudit.ActorId);
+            Assert.AreEqual(oldPackage, assignmentAudit.AgentAssignment!.PreviousPackageId);
+            Assert.IsNull(assignmentAudit.AgentAssignment.PackageId);
+            Assert.AreEqual(AgentRegistrationAction.AgentEnrolled, agentHistory.Items[1].AgentRegistration!.Action);
+            Assert.IsTrue(agentHistory.Items[1].AgentRegistration!.AgentActor);
             await using (var db = await targetProvider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             {
                 Assert.AreEqual(1, await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox WHERE MessageId = {delivery.Id} AND MessageType = 'line.push.v1'").SingleAsync(token));

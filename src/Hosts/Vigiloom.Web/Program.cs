@@ -131,6 +131,7 @@ builder.Services.AddHttpClient<RemoteHostAuditFeed>((services, client) =>
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<InventoryAuditFeed>();
 builder.Services.AddScoped<AuditFeedReader>();
+builder.Services.AddScoped<Vigiloom.Web.Diagnostics.AgentIdentityAuditFeed>();
 builder.Services.AddScoped<IdentityAuditReader>();
 builder.Services.AddVigiloomScheduling(builder.Configuration);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
