@@ -15,11 +15,13 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
+using Vigiloom.Contracts.Events;
+using Vigiloom.Contracts.Operations;
 
 namespace Vigiloom.Security;
 
 /// <summary>Consumes Host batches and commits security effects with the delivery receipt.</summary>
-public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClientFactory clients, IEnumerable<IOutboxHandler>? handlers = null, IYaraTimelineWriter? timeline = null) : IServiceWorkHandler
+public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClientFactory clients, IEnumerable<IOutboxHandler>? handlers = null, IYaraTimelineWriter? timeline = null, TemporalWorkWriter? workWriter = null) : IServiceWorkHandler
 {
     public async Task<string?> ExecuteAsync(ServiceWork work, CancellationToken cancellationToken)
     {
@@ -82,6 +84,19 @@ public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClien
         {
             if (!await new BaselineWriter().WriteAsync(sql, transaction, batch.AgentId, batch.DeviceId, batch.DeviceGeneration, baseline, now, token))
                 throw new InvalidOperationException("Baseline batch rejected.");
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(sql,
+                options => options.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)).Options;
+            await using var db = new SecurityAnalysisDbContext(options);
+            await db.Database.UseTransactionAsync(transaction, token);
+            foreach (var items in baseline.Items.Chunk(8))
+            {
+                var deliveries = items.Select(item => new EventTimelineDelivery(Guid.CreateVersion7(),
+                    new EventTimelineEntry("baseline", now, batch.DeviceId, "device", $"安全基準檢查：{item.CheckId}",
+                        $"版本 {item.RevisionId:D}；結果 {item.Outcome}", $"/devices/{batch.DeviceId:D}"))).ToArray();
+                var work = new ServiceWork(EventTimelineWork.BatchKind, JsonSerializer.Serialize(new EventTimelineBatch(deliveries)));
+                await (workWriter ?? throw new InvalidOperationException("Timeline work writer is required."))
+                    .WriteAsync(db, configuration["Work:OperationsQueue"] ?? OperationsWork.Queue, work, token);
+            }
         }
         else if (batch.Kind == "yara" && YaraResultBatchCodec.TryRead(payload, out var yara) && yara!.BatchId == batch.BatchId)
         {
