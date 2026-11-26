@@ -9,6 +9,7 @@ using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Migrator.Security;
 using Vigiloom.Modules.SecurityAnalysis.Domain;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Security;
 using Vigiloom.Testing.SqlServer;
@@ -20,6 +21,28 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests;
 [TestCategory("Database")]
 public sealed class SecurityWorkTests(TestContext context)
 {
+    [TestMethod]
+    public Task SecurityOwnedYaraWorkIsScopedToAgentAndCanBeCancelled() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            await SecurityDatabaseCommand.RunAsync(database.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var scans = new YaraScans(new Factory(options), TimeProvider.System);
+            var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var other = new RegisteredAgentIdentity(Guid.CreateVersion7(), identity.DeviceId, 1);
+            var created = await scans.CreateAsync(identity, new("/tmp/file", "rule test { condition: true }", 1024, 30), Guid.CreateVersion7(), token);
+            Assert.AreEqual(created.Id, (await scans.NextAsync(identity, token))!.Id);
+            Assert.IsNull(await scans.NextAsync(other, token));
+            Assert.IsTrue(await scans.CancelAsync(identity.DeviceId, created.Id, token));
+            Assert.IsNull(await scans.NextAsync(identity, token));
+            Assert.AreEqual(YaraScanOutcome.Cancelled, Assert.ContainsSingle(await scans.ListAsync(identity.DeviceId, token)).Result!.Outcome);
+        }, context.CancellationToken);
+
+    private sealed class Factory(DbContextOptions<SecurityAnalysisDbContext> options) : IDbContextFactory<SecurityAnalysisDbContext>
+    {
+        public SecurityAnalysisDbContext CreateDbContext() => new(options);
+    }
+
     [TestMethod]
     public Task RemovedIntegrityScopeDoesNotLeaveARecurringDelivery() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
