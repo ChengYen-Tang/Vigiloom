@@ -29,7 +29,7 @@
         {
             <p>觀察時間：@FormatTime(platform.ObservedAt)；各項狀態彼此獨立。</p>
             <dl class="platform-status">
-                <div><dt>資料庫連線</dt><dd>@StateText(platform.Database)</dd></div>
+                <div><dt>@(string.IsNullOrWhiteSpace(Configuration["Services:Operations:Url"]) ? "資料庫連線" : "Operations 資料庫連線")</dt><dd>@StateText(platform.Database)</dd></div>
                 <div><dt>排程服務心跳</dt><dd>@SchedulerText(platform.Scheduler)</dd></div>
                 <div><dt>Agent 批次接收</dt><dd>@AgentBatchText(platform)</dd></div>
                 <div><dt>應用遙測接收</dt><dd>
