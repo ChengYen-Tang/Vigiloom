@@ -210,13 +210,16 @@ public static class WorkerHost
         builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
         builder.Services.AddHostedService<HostMetricRollupSchedule>();
         builder.Services.AddHostedService<HostMetricRetentionSchedule>();
-        builder.Services.AddHostedService<TelemetryRetentionSchedule>();
         builder.Services.AddHostedService<AuditRetentionSchedule>();
-        builder.Services.AddHostedService<MetricRollupSchedule>();
-        builder.Services.AddSingleton<HealthRunner>();
-        builder.Services.AddHostedService<HealthPolicyWorker>();
-        builder.Services.AddHostedService<HealthExpiryWorker>();
-        builder.Services.AddHostedService<HealthWorker>();
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Observability:Url"]))
+        {
+            builder.Services.AddHostedService<TelemetryRetentionSchedule>();
+            builder.Services.AddHostedService<MetricRollupSchedule>();
+            builder.Services.AddSingleton<HealthRunner>();
+            builder.Services.AddHostedService<HealthPolicyWorker>();
+            builder.Services.AddHostedService<HealthExpiryWorker>();
+            builder.Services.AddHostedService<HealthWorker>();
+        }
         builder.Services.AddHostedService<OutboxSchedule>();
         builder.Services.AddHangfireServer();
         return builder;

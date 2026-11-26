@@ -4,7 +4,7 @@
 @using System.Security.Claims
 @using Vigiloom.Contracts.Services
 @using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention
-@inject TelemetryRetentionSettings Retention
+@inject Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess Retention
 @inject ILogger<TelemetryRetentionPage> Logger
 
 <PageTitle>應用服務資料保存 - Vigiloom</PageTitle>

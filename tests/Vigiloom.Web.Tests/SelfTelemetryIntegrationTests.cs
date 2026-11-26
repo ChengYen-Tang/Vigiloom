@@ -68,6 +68,7 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
 
             using var observation = new WebApplicationFactory<ObservabilityHost::Program>().WithWebHostBuilder(web =>
             {
+                web.UseSetting("Hangfire:Enabled", "false");
                 web.UseEnvironment("Production");
                 web.UseUrls("http://127.0.0.1:0");
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
