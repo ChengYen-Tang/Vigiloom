@@ -154,6 +154,7 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
     builder.Services.AddVigiloomTemporalWorker<SecurityWorkHandler>(builder.Configuration["Work:SecurityLogQueue"] ?? "vigiloom.security.logs");
     builder.Services.AddScoped<IYaraScanNotifier, YaraScanNotifier>();
     builder.Services.AddScoped<IYaraTimelineWriter, YaraTimelineWriter>();
+    builder.Services.AddScoped<IDetectionTimelineWriter, DetectionTimelineWriter>();
     builder.Services.AddScoped(provider => new OutboxDispatcher(provider.GetRequiredService<IConfiguration>().GetConnectionString("Security")
         ?? throw new InvalidOperationException("ConnectionStrings:Security is required."), provider.GetServices<IOutboxHandler>(),
         provider.GetRequiredService<ILogger<OutboxDispatcher>>()));

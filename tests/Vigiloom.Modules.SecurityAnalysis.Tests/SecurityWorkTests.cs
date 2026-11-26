@@ -226,6 +226,40 @@ public sealed class SecurityWorkTests(TestContext context)
         }, context.CancellationToken);
 
     [TestMethod]
+    public Task DetectionTimelineUsesCallerTransaction() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            await SecurityDatabaseCommand.RunAsync(database.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var config = new ConfigurationBuilder().Build();
+            var writer = new DetectionTimelineWriter(new TemporalWorkWriter(new OutboxWriter([new NoopHandler()])), config);
+            var device = Guid.CreateVersion7();
+            EventTimelineEntry[] entries = [new("sigma", DateTimeOffset.UtcNow, device, "device", "test", "evidence", $"/devices/{device:D}")];
+            await using (var db = new SecurityAnalysisDbContext(options))
+            {
+                await using var transaction = await db.Database.BeginTransactionAsync(token);
+                await writer.WriteAsync(db, entries, token);
+                await transaction.RollbackAsync(token);
+            }
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM scheduling.Outbox";
+            Assert.AreEqual(0, (int)(await command.ExecuteScalarAsync(token))!);
+            await using (var db = new SecurityAnalysisDbContext(options))
+            {
+                await using var transaction = await db.Database.BeginTransactionAsync(token);
+                await writer.WriteAsync(db, entries, token);
+                await transaction.CommitAsync(token);
+            }
+            command.CommandText = "SELECT Payload FROM scheduling.Outbox";
+            var envelope = JsonSerializer.Deserialize<TemporalWorkRequest>((string)(await command.ExecuteScalarAsync(token))!);
+            Assert.AreEqual(EventTimelineWork.BatchKind, envelope!.Work.Kind);
+            var batch = JsonSerializer.Deserialize<EventTimelineBatch>(envelope.Work.Payload)!;
+            Assert.AreEqual(device, Assert.ContainsSingle(batch.Items).Entry.ResourceId);
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task RemovedIntegrityScopeDoesNotLeaveARecurringDelivery() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
