@@ -87,8 +87,11 @@ public sealed class HostLogTests(TestContext context)
                 [1], [], "", "", [new ApplicationLogItem(DateTimeOffset.UtcNow, false, false, traceId, null, payload)]);
             using (var application = await client.PostAsJsonAsync("/internal/v1/application-logs", appLog, token))
                 Assert.AreEqual(HttpStatusCode.OK, application.StatusCode);
-            using (var duplicateApplication = await client.PostAsJsonAsync("/internal/v1/application-logs", appLog, token))
+            using (var duplicateApplication = await client.PostAsJsonAsync("/internal/v1/application-logs/batch", new[] { appLog }, token))
                 Assert.AreEqual(HttpStatusCode.OK, duplicateApplication.StatusCode);
+            using (var invalidBatch = await client.PostAsJsonAsync("/internal/v1/application-logs/batch",
+                new[] { appLog, appLog with { SourceId = Guid.CreateVersion7() } }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidBatch.StatusCode);
             Assert.AreEqual(1, await quota.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM logquota.Buckets WHERE Kind = 2 AND SourceId = {appLog.SourceId}").SingleAsync(token));
             await quota.Database.ExecuteSqlRawAsync("UPDATE logquota.Buckets SET Microtokens = 0, LastRefill = DATEADD(second, 30, SYSDATETIMEOFFSET()) WHERE Kind = 0", token);
             using (var limited = await client.PostAsJsonAsync("/internal/v1/application-logs", appLog, token))
