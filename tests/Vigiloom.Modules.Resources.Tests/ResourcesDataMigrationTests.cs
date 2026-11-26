@@ -28,6 +28,12 @@ public sealed class ResourcesDataMigrationTests
             var telemetryOptions = new DbContextOptionsBuilder<ServiceObservabilityDbContext>().UseSqlServer(source.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")).Options;
             await using (var db = new ServiceObservabilityDbContext(telemetryOptions)) await db.Database.MigrateAsync(token);
+            var oldLinksOptions = new DbContextOptionsBuilder<DeploymentLinksDbContext>().UseSqlServer(source.ConnectionString,
+                sql => sql.MigrationsHistoryTable(DeploymentLinksDbContext.MigrationHistory, "resources")).Options;
+            var newLinksOptions = new DbContextOptionsBuilder<ResourceDeploymentLinksDbContext>().UseSqlServer(target.ConnectionString,
+                sql => sql.MigrationsHistoryTable(ResourceDeploymentLinksDbContext.MigrationHistory, "resources")).Options;
+            await using (var db = new DeploymentLinksDbContext(oldLinksOptions)) await db.Database.MigrateAsync(token);
+            await using (var db = new ResourceDeploymentLinksDbContext(newLinksOptions)) await db.Database.MigrateAsync(token);
             var agentOptions = new DbContextOptionsBuilder<AgentManagementDbContext>().UseSqlServer(source.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "agent")).Options;
             await using (var db = new AgentManagementDbContext(agentOptions)) await db.Database.MigrateAsync(token);
@@ -75,6 +81,14 @@ public sealed class ResourcesDataMigrationTests
                 db.DeviceTargets.Add(new DeviceTarget(device.Id, "extra.example"));
                 await db.SaveChangesAsync(token);
             }
+            var instanceId = Guid.CreateVersion7();
+            await using (var db = new ServiceObservabilityDbContext(telemetryOptions))
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [service].[Instances] ([Id],[ServiceId],[SourceScopeId],[ExternalInstanceId],[CreatedAt],[UpdatedAt]) VALUES ({instanceId},{approved.Id},{telemetrySource.Id},{"node"},{now},{now})", token);
+            var link = new DeploymentLink(device.Id, instanceId, Guid.CreateVersion7(), "Verified", now);
+            var ended = new DeploymentLink(device.Id, instanceId, Guid.CreateVersion7(), "Previous", now.AddMinutes(-1));
+            ended.End(now.AddSeconds(-30));
+            await using (var db = new DeploymentLinksDbContext(oldLinksOptions))
+            { db.Links.AddRange(link, ended); await db.SaveChangesAsync(token); }
             var agent = new Vigiloom.Modules.AgentManagement.Domain.Agent(device.Id, 0, new byte[32], now);
             var enrollment = new Vigiloom.Modules.AgentManagement.Domain.Enrollment(device.Id, 0, new byte[32], now, now.AddMinutes(15));
             enrollment.Consume(agent.Id);
@@ -91,6 +105,11 @@ public sealed class ResourcesDataMigrationTests
                 await db.SaveChangesAsync(token);
             }
             await ResourcesDataMigration.CopyAsync(source.ConnectionString, target.ConnectionString, token);
+            await using (var db = new ResourceDeploymentLinksDbContext(newLinksOptions))
+            {
+                Assert.IsTrue(await db.Links.AnyAsync(x => x.Id == link.Id && x.DeviceId == device.Id && x.ServiceInstanceId == instanceId && x.EndedAt == null, token));
+                Assert.IsTrue(await db.Links.AnyAsync(x => x.Id == ended.Id && x.EndedAt != null, token));
+            }
             await using (var db = new ResourcesDbContext(targetOptions))
             {
                 Assert.IsTrue(await db.Devices.AnyAsync(x => x.Id == device.Id && x.Address == "server.example", token));

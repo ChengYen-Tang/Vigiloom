@@ -9,7 +9,9 @@ public sealed class DeploymentLinksDbContext(DbContextOptions<DeploymentLinksDbC
     public const string MigrationHistory = "__DeploymentMigrationsHistory";
     public DbSet<DeploymentLink> Links => Set<DeploymentLink>();
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    protected override void OnModelCreating(ModelBuilder modelBuilder) => ConfigureLinks(modelBuilder);
+
+    internal static void ConfigureLinks(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("resources");
         var link = modelBuilder.Entity<DeploymentLink>();
