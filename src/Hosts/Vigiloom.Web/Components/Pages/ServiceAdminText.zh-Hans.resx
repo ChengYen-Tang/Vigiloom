@@ -614,4 +614,51 @@
   <data name="請先確認移除來源的影響。" xml:space="preserve"><value>请先确认移除来源的影响。</value></data>
   <data name="無法確認移除結果，請重新整理後查看。" xml:space="preserve"><value>无法确认移除结果，请刷新后查看。</value></data>
   <data name="來源已變更或不存在，請重新整理後再試。" xml:space="preserve"><value>来源已更改或不存在，请刷新后重试。</value></data>
+  <data name="主機日誌來源" xml:space="preserve"><value>主机日志来源</value></data>
+  <data name="{0} · 設定此設備 Agent 要讀取的日誌" xml:space="preserve"><value>{0} · 设置此设备 Agent 要读取的日志</value></data>
+  <data name="無法讀取設備或來源，請稍後重新整理。" xml:space="preserve"><value>无法读取设备或来源，请稍后刷新。</value></data>
+  <data name="找不到設備。" xml:space="preserve"><value>找不到设备。</value></data>
+  <data name="已設定的來源" xml:space="preserve"><value>已设置的来源</value></data>
+  <data name="設定會定期同步至 Agent；已儲存不代表設備已套用或可讀取。Agent 帳號需要來源的讀取權限。" xml:space="preserve"><value>设置会定期同步至 Agent；已保存不代表设备已应用或可读取。Agent 账号需要来源的读取权限。</value></data>
+  <data name="Agent 因資源門檻延後日誌採集。" xml:space="preserve"><value>Agent 因资源门槛延迟日志采集。</value></data>
+  <data name="無法讀取來源狀態。" xml:space="preserve"><value>无法读取来源状态。</value></data>
+  <data name="尚未設定來源。" xml:space="preserve"><value>尚未设置来源。</value></data>
+  <data name="左右滑動查看完整來源資訊。" xml:space="preserve"><value>左右滑动查看完整来源信息。</value></data>
+  <data name="來源清單，可左右捲動" xml:space="preserve"><value>来源列表，可左右滚动</value></data>
+  <data name="類型" xml:space="preserve"><value>类型</value></data>
+  <data name="來源位置" xml:space="preserve"><value>来源位置</value></data>
+  <data name="最近檢查" xml:space="preserve"><value>最近检查</value></data>
+  <data name="新增來源" xml:space="preserve"><value>新增来源</value></data>
+  <data name="每台設備最多設定 {0} 個來源。" xml:space="preserve"><value>每台设备最多设置 {0} 个来源。</value></data>
+  <data name="接入 Windows Sysmon 事件" xml:space="preserve"><value>接入 Windows Sysmon 事件</value></data>
+  <data name="Sysmon 是另外安裝的 Windows 服務與驅動程式，會使用主機資源及日誌空間。請先由管理員在主機安裝並設定 Sysmon，並確認 Agent 帳號有讀取事件記錄的權限。" xml:space="preserve"><value>Sysmon 是另行安装的 Windows 服务与驱动程序，会使用主机资源及日志空间。请先由管理员在主机安装并设置 Sysmon，并确认 Agent 账号有读取事件日志的权限。</value></data>
+  <data name="安裝 Sysmon 後，在受監控主機以系統管理員開啟 PowerShell，執行下列指令；它只授予 Agent 讀取 Sysmon 事件通道的權限。" xml:space="preserve"><value>安装 Sysmon 后，在受监控主机以管理员身份打开 PowerShell 并运行以下命令；它只授予 Agent 读取 Sysmon 事件通道的权限。</value></data>
+  <data name="如果目前安裝的 Agent 沒有這個檔案，可" xml:space="preserve"><value>如果当前安装的 Agent 没有此文件，可</value></data>
+  <data name="下載權限設定腳本" xml:space="preserve"><value>下载权限设置脚本</value></data>
+  <data name="，複製到受監控主機後執行。" xml:space="preserve"><value>，复制到受监控主机后运行。</value></data>
+  <data name="查看 Sysmon 安裝與授權資訊" xml:space="preserve"><value>查看 Sysmon 安装与授权信息</value></data>
+  <data name="加入 Sysmon 事件來源" xml:space="preserve"><value>加入 Sysmon 事件来源</value></data>
+  <data name="來源類型" xml:space="preserve"><value>来源类型</value></data>
+  <data name="Windows 事件記錄" xml:space="preserve"><value>Windows 事件日志</value></data>
+  <data name="文字檔" xml:space="preserve"><value>文本文件</value></data>
+  <data name="例如 System 或 /var/log/syslog" xml:space="preserve"><value>例如 System 或 /var/log/syslog</value></data>
+  <data name="Windows 請輸入事件記錄名稱，文字檔請輸入絕對路徑；journald 不需填寫。" xml:space="preserve"><value>Windows 请输入事件日志名称，文本文件请输入绝对路径；journald 无需填写。</value></data>
+  <data name="只用於文字檔；文字檔須為 UTF-8。" xml:space="preserve"><value>仅用于文本文件；文本文件须为 UTF-8。</value></data>
+  <data name="無法確認目前帳號。" xml:space="preserve"><value>无法确认当前账号。</value></data>
+  <data name="來源數量已達上限。" xml:space="preserve"><value>来源数量已达上限。</value></data>
+  <data name="設備不存在或設定已變更，請重新整理。" xml:space="preserve"><value>设备不存在或设置已更改，请刷新。</value></data>
+  <data name="請確認名稱、來源類型及位置；文字檔需使用絕對路徑。" xml:space="preserve"><value>请确认名称、来源类型及位置；文本文件需使用绝对路径。</value></data>
+  <data name="無法確認新增結果，請重新整理後查看。" xml:space="preserve"><value>无法确认新增结果，请刷新后查看。</value></data>
+  <data name="目標設定：已停用" xml:space="preserve"><value>目标设置：已停用</value></data>
+  <data name="尚無目前設定的狀態" xml:space="preserve"><value>尚无当前设置的状态</value></data>
+  <data name="尚未檢查" xml:space="preserve"><value>尚未检查</value></data>
+  <data name="上次檢查已過期" xml:space="preserve"><value>上次检查已过期</value></data>
+  <data name="暫無新紀錄" xml:space="preserve"><value>暂无新记录</value></data>
+  <data name="最近已加入 Agent 佇列" xml:space="preserve"><value>最近已加入 Agent 队列</value></data>
+  <data name="佇列已滿，等待空間" xml:space="preserve"><value>队列已满，等待空间</value></data>
+  <data name="此系統不支援來源" xml:space="preserve"><value>此系统不支持来源</value></data>
+  <data name="讀取權限不足，請確認來源權限" xml:space="preserve"><value>读取权限不足，请确认来源权限</value></data>
+  <data name="無法讀取來源" xml:space="preserve"><value>无法读取来源</value></data>
+  <data name="採集狀態衝突，等待重試" xml:space="preserve"><value>采集状态冲突，等待重试</value></data>
+  <data name="狀態未知" xml:space="preserve"><value>状态未知</value></data>
 </root>

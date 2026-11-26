@@ -13,56 +13,57 @@
 @inject TimeProvider Clock
 @inject NavigationManager Navigation
 @inject ILogger<HostLogSources> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ServiceAdminText> L
 
-<PageTitle>主機日誌來源 - Vigiloom</PageTitle>
+<PageTitle>@L["主機日誌來源"] - Vigiloom</PageTitle>
 <main class="device-page host-log-page">
-    <a href="@($"/devices/{Id:D}")">← 返回設備詳情</a>
-    <header class="device-heading"><div><h1>主機日誌來源</h1><p>@(deviceName ?? "設備") · 設定此設備 Agent 要讀取的日誌</p></div></header>
-    @if (loadError) { <section class="device-panel"><p role="alert">無法讀取設備或來源，請稍後重新整理。</p></section> }
-    else if (items is null) { <section class="device-panel"><p role="alert">找不到設備。</p></section> }
+    <a href="@($"/devices/{Id:D}")">← @L["返回設備詳情"]</a>
+    <header class="device-heading"><div><h1>@L["主機日誌來源"]</h1><p>@L["{0} · 設定此設備 Agent 要讀取的日誌", deviceName ?? L["設備"].Value]</p></div></header>
+    @if (loadError) { <section class="device-panel"><p role="alert">@L["無法讀取設備或來源，請稍後重新整理。"]</p></section> }
+    else if (items is null) { <section class="device-panel"><p role="alert">@L["找不到設備。"]</p></section> }
     else
     {
         <section class="device-panel">
-            <h2>已設定的來源</h2>
-            <p>設定會定期同步至 Agent；已儲存不代表設備已套用或可讀取。Agent 帳號需要來源的讀取權限。</p>
-            @if (status?.Report.Throttled == true && statusCurrent) { <p role="status">Agent 因資源門檻延後日誌採集。</p> }
-            @if (statusError) { <p role="status">無法讀取來源狀態。</p> }
-            @if (items.Count == 0) { <p>尚未設定來源。</p> }
+            <h2>@L["已設定的來源"]</h2>
+            <p>@L["設定會定期同步至 Agent；已儲存不代表設備已套用或可讀取。Agent 帳號需要來源的讀取權限。"]</p>
+            @if (status?.Report.Throttled == true && statusCurrent) { <p role="status">@L["Agent 因資源門檻延後日誌採集。"]</p> }
+            @if (statusError) { <p role="status">@L["無法讀取來源狀態。"]</p> }
+            @if (items.Count == 0) { <p>@L["尚未設定來源。"]</p> }
             else
             {
-                <p class="host-log-scroll-hint">左右滑動查看完整來源資訊。</p>
-                <div class="host-log-table-wrap" tabindex="0" role="region" aria-label="來源清單，可左右捲動"><table class="host-log-table"><thead><tr><th>來源名稱</th><th>類型</th><th>來源位置</th><th>最近檢查</th><th>操作</th></tr></thead><tbody>
+                <p class="host-log-scroll-hint">@L["左右滑動查看完整來源資訊。"]</p>
+                <div class="host-log-table-wrap" tabindex="0" role="region" aria-label="@L["來源清單，可左右捲動"]"><table class="host-log-table"><thead><tr><th>@L["來源名稱"]</th><th>@L["類型"]</th><th>@L["來源位置"]</th><th>@L["最近檢查"]</th><th>@L["操作"]</th></tr></thead><tbody>
                     @foreach (var item in items)
                     {
-                        <tr @key="item.Settings.SourceId"><td>@item.Settings.Name</td><td>@KindName(item.Settings.Kind)</td><td>@item.Settings.Target</td><td>@SourceStatus(item)</td><td><a href="@($"/devices/{Id:D}/log-sources/{item.Settings.SourceId:D}")">編輯</a></td></tr>
+                        <tr @key="item.Settings.SourceId"><td>@item.Settings.Name</td><td>@KindName(item.Settings.Kind)</td><td>@item.Settings.Target</td><td>@SourceStatus(item)</td><td><a href="@($"/devices/{Id:D}/log-sources/{item.Settings.SourceId:D}")">@L["編輯"]</a></td></tr>
                     }
                 </tbody></table></div>
             }
         </section>
         <section class="device-panel">
-            <h2>新增來源</h2>
-            <p>每台設備最多設定 @AgentLogSettingsSnapshot.MaximumSources 個來源。</p>
+            <h2>@L["新增來源"]</h2>
+            <p>@L["每台設備最多設定 {0} 個來源。", AgentLogSettingsSnapshot.MaximumSources]</p>
             @if (message is not null) { <p class="device-alert" role="alert">@message</p> }
             <details>
-                <summary>接入 Windows Sysmon 事件</summary>
-                <p>Sysmon 是另外安裝的 Windows 服務與驅動程式，會使用主機資源及日誌空間。請先由管理員在主機安裝並設定 Sysmon，並確認 Agent 帳號有讀取事件記錄的權限。</p>
-                <p>安裝 Sysmon 後，在受監控主機以系統管理員開啟 PowerShell，執行下列指令；它只授予 Agent 讀取 Sysmon 事件通道的權限。</p>
+                <summary>@L["接入 Windows Sysmon 事件"]</summary>
+                <p>@L["Sysmon 是另外安裝的 Windows 服務與驅動程式，會使用主機資源及日誌空間。請先由管理員在主機安裝並設定 Sysmon，並確認 Agent 帳號有讀取事件記錄的權限。"]</p>
+                <p>@L["安裝 Sysmon 後，在受監控主機以系統管理員開啟 PowerShell，執行下列指令；它只授予 Agent 讀取 Sysmon 事件通道的權限。"]</p>
                 <pre>powershell.exe -ExecutionPolicy Bypass -File "C:\Program Files\VigiloomAgent\Tools\grant-sysmon-read.ps1"</pre>
-                <p>如果目前安裝的 Agent 沒有這個檔案，可<a href="/settings/agent-tools/grant-sysmon-read">下載權限設定腳本</a>，複製到受監控主機後執行。</p>
-                <p><a href="https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon" target="_blank" rel="noopener noreferrer">查看 Sysmon 安裝與授權資訊</a></p>
+                <p>@L["如果目前安裝的 Agent 沒有這個檔案，可"]<a href="/settings/agent-tools/grant-sysmon-read">@L["下載權限設定腳本"]</a>@L["，複製到受監控主機後執行。"]</p>
+                <p><a href="https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon" target="_blank" rel="noopener noreferrer">@L["查看 Sysmon 安裝與授權資訊"]</a></p>
                 <EditForm Model="Input" FormName="sysmon-source-create" method="post" OnSubmit="CreateSysmonAsync">
-                    <button type="submit" disabled="@(items.Any(x => x.Settings.Kind == AgentLogSourceKind.WindowsEvent && string.Equals(x.Settings.Target, "Microsoft-Windows-Sysmon/Operational", StringComparison.OrdinalIgnoreCase)))">加入 Sysmon 事件來源</button>
+                    <button type="submit" disabled="@(items.Any(x => x.Settings.Kind == AgentLogSourceKind.WindowsEvent && string.Equals(x.Settings.Target, "Microsoft-Windows-Sysmon/Operational", StringComparison.OrdinalIgnoreCase)))">@L["加入 Sysmon 事件來源"]</button>
                 </EditForm>
             </details>
             <EditForm Model="Input" FormName="log-source-create" method="post" OnSubmit="CreateAsync">
-                <label for="source-name">來源名稱</label><InputText id="source-name" @bind-Value="Input.Name" maxlength="256" />
-                <label for="source-kind">來源類型</label><InputSelect id="source-kind" @bind-Value="Input.Kind"><option value="WindowsEvent">Windows 事件記錄</option><option value="Journal">Linux journald</option><option value="TextFile">文字檔</option></InputSelect>
-                <label for="source-target">來源位置</label><InputText id="source-target" @bind-Value="Input.Target" maxlength="1024" placeholder="例如 System 或 /var/log/syslog" />
-                <small>Windows 請輸入事件記錄名稱，文字檔請輸入絕對路徑；journald 不需填寫。</small>
-                <label for="source-mode">文字檔格式</label><InputSelect id="source-mode" @bind-Value="Input.TextMode"><option value="SingleLine">每行一筆</option><option value="IndentedContinuation">縮排行接續前一筆</option></InputSelect>
-                <small>只用於文字檔；文字檔須為 UTF-8。</small>
-                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用來源</label>
-                <div class="device-actions"><button type="submit">新增來源</button></div>
+                <label for="source-name">@L["來源名稱"]</label><InputText id="source-name" @bind-Value="Input.Name" maxlength="256" />
+                <label for="source-kind">@L["來源類型"]</label><InputSelect id="source-kind" @bind-Value="Input.Kind"><option value="WindowsEvent">@L["Windows 事件記錄"]</option><option value="Journal">Linux journald</option><option value="TextFile">@L["文字檔"]</option></InputSelect>
+                <label for="source-target">@L["來源位置"]</label><InputText id="source-target" @bind-Value="Input.Target" maxlength="1024" placeholder="@L["例如 System 或 /var/log/syslog"]" />
+                <small>@L["Windows 請輸入事件記錄名稱，文字檔請輸入絕對路徑；journald 不需填寫。"]</small>
+                <label for="source-mode">@L["文字檔格式"]</label><InputSelect id="source-mode" @bind-Value="Input.TextMode"><option value="SingleLine">@L["每行一筆"]</option><option value="IndentedContinuation">@L["縮排行接續前一筆"]</option></InputSelect>
+                <small>@L["只用於文字檔；文字檔須為 UTF-8。"]</small>
+                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> @L["啟用來源"]</label>
+                <div class="device-actions"><button type="submit">@L["新增來源"]</button></div>
             </EditForm>
         </section>
     }
@@ -110,7 +111,7 @@
 
     private async Task CreateAsync()
     {
-        if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { message = "無法確認目前帳號。"; return; }
+        if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { message = L["無法確認目前帳號。"].Value; return; }
         var target = Input.Kind == AgentLogSourceKind.Journal ? "local" : Input.Target?.Trim() ?? "";
         var input = new HostLogSourceCreate(Input.Kind, Input.Name?.Trim() ?? "", target, Input.Enabled,
             Input.Kind == AgentLogSourceKind.TextFile ? Input.TextMode : null);
@@ -118,44 +119,44 @@
         {
             var result = await Sources.CreateAsync(Id, input, actor, HttpContext.RequestAborted);
             if (result.Status == HostLogConfigurationStatus.Success) { Navigation.NavigateTo($"/devices/{Id:D}/log-sources", forceLoad: true); return; }
-            message = result.Status == HostLogConfigurationStatus.LimitReached ? "來源數量已達上限。" : "設備不存在或設定已變更，請重新整理。";
+            message = result.Status == HostLogConfigurationStatus.LimitReached ? L["來源數量已達上限。"].Value : L["設備不存在或設定已變更，請重新整理。"].Value;
         }
-        catch (ArgumentException) { message = "請確認名稱、來源類型及位置；文字檔需使用絕對路徑。"; }
-        catch (Exception ex) when (ex is not NavigationException) { Logger.LogWarning("Unable to create host log source: {ErrorType}.", ex.GetType().Name); message = "無法確認新增結果，請重新整理後查看。"; }
+        catch (ArgumentException) { message = L["請確認名稱、來源類型及位置；文字檔需使用絕對路徑。"].Value; }
+        catch (Exception ex) when (ex is not NavigationException) { Logger.LogWarning("Unable to create host log source: {ErrorType}.", ex.GetType().Name); message = L["無法確認新增結果，請重新整理後查看。"].Value; }
     }
 
     private async Task CreateSysmonAsync()
     {
-        if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { message = "無法確認目前帳號。"; return; }
+        if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { message = L["無法確認目前帳號。"].Value; return; }
         try
         {
             var input = new HostLogSourceCreate(AgentLogSourceKind.WindowsEvent, "Windows Sysmon", "Microsoft-Windows-Sysmon/Operational", true, null);
             var result = await Sources.CreateAsync(Id, input, actor, HttpContext.RequestAborted);
             if (result.Status == HostLogConfigurationStatus.Success) { Navigation.NavigateTo($"/devices/{Id:D}/log-sources", forceLoad: true); return; }
-            message = result.Status == HostLogConfigurationStatus.LimitReached ? "來源數量已達上限。" : "設備不存在或設定已變更，請重新整理。";
+            message = result.Status == HostLogConfigurationStatus.LimitReached ? L["來源數量已達上限。"].Value : L["設備不存在或設定已變更，請重新整理。"].Value;
         }
-        catch (Exception ex) when (ex is not NavigationException) { Logger.LogWarning("Unable to add Sysmon log source: {ErrorType}.", ex.GetType().Name); message = "無法確認新增結果，請重新整理後查看。"; }
+        catch (Exception ex) when (ex is not NavigationException) { Logger.LogWarning("Unable to add Sysmon log source: {ErrorType}.", ex.GetType().Name); message = L["無法確認新增結果，請重新整理後查看。"].Value; }
     }
 
-    private static string KindName(AgentLogSourceKind kind) => kind switch { AgentLogSourceKind.WindowsEvent => "Windows 事件記錄", AgentLogSourceKind.Journal => "Linux journald", AgentLogSourceKind.TextFile => "文字檔", _ => "未知" };
+    private string KindName(AgentLogSourceKind kind) => kind switch { AgentLogSourceKind.WindowsEvent => L["Windows 事件記錄"].Value, AgentLogSourceKind.Journal => "Linux journald", AgentLogSourceKind.TextFile => L["文字檔"].Value, _ => L["未知"].Value };
     private string SourceStatus(HostLogSourceView item)
     {
-        if (!item.Settings.Enabled) return "目標設定：已停用";
-        if (!statusCurrent || status is null) return "尚無目前設定的狀態";
+        if (!item.Settings.Enabled) return L["目標設定：已停用"].Value;
+        if (!statusCurrent || status is null) return L["尚無目前設定的狀態"].Value;
         var observation = status.Report.Sources.FirstOrDefault(x => x.SourceId == item.Settings.SourceId && x.Generation == item.Settings.Generation);
-        if (observation is null) return "尚未檢查";
+        if (observation is null) return L["尚未檢查"].Value;
         var age = Clock.GetUtcNow() - status.ReceivedAt + TimeSpan.FromSeconds(observation.AgeSeconds);
-        if (age < TimeSpan.Zero || age >= TimeSpan.FromSeconds(status.OfflineAfterSeconds)) return "上次檢查已過期";
+        if (age < TimeSpan.Zero || age >= TimeSpan.FromSeconds(status.OfflineAfterSeconds)) return L["上次檢查已過期"].Value;
         return observation.State switch
         {
-            AgentLogSourceState.End => "暫無新紀錄",
-            AgentLogSourceState.Collected => "最近已加入 Agent 佇列",
-            AgentLogSourceState.Full => "佇列已滿，等待空間",
-            AgentLogSourceState.Unsupported => "此系統不支援來源",
-            AgentLogSourceState.Unavailable when observation.PermissionDenied => "讀取權限不足，請確認來源權限",
-            AgentLogSourceState.Unavailable => "無法讀取來源",
-            AgentLogSourceState.Conflict => "採集狀態衝突，等待重試",
-            _ => "狀態未知"
+            AgentLogSourceState.End => L["暫無新紀錄"].Value,
+            AgentLogSourceState.Collected => L["最近已加入 Agent 佇列"].Value,
+            AgentLogSourceState.Full => L["佇列已滿，等待空間"].Value,
+            AgentLogSourceState.Unsupported => L["此系統不支援來源"].Value,
+            AgentLogSourceState.Unavailable when observation.PermissionDenied => L["讀取權限不足，請確認來源權限"].Value,
+            AgentLogSourceState.Unavailable => L["無法讀取來源"].Value,
+            AgentLogSourceState.Conflict => L["採集狀態衝突，等待重試"].Value,
+            _ => L["狀態未知"].Value
         };
     }
     private sealed class SourceForm { public string? Name { get; set; } public string? Target { get; set; } public AgentLogSourceKind Kind { get; set; } = AgentLogSourceKind.WindowsEvent; public AgentTextLogMode TextMode { get; set; } = AgentTextLogMode.SingleLine; public bool Enabled { get; set; } = true; }
