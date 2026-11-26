@@ -24,11 +24,12 @@ internal static class OtlpHttpReceiver
 {
     internal static async Task<IResult> ReceiveAsync<TRequest, TResponse>(HttpContext context,
         MessageParser<TRequest> parser, Func<AuthenticatedSource, TRequest, CancellationToken, Task<ExportResult>> export,
-        Func<ExportResult, TResponse> response, CancellationToken token, ReceptionRejectionDiagnostics? diagnostics = null)
+        Func<ExportResult, TResponse> response, CancellationToken token, ReceptionRejectionDiagnostics? diagnostics = null,
+        AuthenticatedSource? internalSource = null)
         where TRequest : class, IMessage<TRequest>
         where TResponse : IMessage
     {
-        var source = ServiceSourceCredentialHandler.FromPrincipal(context.User);
+        var source = internalSource ?? ServiceSourceCredentialHandler.FromPrincipal(context.User);
         if (source is null)
             return OtlpResponse.Failure(StatusCodes.Status401Unauthorized, "A valid service source credential is required.");
         if (!MediaTypeHeaderValue.TryParse(context.Request.ContentType, out var contentType) ||

@@ -806,6 +806,9 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<bool>("IsSelf")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -836,6 +839,10 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.HasKey("Id");
 
                     SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("IsSelf")
+                        .IsUnique()
+                        .HasFilter("[IsSelf] = 1");
 
                     b.HasIndex("RowId")
                         .IsUnique();
