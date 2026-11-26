@@ -5,7 +5,8 @@ using Vigiloom.Modules.AlertingOperations.Persistence;
 
 namespace Vigiloom.Modules.AlertingOperations.Application.Retention;
 
-public sealed class AuditRetentionCleanup(IDbContextFactory<OperationsDbContext> contexts, AuditRetentionSettings settings, IEnumerable<IAuditRetentionSource> sources)
+public sealed class AuditRetentionCleanup(IDbContextFactory<OperationsDbContext> contexts, AuditRetentionSettings settings, IEnumerable<IAuditRetentionSource> sources,
+    IEnumerable<IBackgroundHistorySource>? backgroundSources = null)
 {
     private const int BatchSize = 500;
 
@@ -21,6 +22,13 @@ public sealed class AuditRetentionCleanup(IDbContextFactory<OperationsDbContext>
             var cutoff = (await AuditRetentionSettings.NowAsync(db, token)).AddDays(-policy.Days);
             var alertsRemoved = await AlertRetention.DeleteBatchAsync(db, cutoff, BatchSize, token);
             var jobsRemoved = await BackgroundHistoryRetention.DeleteBatchAsync(db, cutoff, BatchSize, token);
+            var coveredDatabases = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { await BackgroundHistoryRetention.DatabaseAsync(db, token) };
+            foreach (var source in backgroundSources ?? [])
+            {
+                var result = await source.DeleteBatchAsync(cutoff, BatchSize, coveredDatabases, token);
+                coveredDatabases.Add(result.Database);
+                jobsRemoved = checked(jobsRemoved + (int)result.Count);
+            }
             var ids = db.AuditEvents.Where(x => x.OccurredAt < cutoff).OrderBy(x => x.OccurredAt).ThenBy(x => x.RowId)
                 .Select(x => x.RowId).Take(BatchSize);
             var removed = await db.AuditEvents.Where(x => ids.Contains(x.RowId)).ExecuteDeleteAsync(token);

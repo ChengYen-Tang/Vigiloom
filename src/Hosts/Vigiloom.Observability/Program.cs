@@ -89,6 +89,8 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Security:Url"]))
 }
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
     builder.Configuration["Temporal:Namespace"] ?? "default");
+builder.Services.AddScoped(_ => new WorkHistoryRetention(builder.Configuration.GetConnectionString("Observability")
+    ?? throw new InvalidOperationException("ConnectionStrings:Observability is required.")));
 builder.Services.AddVigiloomTemporalWorker<ApplicationEventHandler>(builder.Configuration["Work:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
 builder.Services.AddScoped<ApplicationStateProjection>();
 builder.Services.AddHttpClient("resources", (services, client) =>
@@ -168,6 +170,7 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", true))
     builder.Services.AddHangfireServer(options => { options.Queues = ["observability"]; options.IsLightweightServer = true; });
 }
 var app = builder.Build();
+app.MapWorkHistoryEndpoints();
 var forwarded = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwarded is not null) app.UseForwardedHeaders(forwarded);
 app.UseWhen(context => context.Request.Path.StartsWithSegments(OtlpHttpEndpoints.Prefix) ||

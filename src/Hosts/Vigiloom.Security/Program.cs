@@ -163,7 +163,10 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
     builder.Services.AddHostedService<WorkDispatcher>();
 }
 
+builder.Services.AddScoped(_ => new WorkHistoryRetention(builder.Configuration.GetConnectionString("Security")
+    ?? throw new InvalidOperationException("ConnectionStrings:Security is required.")));
 var app = builder.Build();
+app.MapWorkHistoryEndpoints();
 app.MapPost("/internal/v1/inventory-settings/audit", async (OperationAuditQuery query, InventoryAuditFeed audit, CancellationToken token) =>
     AuditFeedLimits.Valid(query) ? Results.Ok(await audit.QueryAsync(query, token)) : Results.BadRequest());
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/internal/v1/yara-scans"), branch =>
