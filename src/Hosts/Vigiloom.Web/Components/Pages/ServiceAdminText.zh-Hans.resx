@@ -1050,4 +1050,17 @@
   <data name="權限不足" xml:space="preserve"><value>权限不足</value></data>
   <data name="檢查錯誤" xml:space="preserve"><value>检查错误</value></data>
   <data name="無法判斷" xml:space="preserve"><value>无法判断</value></data>
+  <data name="新增基準例外說明" xml:space="preserve"><value>新增基准例外说明</value></data>
+  <data name="記錄此設備的原因；不會變更檢查結果或停止檢查。" xml:space="preserve"><value>记录此设备的原因；不会更改检查结果或停止检查。</value></data>
+  <data name="返回設備" xml:space="preserve"><value>返回设备</value></data>
+  <data name="檢查版本：{0}" xml:space="preserve"><value>检查版本：{0}</value></data>
+  <data name="例外原因" xml:space="preserve"><value>例外原因</value></data>
+  <data name="請勿填入密碼或其他機密。唯讀使用者也能查看此說明。" xml:space="preserve"><value>请勿填写密码或其他机密。只读用户也能查看此说明。</value></data>
+  <data name="儲存說明" xml:space="preserve"><value>保存说明</value></data>
+  <data name="請從設備頁選擇基準版本。" xml:space="preserve"><value>请从设备页选择基准版本。</value></data>
+  <data name="基準版本已變更或無法使用，請回設備頁重新選擇。" xml:space="preserve"><value>基准版本已更改或无法使用，请返回设备页重新选择。</value></data>
+  <data name="登入或基準版本已失效，請重新整理。" xml:space="preserve"><value>登录或基准版本已失效，请刷新。</value></data>
+  <data name="基準版本已變更，請回設備頁重新選擇。" xml:space="preserve"><value>基准版本已更改，请返回设备页重新选择。</value></data>
+  <data name="無法儲存說明，請檢查內容後再試。" xml:space="preserve"><value>无法保存说明，请检查内容后重试。</value></data>
+  <data name="無法儲存說明，請稍後再試。" xml:space="preserve"><value>无法保存说明，请稍后重试。</value></data>
 </root>

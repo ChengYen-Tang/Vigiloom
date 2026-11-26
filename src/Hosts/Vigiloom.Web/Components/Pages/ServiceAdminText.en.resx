@@ -1050,4 +1050,17 @@
   <data name="權限不足" xml:space="preserve"><value>Insufficient permissions</value></data>
   <data name="檢查錯誤" xml:space="preserve"><value>Check error</value></data>
   <data name="無法判斷" xml:space="preserve"><value>Unable to determine</value></data>
+  <data name="新增基準例外說明" xml:space="preserve"><value>Add baseline exception note</value></data>
+  <data name="記錄此設備的原因；不會變更檢查結果或停止檢查。" xml:space="preserve"><value>Record the reason for this device; it will not change the result or stop the check.</value></data>
+  <data name="返回設備" xml:space="preserve"><value>Back to device</value></data>
+  <data name="檢查版本：{0}" xml:space="preserve"><value>Check version: {0}</value></data>
+  <data name="例外原因" xml:space="preserve"><value>Exception reason</value></data>
+  <data name="請勿填入密碼或其他機密。唯讀使用者也能查看此說明。" xml:space="preserve"><value>Do not enter passwords or other secrets. Read-only users can also view this note.</value></data>
+  <data name="儲存說明" xml:space="preserve"><value>Save note</value></data>
+  <data name="請從設備頁選擇基準版本。" xml:space="preserve"><value>Select a baseline version from the device page.</value></data>
+  <data name="基準版本已變更或無法使用，請回設備頁重新選擇。" xml:space="preserve"><value>The baseline version changed or is unavailable. Return to the device page and select again.</value></data>
+  <data name="登入或基準版本已失效，請重新整理。" xml:space="preserve"><value>The session or baseline version is no longer valid. Refresh the page.</value></data>
+  <data name="基準版本已變更，請回設備頁重新選擇。" xml:space="preserve"><value>The baseline version changed. Return to the device page and select again.</value></data>
+  <data name="無法儲存說明，請檢查內容後再試。" xml:space="preserve"><value>Unable to save the note. Check its contents and try again.</value></data>
+  <data name="無法儲存說明，請稍後再試。" xml:space="preserve"><value>Unable to save the note. Try again later.</value></data>
 </root>
