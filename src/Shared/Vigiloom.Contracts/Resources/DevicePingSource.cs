@@ -6,10 +6,11 @@ namespace Vigiloom.Contracts.Resources;
 public interface IDevicePingSource
 {
     IAsyncEnumerable<PingDeviceSnapshot> ReadEnabledAsync(CancellationToken token);
-    /// <summary>Locks and verifies the owning device in the caller's same-database SQL transaction.</summary>
+    /// <summary>Verifies the owning device. The local implementation shares the caller's transaction; a remote service cannot.</summary>
     Task<bool> IsCurrentAsync(Guid id, byte[] version, string target, DbConnection connection, DbTransaction transaction, CancellationToken token);
     Task<PingDeviceContext> GetContextAsync(Guid id, DbConnection connection, DbTransaction transaction, CancellationToken token);
 }
 
 public sealed record PingDeviceSnapshot(Guid Id, byte[] Version, IReadOnlyList<string> Targets);
 public sealed record PingDeviceContext(string Name, IReadOnlyList<ResourceGroupSnapshot> Groups);
+public sealed record PingTargetVerification(Guid DeviceId, byte[] Version, string Target);

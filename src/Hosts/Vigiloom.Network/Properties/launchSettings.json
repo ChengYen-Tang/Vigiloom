@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Vigiloom.Network": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:5056",
+      "environmentVariables": { "ASPNETCORE_ENVIRONMENT": "Development" }
+    }
+  }
+}

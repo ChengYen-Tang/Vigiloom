@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -21,6 +22,7 @@ using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.NetworkMonitoring.Application;
 using Vigiloom.Operations.Work;
 using Vigiloom.Testing.SqlServer;
 
@@ -98,9 +100,20 @@ public sealed class TemporalAuditIntegrationTests(TestContext context)
                 {
                     await using var transaction = await resources.Database.BeginTransactionAsync(token);
                     var work = scope.ServiceProvider.GetRequiredService<TemporalWorkWriter>();
-                    deliveryIds.Add(await work.WriteAsync(resources, queue, new(PingTransitionDelivery.Kind, JsonSerializer.Serialize(new PingTransitionDelivery(ping, 0))), token));
+                    var sink = new TemporalPingTransitionSink(scope.ServiceProvider.GetRequiredService<OutboxWriter>(), host.Services.GetRequiredService<IConfiguration>());
+                    await sink.RecordAsync(ping, resources.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
                     deliveryIds.Add(await work.WriteAsync(resources, queue, new(HealthTransitionDelivery.Kind, JsonSerializer.Serialize(new HealthTransitionDelivery(health, 0, []))), token));
                     await transaction.CommitAsync(token);
+                }
+                await using (var pending = connection.CreateCommand())
+                {
+                    pending.CommandText = "SELECT MessageId FROM scheduling.Outbox";
+                    await using var rows = await pending.ExecuteReaderAsync(token);
+                    while (await rows.ReadAsync(token))
+                    {
+                        var id = rows.GetGuid(0);
+                        if (!deliveryIds.Contains(id)) deliveryIds.Add(id);
+                    }
                 }
                 var outbox = new OutboxDispatcher(source.ConnectionString, scope.ServiceProvider.GetServices<IOutboxHandler>(),
                     NullLogger<OutboxDispatcher>.Instance);

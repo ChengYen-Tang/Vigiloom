@@ -1,7 +1,7 @@
 @using System.Security.Claims
 @using Vigiloom.Contracts.SpeedTests
 @using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests
-@inject SpeedRetentionSettings Retention
+@inject ISpeedRetentionSettings Retention
 @inject ILogger<SpeedRetentionPanel> Logger
 
 <section class="device-panel speed-retention" aria-labelledby="speed-retention-title">

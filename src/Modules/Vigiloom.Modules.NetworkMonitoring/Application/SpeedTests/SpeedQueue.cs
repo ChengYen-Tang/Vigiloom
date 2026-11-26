@@ -9,7 +9,7 @@ namespace Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 public enum SpeedRequestStatus { Accepted, Busy, NotDue }
 public sealed record SpeedRequestResult(SpeedRequestStatus Status, Guid? RunId = null);
 public sealed record SpeedLease(Guid Id, Guid LeaseId, int MaxMiB, int TimeoutSeconds);
-public sealed class SpeedQueue(IDbContextFactory<NetworkDbContext> contexts)
+public sealed class SpeedQueue(IDbContextFactory<NetworkDbContext> contexts) : ISpeedCancellation
 {
     public async Task<SpeedRequestResult> RequestAsync(Guid requestId, CancellationToken token)
     {

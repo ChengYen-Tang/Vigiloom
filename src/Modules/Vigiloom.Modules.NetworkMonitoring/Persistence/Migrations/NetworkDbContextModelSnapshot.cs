@@ -307,6 +307,10 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
+                    b.Property<long>("LastTransitionGeneration")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.Property<double?>("LatencyMilliseconds")
                         .HasColumnType("float");
 
