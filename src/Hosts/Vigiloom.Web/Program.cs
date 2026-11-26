@@ -501,6 +501,7 @@ builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.IntelligenceStatusAccess>
 builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.IntelligencePublicationAccess>();
 builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.IntelligenceSettingsAccess>();
 builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.CustomBaselineAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.IntelligenceImportAccess>();
 builder.Services.AddScoped<IntegrityQuery>();
 builder.Services.AddScoped<IntegrityChangeQuery>();
 builder.Services.AddScoped<AgentIntegritySettingsMonitoring>(services => new(
