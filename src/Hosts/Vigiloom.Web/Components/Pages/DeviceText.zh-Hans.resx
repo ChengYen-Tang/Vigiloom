@@ -501,4 +501,187 @@
   <data xml:space="preserve" name="未知模組">
     <value>未知模块</value>
   </data>
+  <data xml:space="preserve" name="Agent 本機傳送佇列">
+    <value>Agent 本地传送队列</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取佇列容量設定狀態。">
+    <value>无法读取队列容量设置状态。</value>
+  </data>
+  <data xml:space="preserve" name="容量設定狀態">
+    <value>容量设置状态</value>
+  </data>
+  <data xml:space="preserve" name="目標容量">
+    <value>目标容量</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用容量">
+    <value>Agent 已应用容量</value>
+  </data>
+  <data xml:space="preserve" name="尚無已套用回報">
+    <value>暂无已应用回报</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取傳送狀態，請稍後重新整理。">
+    <value>无法读取传送状态，请稍后刷新。</value>
+  </data>
+  <data xml:space="preserve" name="目前 Agent 最後提交批次（UTC）">
+    <value>当前 Agent 最后提交批次（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="保留範圍內無資料">
+    <value>保留范围内无数据</value>
+  </data>
+  <data xml:space="preserve" name="顯示平台已提交的批次，不代表 Agent 已收到確認；重送相同批次不會更新時間。">
+    <value>显示平台已提交的批次，不代表 Agent 已收到确认；重送相同批次不会更新时间。</value>
+  </data>
+  <data xml:space="preserve" name="最近記錄的時間拒收：{0}。">
+    <value>最近记录的时间拒收：{0}。</value>
+  </data>
+  <data xml:space="preserve" name="平台時間異常，請確認平台時鐘">
+    <value>平台时间异常，请确认平台时钟</value>
+  </data>
+  <data xml:space="preserve" name="批次入列時間超前，請核對 Agent 與平台時鐘">
+    <value>批次入列时间超前，请核对 Agent 与平台时钟</value>
+  </data>
+  <data xml:space="preserve" name="平台拒收超過補送期限的批次">
+    <value>平台拒收超过补送期限的批次</value>
+  </data>
+  <data xml:space="preserve" name="未知原因">
+    <value>未知原因</value>
+  </data>
+  <data xml:space="preserve" name="記錄時間（UTC）：{0}。這是歷史紀錄，不代表問題目前仍持續。">
+    <value>记录时间（UTC）：{0}。这是历史记录，不代表问题目前仍持续。</value>
+  </data>
+  <data xml:space="preserve" name="此批次回報的入列時間，比平台記錄的接收時間超前超過 5 分鐘；請核對 Agent 與平台時鐘。">
+    <value>此批次回报的入列时间，比平台记录的接收时间超前超过 5 分钟；请核对 Agent 与平台时钟。</value>
+  </data>
+  <data xml:space="preserve" name="入列（UTC）：">
+    <value>入列（UTC）：</value>
+  </data>
+  <data xml:space="preserve" name="接收（UTC）：">
+    <value>接收（UTC）：</value>
+  </data>
+  <data xml:space="preserve" name="這是歷史批次觀察，不代表目前時鐘狀態。">
+    <value>这是历史批次观察，不代表当前时钟状态。</value>
+  </data>
+  <data xml:space="preserve" name="批次接收時間晚於目前平台時間，請確認平台時鐘。">
+    <value>批次接收时间晚于当前平台时间，请确认平台时钟。</value>
+  </data>
+  <data xml:space="preserve" name="尚無佇列回報。">
+    <value>暂无队列回报。</value>
+  </data>
+  <data xml:space="preserve" name="最後佇列回報（UTC）">
+    <value>最后队列回报（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="等待傳送">
+    <value>等待传送</value>
+  </data>
+  <data xml:space="preserve" name="已隔離">
+    <value>已隔离</value>
+  </data>
+  <data xml:space="preserve" name="佇列容量">
+    <value>队列容量</value>
+  </data>
+  <data xml:space="preserve" name="批次容量">
+    <value>批次容量</value>
+  </data>
+  <data xml:space="preserve" name="Agent 無法讀取佇列，資料狀態未知。">
+    <value>Agent 无法读取队列，数据状态未知。</value>
+  </data>
+  <data xml:space="preserve" name="佇列已達容量，新資料可能需要等待空間。">
+    <value>队列已达容量，新数据可能需要等待空间。</value>
+  </data>
+  <data xml:space="preserve" name="隔離原因摘要尚未提供。">
+    <value>隔离原因摘要尚未提供。</value>
+  </data>
+  <data xml:space="preserve" name="隔離批次仍保留在 Agent，暫停自動傳送：">
+    <value>隔离批次仍保留在 Agent，暂停自动传送：</value>
+  </data>
+  <data xml:space="preserve" name="數值是 Agent 最後一次回報的快照，可能不是目前狀態；隔離批次仍占用容量。">
+    <value>数值是 Agent 最后一次回报的快照，可能不是当前状态；隔离批次仍占用容量。</value>
+  </data>
+  <data xml:space="preserve" name="佇列回報已過時或時間異常，請確認 Agent 傳送狀態。">
+    <value>队列回报已过时或时间异常，请确认 Agent 传送状态。</value>
+  </data>
+  <data xml:space="preserve" name="Agent 指標資料完整性">
+    <value>Agent 指标数据完整性</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取資料完整性狀態，請稍後重新整理。">
+    <value>无法读取数据完整性状态，请稍后刷新。</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可用的指標遺失統計，無法判定是否有資料遺失。">
+    <value>当前没有可用的指标丢失统计，无法判定是否有数据丢失。</value>
+  </data>
+  <data xml:space="preserve" name="目前統計帳本已確認遺失">
+    <value>当前统计账本已确认丢失</value>
+  </data>
+  <data xml:space="preserve" name="至少 {0} 筆指標（{1} 批）">
+    <value>至少 {0} 条指标（{1} 批）</value>
+  </data>
+  <data xml:space="preserve" name="統計起點（Agent 時間，UTC）">
+    <value>统计起点（Agent 时间，UTC）</value>
+  </data>
+  <data xml:space="preserve" name="最後回報（平台時間，UTC）">
+    <value>最后回报（平台时间，UTC）</value>
+  </data>
+  <data xml:space="preserve" name="部分資料的完整性無法確認，實際遺失數可能更多。">
+    <value>部分数据的完整性无法确认，实际丢失数可能更多。</value>
+  </data>
+  <data xml:space="preserve" name="此數字只包含統計起點後已確認遺失的指標。等待傳送或隔離的批次仍有保留，不視為已遺失。">
+    <value>此数字只包含统计起点后已确认丢失的指标。等待传送或隔离的批次仍有保留，不视为已丢失。</value>
+  </data>
+  <data xml:space="preserve" name="以上為最後一次回報；統計已過時或平台時間異常，請確認 Agent 狀態。">
+    <value>以上为最后一次回报；统计已过时或平台时间异常，请确认 Agent 状态。</value>
+  </data>
+  <data xml:space="preserve" name="中央收據容量">
+    <value>中央收据容量</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取中央收據容量，請稍後重新整理。">
+    <value>无法读取中央收据容量，请稍后刷新。</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可用的中央收據容量資訊。">
+    <value>目前没有可用的中央收据容量信息。</value>
+  </data>
+  <data xml:space="preserve" name="中央收據筆數">
+    <value>中央收据条数</value>
+  </data>
+  <data xml:space="preserve" name="原始批次長度累計">
+    <value>原始批次长度累计</value>
+  </data>
+  <data xml:space="preserve" name="這是查詢時的收據用量；原始批次長度不代表 SQL 磁碟用量，也不代表平台保留完整批次內容。">
+    <value>这是查询时的收据用量；原始批次长度不代表 SQL 磁盘用量，也不代表平台保留完整批次内容。</value>
+  </data>
+  <data xml:space="preserve" name="中央新批次接收已達限制；既有收據仍可確認重送，目前尚無自動清理。">
+    <value>中央新批次接收已达限制；既有收据仍可确认重送，目前尚无自动清理。</value>
+  </data>
+  <data xml:space="preserve" name="{0} 批">
+    <value>{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="{0}／{1} 批">
+    <value>{0}／{1} 批</value>
+  </data>
+  <data xml:space="preserve" name="{0} / {1} 批">
+    <value>{0} / {1} 批</value>
+  </data>
+  <data xml:space="preserve" name="{0} / {1} 筆">
+    <value>{0} / {1} 条</value>
+  </data>
+  <data xml:space="preserve" name="本機批次格式無效：{0} 批">
+    <value>本地批次格式无效：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="平台拒絕無效內容：{0} 批">
+    <value>平台拒绝无效内容：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="批次內容衝突：{0} 批">
+    <value>批次内容冲突：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="批次超過平台大小限制：{0} 批">
+    <value>批次超过平台大小限制：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="平台不支援批次格式：{0} 批">
+    <value>平台不支持批次格式：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="平台拒絕過期批次：{0} 批">
+    <value>平台拒绝过期批次：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="其他或未知原因：{0} 批">
+    <value>其他或未知原因：{0} 批</value>
+  </data>
 </root>
