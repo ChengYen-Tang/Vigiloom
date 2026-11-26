@@ -108,10 +108,13 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             using var readClient = gateway.CreateClient(options);
             var readerCookie = await LoginAsync(readClient, "gateway-reader", "Reader-Password-123", token);
             using (var read = await readClient.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
+            using var secondWeb = web.WithWebHostBuilder(_ => { });
+            secondWeb.UseKestrel(0);
+            secondWeb.StartServer();
             using var secondGateway = new WebApplicationFactory<GatewayHost::Program>().WithWebHostBuilder(builder =>
             {
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web.Services), ["Services:Identity:Url"] = identityAddress }));
+                { ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(secondWeb.Services), ["Services:Identity:Url"] = identityAddress }));
                 builder.ConfigureTestServices(services => { services.RemoveAll<IDataProtectionProvider>(); services.AddSingleton<IDataProtectionProvider>(keys); });
             });
             using var secondInstance = secondGateway.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = options.BaseAddress, AllowAutoRedirect = false, HandleCookies = false });
