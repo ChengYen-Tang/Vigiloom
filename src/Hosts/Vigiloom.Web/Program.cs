@@ -362,7 +362,14 @@ builder.Services.AddScoped<IAgentVersionDelivery>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<AgentVersionAssignments>()
         : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>());
-builder.Services.AddScoped<YaraScans>();
+builder.Services.AddScoped<Vigiloom.Modules.AgentManagement.Application.YaraScans>();
+builder.Services.AddScoped<Vigiloom.Web.AgentVersions.YaraScanAccess>();
+builder.Services.AddHttpClient("security", (services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Security:Url"] ?? "http://vigiloom-security";
+    client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<AgentPackageAccess>();
 builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentUpdateAccess>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
