@@ -16,8 +16,8 @@ using Vigiloom.Web.Events;
 namespace Vigiloom.Web.HostMonitoring;
 
 internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
-    IDeviceInventoryAgent ownership, InventoryQuery inventory, IHostMetricHistory metrics, IHostMetricThresholds thresholds, IHostLogHistory logs,
-    IntegrityQuery integrity, IntegrityChangeQuery changes, InventoryChangeQuery inventoryChanges, SigmaDetectionHistory detections, IocDetectionHistory iocDetections, Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess retention, EventTimelineAudit audit) : IHostMonitoringClient
+    IDeviceInventoryAgent ownership, InventoryAccess inventory, IHostMetricHistory metrics, IHostMetricThresholds thresholds, IHostLogHistory logs,
+    IntegrityQuery integrity, IntegrityChangeQuery changes, SigmaDetectionHistory detections, IocDetectionHistory iocDetections, Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess retention, EventTimelineAudit audit) : IHostMonitoringClient
 {
     public async Task<DeviceInventoryView?> GetInventoryAsync(Guid deviceId, CancellationToken token)
     {
@@ -29,7 +29,7 @@ internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider aut
     {
         await AuthorizeAsync(token);
         var resolved = await ownership.ResolveAsync(deviceId, token);
-        return resolved.Exists ? await inventoryChanges.GetAsync(deviceId, from, until, source, cursor, token) : null;
+        return resolved.Exists ? await inventory.GetChangesAsync(deviceId, from, until, source, cursor, token) : null;
     }
     public async Task<InventorySnapshotChunkView?> GetInventoryChunkAsync(Guid deviceId, InventorySource source, Guid snapshotId, int chunkIndex, CancellationToken token)
     {

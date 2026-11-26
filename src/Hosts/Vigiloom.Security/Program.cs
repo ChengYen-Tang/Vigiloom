@@ -28,6 +28,8 @@ builder.Services.AddScoped<YaraScans>();
 builder.Services.AddScoped<AgentSecuritySettings>();
 builder.Services.AddScoped<IBaselineSource, BaselineSource>();
 builder.Services.AddScoped<InventoryConfiguration>();
+builder.Services.AddScoped<InventoryQuery>();
+builder.Services.AddScoped<InventoryChangeQuery>();
 builder.Services.AddScoped<IntegrityConfiguration>();
 builder.Services.AddHttpClient<IDeviceAgentSource, ResourceDevices>((services, client) =>
 {
@@ -86,6 +88,18 @@ app.MapPost("/internal/v1/agent-integrity-status/{scopeId:guid}", async (Guid sc
 });
 app.MapGet("/internal/v1/inventory-settings", async (Guid? deviceId, InventoryConfiguration settings, CancellationToken token) =>
     await settings.GetAsync(deviceId, token) is { } view ? Results.Ok(view) : Results.NotFound());
+var inventory = app.MapGroup("/internal/v1/devices/{deviceId:guid}/inventory");
+inventory.MapGet("/", (Guid deviceId, Guid? agentId, InventoryQuery query, CancellationToken token) => query.GetAsync(deviceId, agentId, token));
+inventory.MapGet("/changes", async (Guid deviceId, DateTimeOffset from, DateTimeOffset until, InventorySource? source, string? cursor, InventoryChangeQuery query, CancellationToken token) =>
+{
+    try { return Results.Ok(await query.GetAsync(deviceId, from, until, source, cursor, token)); }
+    catch (ArgumentException) { return Results.BadRequest(); }
+});
+inventory.MapGet("/{source:int}/snapshots/{snapshotId:guid}/chunks/{chunkIndex:int}", async (Guid deviceId, Guid agentId, int source, Guid snapshotId, int chunkIndex, InventoryQuery query, CancellationToken token) =>
+{
+    try { return await query.GetChunkAsync(deviceId, agentId, (InventorySource)source, snapshotId, chunkIndex, token) is { } chunk ? Results.Ok(chunk) : Results.NotFound(); }
+    catch (ArgumentException) { return Results.BadRequest(); }
+});
 app.MapPut("/internal/v1/inventory-settings", async (Guid? deviceId, InventorySettingsCommand command, InventoryConfiguration settings, CancellationToken token) =>
 {
     if (command.ActorId == Guid.Empty || !InventoryConfiguration.Valid(command.Update?.Overrides)) return Results.BadRequest();

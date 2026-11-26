@@ -46,6 +46,14 @@ public sealed class YaraRoutingTests(TestContext context)
             });
             security.UseKestrel(0);
             using var securityClient = security.CreateClient();
+            var inventoryPath = $"/internal/v1/devices/{identity.DeviceId:D}/inventory/";
+            var inventoryView = await securityClient.GetFromJsonAsync<DeviceInventoryView>(inventoryPath + $"?agentId={identity.AgentId:D}", token);
+            Assert.AreEqual(identity.AgentId, inventoryView!.AgentId);
+            var until = DateTimeOffset.UtcNow;
+            var query = $"from={Uri.EscapeDataString(until.AddDays(-1).ToString("O"))}&until={Uri.EscapeDataString(until.ToString("O"))}";
+            Assert.IsNotNull(await securityClient.GetFromJsonAsync<InventoryChangePage>(inventoryPath + "changes?" + query, token));
+            using (var invalidChanges = await securityClient.GetAsync(inventoryPath + "changes?" + query + "&cursor=invalid", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidChanges.StatusCode);
             var before = await securityClient.GetFromJsonAsync<InventorySettingsView>("/internal/v1/inventory-settings", token);
             Assert.IsNotNull(before);
             var actor = Guid.CreateVersion7();

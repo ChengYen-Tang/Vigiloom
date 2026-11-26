@@ -491,6 +491,7 @@ builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Baselin
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines.CustomBaselineStage>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities.VulnerabilityMonitoring>();
 builder.Services.AddScoped<InventoryQuery>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.InventoryAccess>();
 builder.Services.AddScoped<IntegrityQuery>();
 builder.Services.AddScoped<IntegrityChangeQuery>();
 builder.Services.AddScoped<AgentIntegritySettingsMonitoring>(services => new(
