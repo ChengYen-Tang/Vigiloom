@@ -259,4 +259,57 @@
   <data name="執行個體識別碼：" xml:space="preserve"><value>实例标识符：</value></data>
   <data name="設備識別碼：" xml:space="preserve"><value>设备标识符：</value></data>
   <data name="無法顯示此紀錄的內容。" xml:space="preserve"><value>无法显示此记录的内容。</value></data>
+  <data name="主機日誌" xml:space="preserve"><value>主机日志</value></data>
+  <data name="主機日誌清單" xml:space="preserve"><value>主机日志清单</value></data>
+  <data name="行為規則" xml:space="preserve"><value>行为规则</value></data>
+  <data name="YARA 掃描" xml:space="preserve"><value>YARA 扫描</value></data>
+  <data name="YARA 掃描清單" xml:space="preserve"><value>YARA 扫描清单</value></data>
+  <data name="證據類型：{0}；識別碼：{1}" xml:space="preserve"><value>证据类型：{0}；标识符：{1}</value></data>
+  <data name="設備：" xml:space="preserve"><value>设备：</value></data>
+  <data name="；Agent：" xml:space="preserve"><value>；Agent：</value></data>
+  <data name="期間（UTC）：{0} ～ {1}" xml:space="preserve"><value>期间（UTC）：{0} ～ {1}</value></data>
+  <data name="全部" xml:space="preserve"><value>全部</value></data>
+  <data name="來源：{0}；群組：{1}；第 {2} 頁，共 {3} 筆" xml:space="preserve"><value>来源：{0}；群组：{1}；第 {2} 页，共 {3} 笔</value></data>
+  <data name="SHA-256 指紋" xml:space="preserve"><value>SHA-256 指纹</value></data>
+  <data name="每個服務：{0} → {1}" xml:space="preserve"><value>每个服务：{0} → {1}</value></data>
+  <data name="全平台：{0} → {1}" xml:space="preserve"><value>全平台：{0} → {1}</value></data>
+  <data name="每來源：{0} → {1} 筆／秒，突發 {2} → {3} 筆" xml:space="preserve"><value>每来源：{0} → {1} 笔／秒，突发 {2} → {3} 笔</value></data>
+  <data name="每服務來源：{0} → {1} 筆／秒，突發 {2} → {3} 筆" xml:space="preserve"><value>每服务来源：{0} → {1} 笔／秒，突发 {2} → {3} 笔</value></data>
+  <data name="全平台：{0} → {1} 筆／秒，突發 {2} → {3} 筆" xml:space="preserve"><value>全平台：{0} → {1} 笔／秒，突发 {2} → {3} 笔</value></data>
+  <data name="檢查識別碼：" xml:space="preserve"><value>检查标识符：</value></data>
+  <data name="間隔：{0} 秒，逾時：{1} 秒" xml:space="preserve"><value>间隔：{0} 秒，超时：{1} 秒</value></data>
+  <data name="失敗／恢復門檻：{0}／{1}，{2}" xml:space="preserve"><value>失败／恢复门槛：{0}／{1}，{2}</value></data>
+  <data name="檢查網址已變更。" xml:space="preserve"><value>检查网址已变更。</value></data>
+  <data name="類型：" xml:space="preserve"><value>类型：</value></data>
+  <data name="公開：{0} → {1}" xml:space="preserve"><value>公开：{0} → {1}</value></data>
+  <data name="公開名稱已變更。" xml:space="preserve"><value>公开名称已变更。</value></data>
+  <data name="公開範本已變更。" xml:space="preserve"><value>公开模板已变更。</value></data>
+  <data name="公開歷史設定已變更。" xml:space="preserve"><value>公开历史设置已变更。</value></data>
+  <data name="範本識別碼：" xml:space="preserve"><value>模板标识符：</value></data>
+  <data name="受影響設備：" xml:space="preserve"><value>受影响设备：</value></data>
+  <data name="網段政策版本：{0} → {1}" xml:space="preserve"><value>网段策略版本：{0} → {1}</value></data>
+  <data name="Collector 識別碼：" xml:space="preserve"><value>Collector 标识符：</value></data>
+  <data name="監控服務識別碼：" xml:space="preserve"><value>监控服务标识符：</value></data>
+  <data name="選用版本：" xml:space="preserve"><value>选用版本：</value></data>
+  <data name="先前版本：" xml:space="preserve"><value>先前版本：</value></data>
+  <data name="管理員已確認離線來源與使用條件。" xml:space="preserve"><value>管理员已确认离线来源与使用条件。</value></data>
+  <data name="檢查：" xml:space="preserve"><value>检查：</value></data>
+  <data name="版本：" xml:space="preserve"><value>版本：</value></data>
+  <data name="說明：" xml:space="preserve"><value>说明：</value></data>
+  <data name="狀態：" xml:space="preserve"><value>状态：</value></data>
+  <data name="憑證已更新：" xml:space="preserve"><value>凭证已更新：</value></data>
+  <data name="是" xml:space="preserve"><value>是</value></data>
+  <data name="否" xml:space="preserve"><value>否</value></data>
+  <data name="撤銷版本：" xml:space="preserve"><value>撤销版本：</value></data>
+  <data name="匯入版本：" xml:space="preserve"><value>导入版本：</value></data>
+  <data name="由管理員提供；上游來源未經驗證。" xml:space="preserve"><value>由管理员提供；上游来源未经验证。</value></data>
+  <data name="啟用：{0} → {1}" xml:space="preserve"><value>启用：{0} → {1}</value></data>
+  <data name="IOC 比對：{0} → {1}" xml:space="preserve"><value>IOC 比对：{0} → {1}</value></data>
+  <data name="更新間隔：{0} → {1} 秒" xml:space="preserve"><value>更新间隔：{0} → {1} 秒</value></data>
+  <data name="資料過期：{0} → {1} 秒" xml:space="preserve"><value>数据过期：{0} → {1} 秒</value></data>
+  <data name="容量上限：{0} → {1} 位元組" xml:space="preserve"><value>容量上限：{0} → {1} 字节</value></data>
+  <data name="筆數上限：{0} → {1} 筆" xml:space="preserve"><value>笔数上限：{0} → {1} 笔</value></data>
+  <data name="匯入識別碼：" xml:space="preserve"><value>导入标识符：</value></data>
+  <data name="已設定" xml:space="preserve"><value>已设置</value></data>
+  <data name="已清除" xml:space="preserve"><value>已清除</value></data>
 </root>

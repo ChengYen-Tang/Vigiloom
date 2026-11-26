@@ -259,4 +259,57 @@
   <data name="執行個體識別碼：" xml:space="preserve"><value>Instance ID: </value></data>
   <data name="設備識別碼：" xml:space="preserve"><value>Device ID: </value></data>
   <data name="無法顯示此紀錄的內容。" xml:space="preserve"><value>Unable to display this record.</value></data>
+  <data name="主機日誌" xml:space="preserve"><value>Host log</value></data>
+  <data name="主機日誌清單" xml:space="preserve"><value>Host log list</value></data>
+  <data name="行為規則" xml:space="preserve"><value>Behavior rule</value></data>
+  <data name="YARA 掃描" xml:space="preserve"><value>YARA scan</value></data>
+  <data name="YARA 掃描清單" xml:space="preserve"><value>YARA scan list</value></data>
+  <data name="證據類型：{0}；識別碼：{1}" xml:space="preserve"><value>Evidence type: {0}; ID: {1}</value></data>
+  <data name="設備：" xml:space="preserve"><value>Device: </value></data>
+  <data name="；Agent：" xml:space="preserve"><value>; Agent: </value></data>
+  <data name="期間（UTC）：{0} ～ {1}" xml:space="preserve"><value>Period (UTC): {0} to {1}</value></data>
+  <data name="全部" xml:space="preserve"><value>All</value></data>
+  <data name="來源：{0}；群組：{1}；第 {2} 頁，共 {3} 筆" xml:space="preserve"><value>Source: {0}; group: {1}; page {2}, {3} records</value></data>
+  <data name="SHA-256 指紋" xml:space="preserve"><value>SHA-256 fingerprint</value></data>
+  <data name="每個服務：{0} → {1}" xml:space="preserve"><value>Per service: {0} → {1}</value></data>
+  <data name="全平台：{0} → {1}" xml:space="preserve"><value>Platform-wide: {0} → {1}</value></data>
+  <data name="每來源：{0} → {1} 筆／秒，突發 {2} → {3} 筆" xml:space="preserve"><value>Per source: {0} → {1} records/sec, burst {2} → {3} records</value></data>
+  <data name="每服務來源：{0} → {1} 筆／秒，突發 {2} → {3} 筆" xml:space="preserve"><value>Per service source: {0} → {1} records/sec, burst {2} → {3} records</value></data>
+  <data name="全平台：{0} → {1} 筆／秒，突發 {2} → {3} 筆" xml:space="preserve"><value>Platform-wide: {0} → {1} records/sec, burst {2} → {3} records</value></data>
+  <data name="檢查識別碼：" xml:space="preserve"><value>Check ID: </value></data>
+  <data name="間隔：{0} 秒，逾時：{1} 秒" xml:space="preserve"><value>Interval: {0} seconds; timeout: {1} seconds</value></data>
+  <data name="失敗／恢復門檻：{0}／{1}，{2}" xml:space="preserve"><value>Failure/recovery thresholds: {0}/{1}, {2}</value></data>
+  <data name="檢查網址已變更。" xml:space="preserve"><value>Check URL changed.</value></data>
+  <data name="類型：" xml:space="preserve"><value>Type: </value></data>
+  <data name="公開：{0} → {1}" xml:space="preserve"><value>Public: {0} → {1}</value></data>
+  <data name="公開名稱已變更。" xml:space="preserve"><value>Public name changed.</value></data>
+  <data name="公開範本已變更。" xml:space="preserve"><value>Public template changed.</value></data>
+  <data name="公開歷史設定已變更。" xml:space="preserve"><value>Public history settings changed.</value></data>
+  <data name="範本識別碼：" xml:space="preserve"><value>Template ID: </value></data>
+  <data name="受影響設備：" xml:space="preserve"><value>Affected devices: </value></data>
+  <data name="網段政策版本：{0} → {1}" xml:space="preserve"><value>Network policy version: {0} → {1}</value></data>
+  <data name="Collector 識別碼：" xml:space="preserve"><value>Collector ID: </value></data>
+  <data name="監控服務識別碼：" xml:space="preserve"><value>Monitoring service ID: </value></data>
+  <data name="選用版本：" xml:space="preserve"><value>Selected version: </value></data>
+  <data name="先前版本：" xml:space="preserve"><value>Previous version: </value></data>
+  <data name="管理員已確認離線來源與使用條件。" xml:space="preserve"><value>An administrator confirmed the offline source and terms of use.</value></data>
+  <data name="檢查：" xml:space="preserve"><value>Check: </value></data>
+  <data name="版本：" xml:space="preserve"><value>Version: </value></data>
+  <data name="說明：" xml:space="preserve"><value>Description: </value></data>
+  <data name="狀態：" xml:space="preserve"><value>Status: </value></data>
+  <data name="憑證已更新：" xml:space="preserve"><value>Credential updated: </value></data>
+  <data name="是" xml:space="preserve"><value>Yes</value></data>
+  <data name="否" xml:space="preserve"><value>No</value></data>
+  <data name="撤銷版本：" xml:space="preserve"><value>Revoked version: </value></data>
+  <data name="匯入版本：" xml:space="preserve"><value>Imported version: </value></data>
+  <data name="由管理員提供；上游來源未經驗證。" xml:space="preserve"><value>Provided by an administrator; the upstream source was not verified.</value></data>
+  <data name="啟用：{0} → {1}" xml:space="preserve"><value>Enabled: {0} → {1}</value></data>
+  <data name="IOC 比對：{0} → {1}" xml:space="preserve"><value>IOC matching: {0} → {1}</value></data>
+  <data name="更新間隔：{0} → {1} 秒" xml:space="preserve"><value>Update interval: {0} → {1} seconds</value></data>
+  <data name="資料過期：{0} → {1} 秒" xml:space="preserve"><value>Data expiry: {0} → {1} seconds</value></data>
+  <data name="容量上限：{0} → {1} 位元組" xml:space="preserve"><value>Capacity limit: {0} → {1} bytes</value></data>
+  <data name="筆數上限：{0} → {1} 筆" xml:space="preserve"><value>Record limit: {0} → {1}</value></data>
+  <data name="匯入識別碼：" xml:space="preserve"><value>Import ID: </value></data>
+  <data name="已設定" xml:space="preserve"><value>Configured</value></data>
+  <data name="已清除" xml:space="preserve"><value>Cleared</value></data>
 </root>
