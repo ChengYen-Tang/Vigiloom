@@ -15,6 +15,20 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class HostObservationMigrationTests(TestContext context)
 {
     [TestMethod]
+    public Task InitializesFreshInboxPolicyOnce() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
+        {
+            await HostMonitoringDatabaseCommand.RunAsync(target.ConnectionString, null, token);
+            await HostMonitoringDatabaseCommand.RunAsync(target.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<HostMonitoringDbContext>().UseSqlServer(target.ConnectionString,
+                sql => sql.MigrationsHistoryTable(HostMonitoringDbContext.MigrationHistory, "agent")).Options;
+            await using var db = new HostMonitoringDbContext(options);
+            var policy = await db.ReplayPolicies.SingleAsync(token);
+            Assert.IsTrue(policy.FreshInstallation);
+            Assert.IsNotNull(policy.CleanupCutoverAt);
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task CopiesObservationsAndReceiptsIntoIndependentDatabase() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (source, outerToken) =>
         await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
@@ -68,6 +82,11 @@ public sealed class HostObservationMigrationTests(TestContext context)
             }
             await HostMonitoringDatabaseCommand.RunAsync(target.ConnectionString, source.ConnectionString, token);
             await using var copied = new HostMonitoringDbContext(hostOptions);
+            var inbox = await copied.InboxStates.SingleAsync(token);
+            Assert.AreEqual(agent.Id, inbox.Id);
+            Assert.AreEqual(device.Id, inbox.DeviceId);
+            Assert.AreEqual(1L, inbox.DeviceGeneration);
+            Assert.AreEqual(1, await copied.ReplayPolicies.CountAsync(token));
             Assert.IsTrue(await copied.ReceivedBatches.AnyAsync(x => x.AgentId == agent.Id && x.BatchId == batchId, token));
             Assert.IsTrue(await copied.HostMetrics.AnyAsync(x => x.AgentId == agent.Id && x.MessageId == messageId && x.Value == 42, token));
             var copiedRollup = await copied.HostMetricRollups.SingleAsync(token);
