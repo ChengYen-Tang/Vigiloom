@@ -17,6 +17,8 @@ using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.Resources.Application.AgentIdentity;
 using Vigiloom.Modules.Resources.Application.Publishing;
 using Vigiloom.Resources.Publication;
+using Vigiloom.Resources.DeploymentLinks;
+using Vigiloom.Contracts.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Resources");
@@ -44,6 +46,15 @@ builder.Services.AddHostedService<WorkDispatcher>();
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(
     _ => builder.Configuration.GetConnectionString("Resources")
         ?? throw new InvalidOperationException("ConnectionStrings:Resources is required."), "resources", pooled: true);
+builder.Services.AddModuleSqlServer<ResourceDeploymentLinksDbContext>(
+    _ => builder.Configuration.GetConnectionString("Resources")
+        ?? throw new InvalidOperationException("ConnectionStrings:Resources is required."), "resources", pooled: true,
+    migrationHistory: ResourceDeploymentLinksDbContext.MigrationHistory);
+builder.Services.AddServiceDiscovery();
+builder.Services.AddHttpClient<ResourceDeploymentLinks>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"]
+        ?? "http://vigiloom-observability").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<DevicePingSource>();
 builder.Services.AddScoped<DeviceAgentSource>();
 builder.Services.AddScoped<GroupMembersReader>();
@@ -60,7 +71,6 @@ builder.Services.AddScoped<SelfServiceRegistration>();
 builder.Services.AddScoped<ApplicationLifecycle>();
 builder.Services.AddScoped<ApplicationCatalog>();
 builder.Services.AddScoped<PackageCatalog>();
-builder.Services.AddServiceDiscovery();
 builder.Services.AddHttpClient<IPackageRuntimeUsage, PackageRuntimeUsage>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddHttpClient<IHostAgentVersion, HostAgentVersion>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<AgentAssignments>();
@@ -94,6 +104,12 @@ builder.Services.AddScoped<IApplicationSourceVerifier>(services => services.GetR
 
 var app = builder.Build();
 var internalApi = app.MapGroup("/internal/v1");
+internalApi.MapGet("/application-services/{id:guid}/deployments", async (Guid id, ResourceDeploymentLinks links, CancellationToken token, int page = 1) =>
+    await links.ListAsync(id, page, token) is { } result ? Results.Ok(result) : Results.NotFound());
+internalApi.MapPost("/application-services/{id:guid}/deployments", (Guid id, CreateDeploymentLinkCommand command, ResourceDeploymentLinks links, CancellationToken token) =>
+    links.CreateAsync(id, command, token));
+internalApi.MapPost("/application-services/{id:guid}/deployments/{linkId:guid}/end", (Guid id, Guid linkId, EndDeploymentLinkCommand command, ResourceDeploymentLinks links, CancellationToken token) =>
+    links.EndAsync(id, linkId, command, token));
 internalApi.MapGet("/ping-targets", (DevicePingSource source, CancellationToken token) => source.ReadEnabledAsync(token));
 internalApi.MapPost("/ping-targets/verify", async (PingTargetVerification target, DevicePingSource source, CancellationToken token) =>
     await source.VerifyAsync(target, token) is { } context ? Results.Ok(context) : Results.NotFound());

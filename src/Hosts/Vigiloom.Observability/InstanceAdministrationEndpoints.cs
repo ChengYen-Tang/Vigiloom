@@ -16,6 +16,8 @@ internal static class InstanceAdministrationEndpoints
         });
         group.MapGet("/services/{id:guid}", async (Guid id, ServiceInstanceAdministration instances, CancellationToken token, int page = 1) =>
             id.Version != 7 || page is < 1 or > 1000 ? Results.BadRequest() : Results.Ok(await instances.ListAsync(id, page, token)));
+        group.MapGet("/services/{id:guid}/ids", async (Guid id, ServiceInstanceAdministration instances, CancellationToken token) =>
+            id.Version != 7 ? Results.BadRequest() : Results.Ok(await instances.GetInstanceIdsAsync(id, token)));
         group.MapPost("/services/{id:guid}/lookup", async (Guid id, Guid[] ids, ServiceInstanceAdministration instances, CancellationToken token) =>
             id.Version != 7 ? Results.BadRequest() : Results.Ok(await instances.GetInstancesAsync(id, ids, token)));
         group.MapPost("/{id:guid}", async (Guid id, ChangeInstanceCommand command, ServiceInstanceAdministration instances, CancellationToken token) =>
