@@ -307,6 +307,11 @@ builder.Services.AddScoped<Vigiloom.Contracts.Devices.IAgentStatusReader>(servic
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<AgentMonitoring>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>());
 builder.Services.AddScoped<Vigiloom.Contracts.Devices.IAgentOverviewReader>(services => services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>());
 builder.Services.AddScoped<HostMetricHistory>();
+builder.Services.AddHttpClient<Vigiloom.Web.HostMonitoring.RemoteHostMetrics>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostMetricHistory>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<HostMetricHistory>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteHostMetrics>());
 builder.Services.AddScoped<HostMetricRetentionSettings>();
 builder.Services.AddScoped<HostMetricThresholds>();
 builder.Services.AddScoped<AgentConfiguration>();

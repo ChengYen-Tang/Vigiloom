@@ -211,6 +211,14 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.IsTrue(await copied.ReceivedBatches.AnyAsync(x => x.AgentId == agent.Id && x.BatchId == batchId, token));
             Assert.IsFalse(await copied.ReceivedBatches.AnyAsync(x => EF.Property<bool>(x, "PendingDelivery"), token));
             Assert.IsTrue(await copied.HostMetrics.AnyAsync(x => x.AgentId == agent.Id && x.MessageId == messageId && x.Value == 42, token));
+            var metricReader = new HostMetricReader(new PooledDbContextFactory<HostMonitoringDbContext>(hostOptions));
+            var metricPage = await metricReader.GetAsync(device.Id, now.AddMinutes(-1), now.AddMinutes(1), null, AgentMetricKind.CpuTotalPercent, token);
+            Assert.AreEqual(42d, Assert.ContainsSingle(metricPage!.Items).Value);
+            var series = await metricReader.GetSeriesAsync(device.Id, now.AddMinutes(-1), now.AddMinutes(1), AgentMetricKind.CpuTotalPercent, 0, token);
+            Assert.IsTrue(series!.Items.Any(x => x.AgentId == agent.Id && x.Source == "cpu"));
+            var aggregate = await metricReader.AggregateAsync(device.Id, agent.Id, now.AddMinutes(-1), now.AddMinutes(1), AgentMetricKind.CpuTotalPercent, "cpu", null, 300, token);
+            Assert.IsNotNull(aggregate);
+            Assert.IsTrue(aggregate.Buckets.Any(x => x.Average == 42d));
             var copiedRollup = await copied.HostMetricRollups.SingleAsync(token);
             Assert.AreEqual(42d, copiedRollup.Sum);
             Assert.AreEqual(1L, copiedRollup.Count);

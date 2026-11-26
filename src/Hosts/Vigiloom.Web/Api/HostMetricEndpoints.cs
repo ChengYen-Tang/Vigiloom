@@ -31,7 +31,7 @@ public static class HostMetricEndpoints
             .WithSummary("Update host metric retention settings");
         app.MapGet("/api/v1/devices/{deviceId:guid}/host-metrics/series", async (Guid deviceId,
             DateTimeOffset from, DateTimeOffset until, AgentMetricKind kind, int? page, HttpContext context,
-            HostMetricHistory history, CancellationToken token) =>
+            IHostMetricHistory history, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             try
@@ -45,7 +45,7 @@ public static class HostMetricEndpoints
             .WithSummary("List metric sources with samples or retained history");
         app.MapGet("/api/v1/devices/{deviceId:guid}/host-metrics/aggregate", async (Guid deviceId, Guid agentId,
             DateTimeOffset from, DateTimeOffset until, AgentMetricKind kind, string source, string? dimension,
-            int bucketSeconds, HttpContext context, HostMetricHistory history, CancellationToken token) =>
+            int bucketSeconds, HttpContext context, IHostMetricHistory history, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             try
@@ -58,7 +58,7 @@ public static class HostMetricEndpoints
             .Produces<HostMetricAggregate>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429)
             .WithSummary("Aggregate one Agent metric series into populated UTC buckets");
         app.MapGet("/api/v1/devices/{deviceId:guid}/host-metrics", async (Guid deviceId, DateTimeOffset from,
-            DateTimeOffset until, string? cursor, AgentMetricKind? kind, HttpContext context, HostMetricHistory history, CancellationToken token) =>
+            DateTimeOffset until, string? cursor, AgentMetricKind? kind, HttpContext context, IHostMetricHistory history, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             try
