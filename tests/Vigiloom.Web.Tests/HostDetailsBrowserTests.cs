@@ -261,6 +261,24 @@ public sealed class HostDetailsBrowserTests
         Assert.IsNotNull(response);
         Assert.AreNotEqual($"{url}/devices/{device.Id:D}/integrity-scopes", page.Url);
         Assert.AreEqual(0, await page.GetByLabel("完整路徑").CountAsync());
+        var integrityPath = $"/devices/{device.Id:D}?tab=integrity";
+        await page.GotoAsync($"{url}/culture/set?culture=en&returnUrl={Uri.EscapeDataString(integrityPath)}");
+        await page.Locator(".host-details[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
+        await page.GetByText("No integrity monitoring scopes configured.", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "Recent changes", Exact = true }).WaitForAsync();
+        await page.GetByText(IntegrityKey.Create(IntegrityItemKind.File, ["private-config"]), new() { Exact = true }).WaitForAsync();
+        await using var localizedContext = await browser.NewContextAsync();
+        var localizedPage = await localizedContext.NewPageAsync();
+        await localizedPage.GotoAsync($"{url}/account/login");
+        await localizedPage.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
+        await localizedPage.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await localizedPage.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await using var localizedGate = await AutoRenderGate.HoldAsync(localizedPage);
+        await localizedPage.GotoAsync($"{url}/culture/set?culture=zh-Hans&returnUrl={Uri.EscapeDataString(integrityPath)}");
+        await localizedPage.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+        await localizedPage.GetByText("尚未设置完整性监控范围。", new() { Exact = true }).WaitForAsync();
+        await localizedPage.GetByRole(AriaRole.Heading, new() { Name = "最近变更", Exact = true }).WaitForAsync();
+        await localizedGate.ReleaseAsync();
     }, TestContext.CancellationToken);
 
     [TestMethod]
