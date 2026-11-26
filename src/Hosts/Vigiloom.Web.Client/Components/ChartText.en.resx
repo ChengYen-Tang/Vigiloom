@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="目前沒有資料。">
+    <value>No data available.</value>
+  </data>
+  <data xml:space="preserve" name="以表格查看資料">
+    <value>View data as a table</value>
+  </data>
+  <data xml:space="preserve" name="時間（UTC）">
+    <value>Time (UTC)</value>
+  </data>
+  <data xml:space="preserve" name="數值">
+    <value>Value</value>
+  </data>
+  <data xml:space="preserve" name="無資料">
+    <value>No data</value>
+  </data>
+</root>

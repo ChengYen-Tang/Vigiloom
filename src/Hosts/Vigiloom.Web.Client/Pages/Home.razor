@@ -2,6 +2,7 @@
 @page "/status"
 @rendermode InteractiveAuto
 @using Vigiloom.Web.Client.Components.PublicStatus
+@inject Microsoft.Extensions.Localization.IStringLocalizer<PublicStatusText> L
 
-<PageTitle>公開監測狀態 - Vigiloom</PageTitle>
+<PageTitle>@L["公開監測狀態"] - Vigiloom</PageTitle>
 <PublicStatusPanel />
