@@ -58,6 +58,19 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Security:Url"]))
         .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
     builder.Services.AddScoped<IAuditRetentionSource>(services => services.GetRequiredService<RemoteSecurityRetention>());
 }
+foreach (var serviceName in new[] { "Resources", "Network", "Observability", "Security" })
+{
+    var name = serviceName;
+    if (string.IsNullOrWhiteSpace(builder.Configuration[$"Services:{name}:Url"])) continue;
+    builder.Services.AddHttpClient("work-history-" + name, (services, client) =>
+    {
+        var configuration = services.GetRequiredService<IConfiguration>();
+        client.BaseAddress = new Uri(configuration[$"Services:{name}:Url"]!.TrimEnd('/') + "/");
+        client.Timeout = TimeSpan.FromSeconds(5);
+    }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+    builder.Services.AddScoped<IBackgroundHistorySource>(services =>
+        new RemoteWorkHistory(services.GetRequiredService<IHttpClientFactory>().CreateClient("work-history-" + name)));
+}
 builder.Services.AddHttpClient("Resources", (services, client) =>
 {
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/");

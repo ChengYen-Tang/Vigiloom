@@ -8,6 +8,9 @@ namespace Vigiloom.Modules.AlertingOperations.Application.Retention;
 /// <summary>Removes terminal Outbox history together with its LINE delivery, if present.</summary>
 internal static class BackgroundHistoryRetention
 {
+    internal static Task<string> DatabaseAsync(OperationsDbContext db, CancellationToken token) =>
+        db.Database.SqlQueryRaw<string>("SELECT CONCAT(CONVERT(nvarchar(128), SERVERPROPERTY('ServerName')), '/', DB_NAME()) AS [Value]").SingleAsync(token);
+
     internal static Task<long> CountAsync(OperationsDbContext db, DateTimeOffset cutoff, CancellationToken token) =>
         db.Database.SqlQuery<long>($"""
             SELECT COUNT_BIG(*) AS [Value] FROM scheduling.Outbox

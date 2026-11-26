@@ -73,6 +73,8 @@ builder.Services.AddHttpClient<PublicPing>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233", builder.Configuration["Temporal:Namespace"] ?? "default");
+builder.Services.AddScoped(_ => new WorkHistoryRetention(builder.Configuration.GetConnectionString("Network")
+    ?? throw new InvalidOperationException("ConnectionStrings:Network is required.")));
 if (builder.Configuration.GetValue("Temporal:EnableNetworkWorker", true))
     builder.Services.AddVigiloomTemporalWorker<DeviceChangeHandler>(builder.Configuration["Work:NetworkQueue"] ?? "vigiloom.network.resources");
 builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
@@ -113,6 +115,7 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", true))
     builder.Services.AddHangfireServer(options => { options.Queues = ["network"]; options.IsLightweightServer = true; });
 }
 var app = builder.Build();
+app.MapWorkHistoryEndpoints();
 var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
 app.UseAuthentication();
