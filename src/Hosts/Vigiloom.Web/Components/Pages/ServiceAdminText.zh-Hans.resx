@@ -73,4 +73,37 @@
   <data name="服務已停收。" xml:space="preserve"><value>服务已停止收集。</value></data>
   <data name="服務已恢復授權。" xml:space="preserve"><value>服务已恢复授权。</value></data>
   <data name="來源已撤銷，無法恢復收集。" xml:space="preserve"><value>来源已撤销，无法恢复收集。</value></data>
+  <data name="部署關聯" xml:space="preserve"><value>部署关联</value></data>
+  <data name="依已核實的部署資料，為應用執行個體建立選配的主機導覽。" xml:space="preserve"><value>依已核实的部署数据，为应用实例建立可选的主机导航。</value></data>
+  <data name="返回 {0}" xml:space="preserve"><value>返回 {0}</value></data>
+  <data name="目前關聯" xml:space="preserve"><value>当前关联</value></data>
+  <data name="關聯不代表即時部署狀態，也不改變服務或設備的公開設定。請勿在確認依據中輸入密碼或憑證。" xml:space="preserve"><value>关联不代表实时部署状态，也不改变服务或设备的公开设置。请勿在确认依据中输入密码或凭证。</value></data>
+  <data name="無法載入關聯。" xml:space="preserve"><value>无法加载关联。</value></data>
+  <data name="此頁沒有尚未解除的關聯。" xml:space="preserve"><value>此页没有尚未解除的关联。</value></data>
+  <data name="左右滑動查看完整關聯資訊。" xml:space="preserve"><value>左右滑动查看完整关联信息。</value></data>
+  <data name="部署關聯，可左右捲動" xml:space="preserve"><value>部署关联，可左右滚动</value></data>
+  <data name="主機" xml:space="preserve"><value>主机</value></data>
+  <data name="確認依據" xml:space="preserve"><value>确认依据</value></data>
+  <data name="來源或資源已停用，請檢查" xml:space="preserve"><value>来源或资源已停用，请检查</value></data>
+  <data name="未解除" xml:space="preserve"><value>未解除</value></data>
+  <data name="要結束的關聯" xml:space="preserve"><value>要结束的关联</value></data>
+  <data name="請選擇" xml:space="preserve"><value>请选择</value></data>
+  <data name="結束關聯" xml:space="preserve"><value>结束关联</value></data>
+  <data name="關聯分頁" xml:space="preserve"><value>关联分页</value></data>
+  <data name="建立關聯" xml:space="preserve"><value>建立关联</value></data>
+  <data name="主機設備" xml:space="preserve"><value>主机设备</value></data>
+  <data name="主機設備分頁" xml:space="preserve"><value>主机设备分页</value></data>
+  <data name="服務執行個體分頁" xml:space="preserve"><value>服务实例分页</value></data>
+  <data name="設備：" xml:space="preserve"><value>设备：</value></data>
+  <data name="執行個體：" xml:space="preserve"><value>实例：</value></data>
+  <data name="請從服務詳情選擇服務。" xml:space="preserve"><value>请从服务详情选择服务。</value></data>
+  <data name="找不到選取的服務。" xml:space="preserve"><value>找不到选取的服务。</value></data>
+  <data name="無法讀取部署關聯，請稍後再試。" xml:space="preserve"><value>无法读取部署关联，请稍后再试。</value></data>
+  <data name="請選擇主機與執行個體。" xml:space="preserve"><value>请选择主机与实例。</value></data>
+  <data name="部署關聯已建立。" xml:space="preserve"><value>部署关联已建立。</value></data>
+  <data name="請選擇要結束的關聯。" xml:space="preserve"><value>请选择要结束的关联。</value></data>
+  <data name="部署關聯已結束。" xml:space="preserve"><value>部署关联已结束。</value></data>
+  <data name="請提供有效的主機、執行個體與確認依據（最多 512 字）。" xml:space="preserve"><value>请提供有效的主机、实例与确认依据（最多 512 字）。</value></data>
+  <data name="找不到設備或執行個體，請重新整理。" xml:space="preserve"><value>找不到设备或实例，请刷新。</value></data>
+  <data name="關聯或資源狀態已變更，請重新整理並確認。" xml:space="preserve"><value>关联或资源状态已变更，请刷新并确认。</value></data>
 </root>

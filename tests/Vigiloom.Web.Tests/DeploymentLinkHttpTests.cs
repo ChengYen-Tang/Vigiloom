@@ -108,6 +108,23 @@ public sealed class DeploymentLinkHttpTests(TestContext context)
             Assert.IsNotNull(deniedPage.Headers.Location);
             Assert.Contains("access-denied", deniedPage.Headers.Location.OriginalString, StringComparison.OrdinalIgnoreCase);
         }
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var english = await admin.GetAsync(settingsPath, token))
+        {
+            var englishDocument = await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Deployment relationships", englishDocument.Body!.TextContent);
+            Assert.Contains("End relationship", englishDocument.Body.TextContent);
+            Assert.Contains(device.Name, englishDocument.Body.TextContent);
+            Assert.Contains(input.Evidence, englishDocument.Body.TextContent);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplified = await admin.GetAsync(settingsPath, token))
+        {
+            var simplifiedDocument = await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("部署关联", simplifiedDocument.Body!.TextContent);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var settings = await admin.GetAsync(settingsPath, token);
         Assert.AreEqual(HttpStatusCode.OK, settings.StatusCode);
         var document = await new HtmlParser().ParseDocumentAsync(await settings.Content.ReadAsStringAsync(token), token);
