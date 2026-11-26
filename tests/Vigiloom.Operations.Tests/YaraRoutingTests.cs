@@ -19,6 +19,7 @@ using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Baseline;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Contracts.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -44,6 +45,7 @@ public sealed class YaraRoutingTests(TestContext context)
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 { ["ConnectionStrings:Security"] = database.ConnectionString }));
                 web.ConfigureTestServices(services => services.AddSingleton<IDeviceAgentSource>(new DeviceSource(identity.DeviceId)));
+                web.ConfigureTestServices(services => services.AddSingleton<IAgentOwnerResolver>(new NoAgentOwner()));
             });
             security.UseKestrel(0);
             using var securityClient = security.CreateClient();
@@ -53,6 +55,11 @@ public sealed class YaraRoutingTests(TestContext context)
             var until = DateTimeOffset.UtcNow;
             var query = $"from={Uri.EscapeDataString(until.AddDays(-1).ToString("O"))}&until={Uri.EscapeDataString(until.ToString("O"))}";
             var detectionPath = $"/internal/v1/devices/{identity.DeviceId:D}/detections/";
+            var vulnerabilityPath = $"/internal/v1/devices/{identity.DeviceId:D}/vulnerabilities/";
+            var vulnerabilities = await securityClient.GetFromJsonAsync<CurrentVulnerabilityPage>(vulnerabilityPath + "?page=1&gapPage=1", token);
+            Assert.AreEqual(VulnerabilityCoverageStatus.Missing, vulnerabilities!.Status);
+            using (var invalidVulnerabilities = await securityClient.GetAsync(vulnerabilityPath + "?page=0&gapPage=1", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidVulnerabilities.StatusCode);
             Assert.IsNotNull(await securityClient.GetFromJsonAsync<SigmaDetectionEventPage>(detectionPath + "sigma?" + query, token));
             Assert.IsNotNull(await securityClient.GetFromJsonAsync<SigmaDetectionGapPage>(detectionPath + "sigma-gaps?" + query, token));
             Assert.IsNotNull(await securityClient.GetFromJsonAsync<IocDetectionPage>(detectionPath + "ioc?" + query + "&page=1", token));
@@ -189,5 +196,9 @@ public sealed class YaraRoutingTests(TestContext context)
             Task.FromResult<DeviceAgentState?>(id == deviceId ? new(id, 1, true) : null);
         public Task<bool> IsCurrentAsync(Guid id, long generation, DbConnection connection, DbTransaction transaction, CancellationToken token) =>
             throw new NotSupportedException();
+    }
+    private sealed class NoAgentOwner : IAgentOwnerResolver
+    {
+        public Task<InventoryOwner?> ResolveAsync(Guid deviceId, CancellationToken token) => Task.FromResult<InventoryOwner?>(null);
     }
 }
