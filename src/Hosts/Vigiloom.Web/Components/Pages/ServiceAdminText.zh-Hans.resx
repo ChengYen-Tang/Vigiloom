@@ -489,4 +489,37 @@
   <data name="請檢查佇列容量的允許範圍。" xml:space="preserve"><value>请检查队列容量的允许范围。</value></data>
   <data name="請檢查採樣設定的允許範圍。" xml:space="preserve"><value>请检查采样设置的允许范围。</value></data>
   <data name="請檢查盤點間隔的允許範圍。" xml:space="preserve"><value>请检查清单间隔的允许范围。</value></data>
+  <data name="Agent 平台設定" xml:space="preserve"><value>Agent 平台设置</value></data>
+  <data name="此設備的 Agent 設定" xml:space="preserve"><value>此设备的 Agent 设置</value></data>
+  <data name="設定 Agent 同步、心跳與資料傳送的預設週期。" xml:space="preserve"><value>设置 Agent 同步、心跳与数据传输的默认周期。</value></data>
+  <data name="{0} · 覆寫此設備的週期；未覆寫的項目會跟隨平台設定。" xml:space="preserve"><value>{0} · 覆盖此设备的周期；未覆盖的项目遵循平台设置。</value></data>
+  <data name="設備" xml:space="preserve"><value>设备</value></data>
+  <data name="使用內建預設值" xml:space="preserve"><value>使用内置默认值</value></data>
+  <data name="繼承平台值" xml:space="preserve"><value>继承平台值</value></data>
+  <data name="留空代表{0}。設定儲存後，Agent 會定期同步；離線的 Agent 會在重新連線後更新。" xml:space="preserve"><value>留空代表{0}。保存后 Agent 会定期同步；离线 Agent 重新连接后更新。</value></data>
+  <data name="留空代表{0}。較短的間隔會增加資料量與設備負擔。" xml:space="preserve"><value>留空代表{0}。较短的间隔会增加数据量与设备负担。</value></data>
+  <data name="留空代表{0}。Agent 啟動後會盤點一次，接著在每輪完成後依間隔再次盤點；安全基準檢查也使用此間隔。" xml:space="preserve"><value>留空代表{0}。Agent 启动后盘点一次，之后每轮完成后按间隔再次盘点；安全基准检查也使用此间隔。</value></data>
+  <data name="留空代表{0}。降低上限不會刪除已保留資料；超過上限時，新資料須等待空間。" xml:space="preserve"><value>留空代表{0}。降低上限不会删除已保留数据；超过上限时，新数据须等待空间。</value></data>
+  <data name="沿用 {0} 秒" xml:space="preserve"><value>沿用 {0} 秒</value></data>
+  <data name="沿用 {0} 毫秒" xml:space="preserve"><value>沿用 {0} 毫秒</value></data>
+  <data name="沿用 {0} MiB" xml:space="preserve"><value>沿用 {0} MiB</value></data>
+  <data name="沿用 {0} MiB／分鐘" xml:space="preserve"><value>沿用 {0} MiB／分钟</value></data>
+  <data name="沿用 {0} 批" xml:space="preserve"><value>沿用 {0} 批</value></data>
+  <data name="目前目標值：{0} 秒" xml:space="preserve"><value>当前目标值：{0} 秒</value></data>
+  <data name="目前目標值：{0} 秒。" xml:space="preserve"><value>当前目标值：{0} 秒。</value></data>
+  <data name="目前目標值：{0} 秒；同步時間會略作分散。" xml:space="preserve"><value>当前目标值：{0} 秒；同步时间会略作分散。</value></data>
+  <data name="目前目標值：{0} 秒；網路失敗時會退避重試。" xml:space="preserve"><value>当前目标值：{0} 秒；网络失败时会退避重试。</value></data>
+  <data name="CPU、記憶體、磁碟與網路；目前目標值：{0} 秒。" xml:space="preserve"><value>CPU、内存、磁盘与网络；当前目标值：{0} 秒。</value></data>
+  <data name="目前目標值：{0} 毫秒；達到後延後後續採樣。" xml:space="preserve"><value>当前目标值：{0} 毫秒；达到后延迟后续采样。</value></data>
+  <data name="目前目標值：{0} MiB；Agent 使用量達到門檻時延後後續採樣。" xml:space="preserve"><value>当前目标值：{0} MiB；Agent 使用量达到门槛时延迟后续采样。</value></data>
+  <data name="目前目標值：{0} 毫秒；到期後不再開始讀取其他程序。" xml:space="preserve"><value>当前目标值：{0} 毫秒；到期后不再开始读取其他进程。</value></data>
+  <data name="目前目標值：{0} MiB／分鐘；依採樣期間 Agent 程序的邏輯 I/O 調整後續採樣，並非實體磁碟硬上限。" xml:space="preserve"><value>当前目标值：{0} MiB／分钟；根据采样期间 Agent 进程的逻辑 I/O 调整后续采样，并非物理磁盘硬上限。</value></data>
+  <data name="目前目標值：{0} 秒（預設 6 小時）。較短的間隔會增加設備負擔。" xml:space="preserve"><value>当前目标值：{0} 秒（默认 6 小时）。较短的间隔会增加设备负担。</value></data>
+  <data name="目前目標值：{0} MiB" xml:space="preserve"><value>当前目标值：{0} MiB</value></data>
+  <data name="目前目標值：{0} 批" xml:space="preserve"><value>当前目标值：{0} 批</value></data>
+  <data name="設備可能尚未套用新值；可從設備詳情查看最近回報與同步狀態。" xml:space="preserve"><value>设备可能尚未应用新值；可从设备详情查看最近报告与同步状态。</value></data>
+  <data name="程序、OS 服務與監聽端點快照在每輪完成後等待此間隔；設備負載或離線可能延後。" xml:space="preserve"><value>进程、操作系统服务与监听端点快照在每轮完成后等待此间隔；设备负载或离线可能延迟。</value></data>
+  <data name="設定儲存後會由 Agent 定期同步；目標值不代表設備已套用。" xml:space="preserve"><value>保存设置后 Agent 会定期同步；目标值不代表设备已应用。</value></data>
+  <data name="設定會由 Agent 定期同步；目標值不代表設備已套用。" xml:space="preserve"><value>Agent 会定期同步设置；目标值不代表设备已应用。</value></data>
+  <data name="這是批次內容的邏輯容量，資料庫與暫存檔會使用額外磁碟空間。" xml:space="preserve"><value>这是批次内容的逻辑容量，数据库与临时文件会使用额外磁盘空间。</value></data>
 </root>

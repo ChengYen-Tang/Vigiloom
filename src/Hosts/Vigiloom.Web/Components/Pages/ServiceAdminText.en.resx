@@ -489,4 +489,37 @@
   <data name="請檢查佇列容量的允許範圍。" xml:space="preserve"><value>Check the permitted queue capacity ranges.</value></data>
   <data name="請檢查採樣設定的允許範圍。" xml:space="preserve"><value>Check the permitted sampling settings ranges.</value></data>
   <data name="請檢查盤點間隔的允許範圍。" xml:space="preserve"><value>Check the permitted inventory interval range.</value></data>
+  <data name="Agent 平台設定" xml:space="preserve"><value>Agent platform settings</value></data>
+  <data name="此設備的 Agent 設定" xml:space="preserve"><value>Agent settings for this device</value></data>
+  <data name="設定 Agent 同步、心跳與資料傳送的預設週期。" xml:space="preserve"><value>Set the default intervals for Agent synchronization, heartbeat, and data transmission.</value></data>
+  <data name="{0} · 覆寫此設備的週期；未覆寫的項目會跟隨平台設定。" xml:space="preserve"><value>{0} · Override this device’s intervals; other values follow platform settings.</value></data>
+  <data name="設備" xml:space="preserve"><value>Device</value></data>
+  <data name="使用內建預設值" xml:space="preserve"><value>use built-in defaults</value></data>
+  <data name="繼承平台值" xml:space="preserve"><value>inherit platform values</value></data>
+  <data name="留空代表{0}。設定儲存後，Agent 會定期同步；離線的 Agent 會在重新連線後更新。" xml:space="preserve"><value>Leave blank to {0}. Agents synchronize periodically after saving; offline Agents update after reconnecting.</value></data>
+  <data name="留空代表{0}。較短的間隔會增加資料量與設備負擔。" xml:space="preserve"><value>Leave blank to {0}. Shorter intervals increase data volume and device load.</value></data>
+  <data name="留空代表{0}。Agent 啟動後會盤點一次，接著在每輪完成後依間隔再次盤點；安全基準檢查也使用此間隔。" xml:space="preserve"><value>Leave blank to {0}. The Agent performs inventory on startup and after each interval. Security baseline checks use the same interval.</value></data>
+  <data name="留空代表{0}。降低上限不會刪除已保留資料；超過上限時，新資料須等待空間。" xml:space="preserve"><value>Leave blank to {0}. Lowering the limit does not delete retained data; new data waits for space when over the limit.</value></data>
+  <data name="沿用 {0} 秒" xml:space="preserve"><value>Inherit {0} seconds</value></data>
+  <data name="沿用 {0} 毫秒" xml:space="preserve"><value>Inherit {0} ms</value></data>
+  <data name="沿用 {0} MiB" xml:space="preserve"><value>Inherit {0} MiB</value></data>
+  <data name="沿用 {0} MiB／分鐘" xml:space="preserve"><value>Inherit {0} MiB/minute</value></data>
+  <data name="沿用 {0} 批" xml:space="preserve"><value>Inherit {0} batches</value></data>
+  <data name="目前目標值：{0} 秒" xml:space="preserve"><value>Current target: {0} seconds</value></data>
+  <data name="目前目標值：{0} 秒。" xml:space="preserve"><value>Current target: {0} seconds.</value></data>
+  <data name="目前目標值：{0} 秒；同步時間會略作分散。" xml:space="preserve"><value>Current target: {0} seconds; sync times are spread out slightly.</value></data>
+  <data name="目前目標值：{0} 秒；網路失敗時會退避重試。" xml:space="preserve"><value>Current target: {0} seconds; network failures are retried with backoff.</value></data>
+  <data name="CPU、記憶體、磁碟與網路；目前目標值：{0} 秒。" xml:space="preserve"><value>CPU, memory, disk and network; current target: {0} seconds.</value></data>
+  <data name="目前目標值：{0} 毫秒；達到後延後後續採樣。" xml:space="preserve"><value>Current target: {0} ms; subsequent sampling is delayed when reached.</value></data>
+  <data name="目前目標值：{0} MiB；Agent 使用量達到門檻時延後後續採樣。" xml:space="preserve"><value>Current target: {0} MiB; subsequent sampling is delayed when Agent usage reaches the threshold.</value></data>
+  <data name="目前目標值：{0} 毫秒；到期後不再開始讀取其他程序。" xml:space="preserve"><value>Current target: {0} ms; no further processes are read after the budget expires.</value></data>
+  <data name="目前目標值：{0} MiB／分鐘；依採樣期間 Agent 程序的邏輯 I/O 調整後續採樣，並非實體磁碟硬上限。" xml:space="preserve"><value>Current target: {0} MiB/minute; subsequent sampling is adjusted using Agent process logical I/O, not a physical disk hard limit.</value></data>
+  <data name="目前目標值：{0} 秒（預設 6 小時）。較短的間隔會增加設備負擔。" xml:space="preserve"><value>Current target: {0} seconds (default: 6 hours). Shorter intervals increase device load.</value></data>
+  <data name="目前目標值：{0} MiB" xml:space="preserve"><value>Current target: {0} MiB</value></data>
+  <data name="目前目標值：{0} 批" xml:space="preserve"><value>Current target: {0} batches</value></data>
+  <data name="設備可能尚未套用新值；可從設備詳情查看最近回報與同步狀態。" xml:space="preserve"><value>The device may not have applied the new values yet. See device details for its latest report and sync status.</value></data>
+  <data name="程序、OS 服務與監聽端點快照在每輪完成後等待此間隔；設備負載或離線可能延後。" xml:space="preserve"><value>Process, OS service and listening endpoint snapshots wait this interval after each cycle; load or offline devices may cause delays.</value></data>
+  <data name="設定儲存後會由 Agent 定期同步；目標值不代表設備已套用。" xml:space="preserve"><value>Agents synchronize settings periodically; a target value does not mean it has been applied.</value></data>
+  <data name="設定會由 Agent 定期同步；目標值不代表設備已套用。" xml:space="preserve"><value>Agents synchronize settings periodically; a target value does not mean it has been applied.</value></data>
+  <data name="這是批次內容的邏輯容量，資料庫與暫存檔會使用額外磁碟空間。" xml:space="preserve"><value>This is logical batch payload capacity; databases and temporary files use additional disk space.</value></data>
 </root>
