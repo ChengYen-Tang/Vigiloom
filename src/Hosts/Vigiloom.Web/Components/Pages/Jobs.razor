@@ -12,113 +12,114 @@
 @inject ILogger<Jobs> Logger
 @inject PlatformStatus Platform
 @inject IConfiguration Configuration
+@inject Microsoft.Extensions.Localization.IStringLocalizer<JobsText> L
 
-<PageTitle>背景工作 - Vigiloom</PageTitle>
+<PageTitle>@L["背景工作"] - Vigiloom</PageTitle>
 <main class="jobs-page">
     <header class="jobs-heading">
-        <div><h1>背景工作</h1><p>查看排程執行狀態與最近結果。</p></div>
-        <nav aria-label="背景工作操作"><a href="/settings/jobs">重新整理</a><a class="jobs-primary" href="/admin/jobs/">進階管理</a></nav>
+        <div><h1>@L["背景工作"]</h1><p>@L["查看排程執行狀態與最近結果。"]</p></div>
+        <nav aria-label="@L["背景工作操作"]"><a href="/settings/jobs">@L["重新整理"]</a><a class="jobs-primary" href="/admin/jobs/">@L["進階管理"]</a></nav>
     </header>
     <section class="jobs-panel jobs-platform" aria-labelledby="platform-title">
-        <h2 id="platform-title">平台健康</h2>
+        <h2 id="platform-title">@L["平台健康"]</h2>
         @if (platform is null)
         {
-            <p role="status">目前無法取得平台健康資料，請稍後重新整理。</p>
+            <p role="status">@L["目前無法取得平台健康資料，請稍後重新整理。"]</p>
         }
         else
         {
-            <p>觀察時間：@FormatTime(platform.ObservedAt)；各項狀態彼此獨立。</p>
+            <p>@L["觀察時間：{0}；各項狀態彼此獨立。", FormatTime(platform.ObservedAt)]</p>
             <dl class="platform-status">
-                <div><dt>@(string.IsNullOrWhiteSpace(Configuration["Services:Operations:Url"]) ? "資料庫連線" : "Operations 資料庫連線")</dt><dd>@StateText(platform.Database)</dd></div>
-                <div><dt>排程服務心跳</dt><dd>@SchedulerText(platform.Scheduler)</dd></div>
-                <div><dt>Agent 批次接收</dt><dd>@AgentBatchText(platform)</dd></div>
-                <div><dt>應用遙測接收</dt><dd>
-                    @if (platform.TelemetrySources is null) { <span>無法取得接收資料。</span> }
-                    else if (platform.TelemetrySources.Count == 0) { <span>目前沒有來源，接收狀態未知。</span> }
-                    else { <span>顯示最新建立的來源；沒有資料不代表接收故障。</span> }
-                    <a href="/settings/service-reception">查看所有來源與接收拒絕摘要</a>
+                <div><dt>@(string.IsNullOrWhiteSpace(Configuration["Services:Operations:Url"]) ? L["資料庫連線"].Value : L["Operations 資料庫連線"].Value)</dt><dd>@StateText(platform.Database)</dd></div>
+                <div><dt>@L["排程服務心跳"]</dt><dd>@SchedulerText(platform.Scheduler)</dd></div>
+                <div><dt>@L["Agent 批次接收"]</dt><dd>@AgentBatchText(platform)</dd></div>
+                <div><dt>@L["應用遙測接收"]</dt><dd>
+                    @if (platform.TelemetrySources is null) { <span>@L["無法取得接收資料。"]</span> }
+                    else if (platform.TelemetrySources.Count == 0) { <span>@L["目前沒有來源，接收狀態未知。"]</span> }
+                    else { <span>@L["顯示最新建立的來源；沒有資料不代表接收故障。"]</span> }
+                    <a href="/settings/service-reception">@L["查看所有來源與接收拒絕摘要"]</a>
                 </dd></div>
             </dl>
             @if (platform.TelemetrySources is { Count: > 0 } telemetrySources)
             {
-                <ul aria-label="應用遙測接收摘要">
+                <ul aria-label="@L["應用遙測接收摘要"]">
                     @foreach (var source in telemetrySources.Take(3))
                     {
-                        <li @key="source.SourceId">@source.Name：Logs @ReceptionTime(source.LastLogAt)；Metrics @ReceptionTime(source.LastMetricAt)；Traces @ReceptionTime(source.LastTraceAt)</li>
+                        <li @key="source.SourceId">@L["{0}：Logs {1}；Metrics {2}；Traces {3}", source.Name, ReceptionTime(source.LastLogAt), ReceptionTime(source.LastMetricAt), ReceptionTime(source.LastTraceAt)]</li>
                     }
                 </ul>
             }
-            <p>接收時間只代表保留範圍內已提交的新批次，沒有紀錄不代表接收故障。</p>
-            <h3>Worker 掃描摘要</h3>
-            <p>排程心跳不代表掃描成功；此處顯示最近狀態，不是完整失敗歷史。</p>
-            @if (platform.Workers is null) { <p role="status">目前無法取得 Worker 診斷。</p> }
-            else if (platform.Workers.Workers.Count == 0) { <p>目前沒有 Worker 診斷資料。</p> }
+            <p>@L["接收時間只代表保留範圍內已提交的新批次，沒有紀錄不代表接收故障。"]</p>
+            <h3>@L["Worker 掃描摘要"]</h3>
+            <p>@L["排程心跳不代表掃描成功；此處顯示最近狀態，不是完整失敗歷史。"]</p>
+            @if (platform.Workers is null) { <p role="status">@L["目前無法取得 Worker 診斷。"]</p> }
+            else if (platform.Workers.Workers.Count == 0) { <p>@L["目前沒有 Worker 診斷資料。"]</p> }
             else
             {
-                <p class="jobs-scroll-hint">← 左右滑動查看完整表格 →</p>
-                <div class="jobs-table-wrap" tabindex="0" role="region" aria-label="Worker 掃描摘要，可左右捲動">
-                    <table class="worker-table"><thead><tr><th scope="col">程序識別</th><th scope="col">診斷租約</th><th scope="col">Ping 掃描</th><th scope="col">測速掃描</th></tr></thead><tbody>
+                <p class="jobs-scroll-hint">@L["← 左右滑動查看完整表格 →"]</p>
+                <div class="jobs-table-wrap" tabindex="0" role="region" aria-label="@L["Worker 掃描摘要，可左右捲動"]">
+                    <table class="worker-table"><thead><tr><th scope="col">@L["程序識別"]</th><th scope="col">@L["診斷租約"]</th><th scope="col">@L["Ping 掃描"]</th><th scope="col">@L["測速掃描"]</th></tr></thead><tbody>
                     @foreach (var worker in platform.Workers.Workers)
                     {
                         <tr @key="worker.BootId"><td>@worker.BootId</td><td>@LeaseText(worker, platform.Workers.ObservedAt)</td><td>@ScannerText(worker.Observation.Ping)</td><td>@ScannerText(worker.Observation.Speed)</td></tr>
                     }
                     </tbody></table>
                 </div>
-                @if (platform.Workers.Workers.Count(worker => LeaseIsValid(worker, platform.Workers.ObservedAt)) == 64) { <p>診斷槽位已達上限；新 Worker 可能無法登記診斷。</p> }
+                @if (platform.Workers.Workers.Count(worker => LeaseIsValid(worker, platform.Workers.ObservedAt)) == 64) { <p>@L["診斷槽位已達上限；新 Worker 可能無法登記診斷。"]</p> }
             }
         }
     </section>
     @if (unavailable)
     {
-        <section class="jobs-notice" role="alert"><h2>暫時無法取得背景工作狀態</h2><p>請確認資料庫與 Worker 連線後重新整理。</p></section>
+        <section class="jobs-notice" role="alert"><h2>@L["暫時無法取得背景工作狀態"]</h2><p>@L["請確認資料庫與 Worker 連線後重新整理。"]</p></section>
     }
     else if (overview is not null)
     {
-        @if (saved) { <p class="jobs-success" role="status">背景工作檢查頻率已儲存。</p> }
-        @if (conflict) { <p class="jobs-notice" role="alert">設定已被其他管理員修改，請重新整理後再試。</p> }
-        @if (pending) { <p class="jobs-notice" role="status">設定已儲存，正在等待背景服務套用。</p> }
-        @if (refreshRequired) { <p class="jobs-notice" role="alert">無法取得最新設定，請重新整理後再操作。</p> }
-        @if (saveError) { <p class="jobs-notice" role="alert">無法確認儲存結果，請重新整理並檢查設定。</p> }
+        @if (saved) { <p class="jobs-success" role="status">@L["背景工作檢查頻率已儲存。"]</p> }
+        @if (conflict) { <p class="jobs-notice" role="alert">@L["設定已被其他管理員修改，請重新整理後再試。"]</p> }
+        @if (pending) { <p class="jobs-notice" role="status">@L["設定已儲存，正在等待背景服務套用。"]</p> }
+        @if (refreshRequired) { <p class="jobs-notice" role="alert">@L["無法取得最新設定，請重新整理後再操作。"]</p> }
+        @if (saveError) { <p class="jobs-notice" role="alert">@L["無法確認儲存結果，請重新整理並檢查設定。"]</p> }
         @if (overview.Workers == 0)
         {
-            <section class="jobs-notice" role="status"><strong>目前沒有已連線的背景服務。</strong> 工作可能無法執行，請確認 Vigiloom 背景服務狀態。</section>
+            <section class="jobs-notice" role="status"><strong>@L["目前沒有已連線的背景服務。"]</strong> @L["工作可能無法執行，請確認 Vigiloom 背景服務狀態。"]</section>
         }
-        <section aria-label="工作狀態" class="jobs-stats">
-            <div><span>已連線背景服務</span><strong>@overview.Workers</strong></div>
-            <div><span>排程工作等待中</span><strong>@overview.Queued</strong></div>
-            <div><span>執行中</span><strong>@overview.Processing</strong></div>
-            <div><span>排程工作失敗</span><strong>@overview.Failed</strong></div>
-            <div><span>待處理內部工作</span><strong>@overview.PendingMessages</strong></div>
-            <div><span>內部工作失敗</span><strong>@overview.FailedMessages</strong></div>
+        <section aria-label="@L["工作狀態"]" class="jobs-stats">
+            <div><span>@L["已連線背景服務"]</span><strong>@overview.Workers</strong></div>
+            <div><span>@L["排程工作等待中"]</span><strong>@overview.Queued</strong></div>
+            <div><span>@L["執行中"]</span><strong>@overview.Processing</strong></div>
+            <div><span>@L["排程工作失敗"]</span><strong>@overview.Failed</strong></div>
+            <div><span>@L["待處理內部工作"]</span><strong>@overview.PendingMessages</strong></div>
+            <div><span>@L["內部工作失敗"]</span><strong>@overview.FailedMessages</strong></div>
         </section>
         <section class="jobs-panel" aria-labelledby="recent-jobs-title">
-            <h2 id="recent-jobs-title">最近執行結果</h2>
-            <p>時間以 UTC 顯示；進階管理可查看工作詳細資料。</p>
-            @if (overview.Recent.Count == 0) { <p>目前沒有執行結果。</p> }
+            <h2 id="recent-jobs-title">@L["最近執行結果"]</h2>
+            <p>@L["時間以 UTC 顯示；進階管理可查看工作詳細資料。"]</p>
+            @if (overview.Recent.Count == 0) { <p>@L["目前沒有執行結果。"]</p> }
             else
             {
-                <div class="jobs-table-wrap"><table><thead><tr><th scope="col">工作</th><th scope="col">結果</th><th scope="col">時間（UTC）</th><th scope="col">說明</th><th scope="col">參考識別</th></tr></thead><tbody>
+                <div class="jobs-table-wrap"><table><thead><tr><th scope="col">@L["工作"]</th><th scope="col">@L["結果"]</th><th scope="col">@L["時間（UTC）"]</th><th scope="col">@L["說明"]</th><th scope="col">@L["參考識別"]</th></tr></thead><tbody>
                     @foreach (var entry in overview.Recent)
                     {
-                        <tr><td>@entry.Name</td><td>@entry.Result</td><td>@(entry.OccurredAt?.ToUniversalTime().ToString("u") ?? "未知")</td><td>@(entry.Detail ?? "—")</td><td>@(entry.Reference ?? "—")</td></tr>
+                        <tr><td>@L[entry.Name]</td><td>@L[entry.Result]</td><td>@(entry.OccurredAt?.ToUniversalTime().ToString("u") ?? L["未知"].Value)</td><td>@WorkDetail(entry.Detail)</td><td>@(entry.Reference ?? "—")</td></tr>
                     }
                 </tbody></table></div>
             }
         </section>
         <section class="jobs-panel jobs-settings" aria-labelledby="schedule-title">
-            <h2 id="schedule-title">背景工作檢查頻率</h2>
+            <h2 id="schedule-title">@L["背景工作檢查頻率"]</h2>
             @if (string.IsNullOrWhiteSpace(Configuration["Services:Operations:Url"]))
-            { <p>設定平台檢查待處理內部工作的頻率；此設定不影響設備 Ping 頻率。</p> }
+            { <p>@L["設定平台檢查待處理內部工作的頻率；此設定不影響設備 Ping 頻率。"]</p> }
             else
-            { <p>此設定適用於原平台的背景資料處理排程，不影響 Operations 服務的工作檢查或設備 Ping 頻率。</p> }
-            @if (!scheduleApplied && !refreshRequired) { <p role="status">目前排程尚未套用；背景服務啟動後會自動同步。</p> }
+            { <p>@L["此設定適用於原平台的背景資料處理排程，不影響 Operations 服務的工作檢查或設備 Ping 頻率。"]</p> }
+            @if (!scheduleApplied && !refreshRequired) { <p role="status">@L["目前排程尚未套用；背景服務啟動後會自動同步。"]</p> }
             <EditForm Model="Input" FormName="job-schedule" method="post" OnValidSubmit="SaveAsync">
                 <InputHidden @bind-Value="Input.Version" />
-                <label for="schedule-interval">檢查間隔</label>
+                <label for="schedule-interval">@L["檢查間隔"]</label>
                 <InputSelect id="schedule-interval" @bind-Value="Input.Minutes">
-                    @foreach (var minutes in new[] { 1, 2, 5, 10, 15, 30, 60 }) { <option value="@minutes">@minutes 分鐘</option> }
+                    @foreach (var minutes in new[] { 1, 2, 5, 10, 15, 30, 60 }) { <option value="@minutes">@L["{0} 分鐘", minutes]</option> }
                 </InputSelect>
-                <button type="submit" disabled="@(refreshRequired || conflict || saveError)">儲存設定</button>
+                <button type="submit" disabled="@(refreshRequired || conflict || saveError)">@L["儲存設定"]</button>
             </EditForm>
         </section>
     }
@@ -157,32 +158,42 @@
         }
     }
 
-    private static string StateText(ObservationState state) => state switch
+    private string StateText(ObservationState state) => state switch
     {
-        ObservationState.Healthy => "正常",
-        ObservationState.Unhealthy => "異常或已過期",
-        _ => "未知"
+        ObservationState.Healthy => L["正常"].Value,
+        ObservationState.Unhealthy => L["異常或已過期"].Value,
+        _ => L["未知"].Value
     };
     private static string FormatTime(DateTimeOffset value) => value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'");
-    private static string ReceptionTime(DateTimeOffset? value) => value is { } time ? FormatTime(time) : "尚無資料";
-    private static string SchedulerText(SchedulerObservation value) => !value.Available ? "無法取得心跳資料"
+    private string ReceptionTime(DateTimeOffset? value) => value is { } time ? FormatTime(time) : L["尚無資料"].Value;
+    private string SchedulerText(SchedulerObservation value) => !value.Available ? L["無法取得心跳資料"].Value
         : value.Current + value.Stale + value.Unknown == 0
-        ? "目前沒有心跳資料" : $"{StateText(value.State)}（正常 {value.Current}、過期 {value.Stale}、未知 {value.Unknown}）";
-    private static string AgentBatchText(PlatformStatusSnapshot value) => !value.AgentQueryAvailable ? "無法取得資料"
-        : value.LastAgentBatch is { } last ? $"最近提交：{FormatTime(last)}" : "保留範圍內沒有成功批次紀錄";
-    private static string LeaseText(WorkerDiagnostic worker, DateTimeOffset now) => worker.ObservedAt is not { } observed ||
-        worker.LeaseUntil is null || observed > now ? "未知" : LeaseIsValid(worker, now) ? "有效" : "已過期";
+        ? L["目前沒有心跳資料"].Value : L["{0}（正常 {1}、過期 {2}、未知 {3}）", StateText(value.State), value.Current, value.Stale, value.Unknown].Value;
+    private string AgentBatchText(PlatformStatusSnapshot value) => !value.AgentQueryAvailable ? L["無法取得資料"].Value
+        : value.LastAgentBatch is { } last ? L["最近提交：{0}", FormatTime(last)].Value : L["保留範圍內沒有成功批次紀錄"].Value;
+    private string LeaseText(WorkerDiagnostic worker, DateTimeOffset now) => worker.ObservedAt is not { } observed ||
+        worker.LeaseUntil is null || observed > now ? L["未知"].Value : LeaseIsValid(worker, now) ? L["有效"].Value : L["已過期"].Value;
     private static bool LeaseIsValid(WorkerDiagnostic worker, DateTimeOffset now) =>
         worker.ObservedAt is { } observed && observed <= now && worker.LeaseUntil is { } until && until > now;
-    private static string ScannerText(ScannerObservation value) => value.ConsecutiveFailures > 0
-        ? $"最近失敗：{FailureText(value.FailureKind)}（連續 {value.ConsecutiveFailures} 次，{(value.LastFailure is { } failed ? FormatTime(failed) : "時間未知")}）"
-        : value.LastSuccess is { } success ? $"最近成功：{FormatTime(success)}" : "尚無掃描結果";
-    private static string FailureText(ScannerFailureKind kind) => kind switch
+    private string ScannerText(ScannerObservation value) => value.ConsecutiveFailures > 0
+        ? L["最近失敗：{0}（連續 {1} 次，{2}）", FailureText(value.FailureKind), value.ConsecutiveFailures, value.LastFailure is { } failed ? FormatTime(failed) : L["時間未知"].Value].Value
+        : value.LastSuccess is { } success ? L["最近成功：{0}", FormatTime(success)].Value : L["尚無掃描結果"].Value;
+    private string FailureText(ScannerFailureKind kind) => kind switch
     {
-        ScannerFailureKind.Database => "資料庫連線或操作失敗",
-        ScannerFailureKind.Timeout => "掃描逾時",
-        _ => "掃描失敗"
+        ScannerFailureKind.Database => L["資料庫連線或操作失敗"].Value,
+        ScannerFailureKind.Timeout => L["掃描逾時"].Value,
+        _ => L["掃描失敗"].Value
     };
+    private string WorkDetail(string? detail)
+    {
+        if (detail is null) return "—";
+        const string marker = "（嘗試 ";
+        var start = detail.LastIndexOf(marker, StringComparison.Ordinal);
+        if (start >= 0 && detail.EndsWith(" 次）", StringComparison.Ordinal) &&
+            int.TryParse(detail.AsSpan(start + marker.Length, detail.Length - start - marker.Length - " 次）".Length), out var attempts))
+            return L["{0}（嘗試 {1} 次）", L[detail[..start]].Value, attempts].Value;
+        return L[detail].Value;
+    }
     private async Task SaveAsync()
     {
         if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor) || actor == Guid.Empty || !OutboxScheduleManager.IsValidInterval(Input.Minutes)) { saveError = true; return; }
