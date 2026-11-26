@@ -197,7 +197,7 @@
   <data name="顯示各來源已核准服務最後一次成功保存的資料時間（UTC）。刪除歷史資料後，時間可能改變或不再顯示。" xml:space="preserve"><value>Shows the last successfully stored data time (UTC) for approved services in each source. Deleting history may change or remove this time.</value></data>
   <data name="無法讀取接收情況，請重新整理後再試。" xml:space="preserve"><value>Unable to load ingestion status. Refresh and try again.</value></data>
   <data name="目前沒有來源。請先到" xml:space="preserve"><value>There are no sources. Go to </value></data>
-  <data name="來源憑證管理" xml:space="preserve"><value>source credential management</value></data>
+  <data name="來源憑證管理" xml:space="preserve"><value>Source credential management</value></data>
   <data name="建立來源。" xml:space="preserve"><value> to create a source.</value></data>
   <data name="此頁沒有來源。" xml:space="preserve"><value>There are no sources on this page.</value></data>
   <data name="表格可左右滑動，查看完整接收時間。" xml:space="preserve"><value>Scroll horizontally to see all ingestion times.</value></data>
@@ -237,4 +237,63 @@
   <data name="來源授權已失效" xml:space="preserve"><value>Source authorization is no longer valid</value></data>
   <data name="服務未核准或已停收" xml:space="preserve"><value>Service unapproved or collection stopped</value></data>
   <data name="服務發現" xml:space="preserve"><value>Service discovery</value></data>
+  <data name="查看最近三分鐘仍有回報的服務；應用服務不需要綁定設備。" xml:space="preserve"><value>View services that have reported in the last three minutes; application services do not need to be bound to devices.</value></data>
+  <data name="加入後預設為私人。正式遙測接收管線尚未完成，加入不代表已開始收集或服務正常。" xml:space="preserve"><value>Added services are private by default. Production telemetry ingestion is not yet complete; adding a service does not mean collection has started or that it is healthy.</value></data>
+  <data name="立即保存來源憑證" xml:space="preserve"><value>Save the source credential now</value></data>
+  <data name="憑證只顯示這一次。請安全保存，不要貼到網址或公開紀錄；遺失時可再次更換憑證。" xml:space="preserve"><value>The credential is shown only once. Store it securely; do not put it in URLs or public records. If lost, rotate it again.</value></data>
+  <data name="來源憑證" xml:space="preserve"><value>Source credential</value></data>
+  <data name="請將憑證安全交給負責設定應用來源的人員。來源開始回報後，最近三分鐘內有回報的服務會出現在下方清單，供管理員確認加入。" xml:space="preserve"><value>Securely provide the credential to the person configuring the application source. Once reporting begins, services that reported within the last three minutes appear below for administrator approval.</value></data>
+  <data name="目前可用的來源回報資訊" xml:space="preserve"><value>Currently available source reporting information</value></data>
+  <data name="使用 HTTPS 將來源憑證放在 Authorization: Bearer 標頭，向此平台的 " xml:space="preserve"><value>Use HTTPS and put the source credential in the Authorization: Bearer header. Send </value></data>
+  <data name=" 傳送 JSON 欄位 " xml:space="preserve"><value> the JSON fields </value></data>
+  <data name="、" xml:space="preserve"><value>, </value></data>
+  <data name=" 及 " xml:space="preserve"><value> and </value></data>
+  <data name="。只傳送服務識別資料，不要傳送 Log、Metric 或 Trace。" xml:space="preserve"><value> to the platform. Send service identity data only, not logs, metrics or traces.</value></data>
+  <data name="這個入口只建立待加入候選，並非 OpenTelemetry 接收端；完整應用接入指引與正式遙測收集尚未完成。" xml:space="preserve"><value>This endpoint only creates pending candidates; it is not an OpenTelemetry receiver. Full application onboarding guidance and production telemetry collection are not yet complete.</value></data>
+  <data name="來源憑證可向該來源下所有仍獲授權收集的已加入服務寫入資料。互不信任的應用請使用不同來源；不要將中央來源憑證交給共用 Collector 的應用端。" xml:space="preserve"><value>The source credential can write data to all enrolled services under that source that are still authorized for collection. Use separate sources for mutually untrusted applications; do not give central source credentials to applications using a shared Collector.</value></data>
+  <data name="服務候選清單" xml:space="preserve"><value>Service candidates</value></data>
+  <data name="請先確認服務名稱、環境與來源，再加入。停止回報超過三分鐘便不再顯示；核准前不保存完整遙測。" xml:space="preserve"><value>Confirm the service name, environment and source before adding. Services stop appearing after three minutes without reports; full telemetry is not retained before approval.</value></data>
+  <data name="無法讀取清單，請重新整理後再試。" xml:space="preserve"><value>Unable to load the list. Refresh and try again.</value></data>
+  <data name="此頁沒有待加入的服務。" xml:space="preserve"><value>No pending services on this page.</value></data>
+  <data name="服務候選清單，可左右滑動" xml:space="preserve"><value>Service candidates table, scroll horizontally</value></data>
+  <data name="服務名稱" xml:space="preserve"><value>Service name</value></data>
+  <data name="環境" xml:space="preserve"><value>Environment</value></data>
+  <data name="最後回報（UTC）" xml:space="preserve"><value>Last report (UTC)</value></data>
+  <data name="服務識別：" xml:space="preserve"><value>Service identity: </value></data>
+  <data name="命名空間：" xml:space="preserve"><value>Namespace: </value></data>
+  <data name="加入服務" xml:space="preserve"><value>Add service</value></data>
+  <data name="我已確認來源及環境，並了解服務預設為私人" xml:space="preserve"><value>I have confirmed the source and environment and understand that the service is private by default</value></data>
+  <data name="候選清單分頁" xml:space="preserve"><value>Candidate pagination</value></data>
+  <data name="來源憑證可讓應用來源回報待加入服務的基本資訊。撤銷後，該來源會立即失去回報授權。" xml:space="preserve"><value>Source credentials allow application sources to report basic information about pending services. Revocation immediately removes that source's reporting authorization.</value></data>
+  <data name="來源名稱" xml:space="preserve"><value>Source name</value></data>
+  <data name="建立來源" xml:space="preserve"><value>Create source</value></data>
+  <data name="無法讀取來源，請重新整理後再試。" xml:space="preserve"><value>Unable to load sources. Refresh and try again.</value></data>
+  <data name="來源清單，可左右滑動" xml:space="preserve"><value>Source list, scroll horizontally</value></data>
+  <data name="可使用" xml:space="preserve"><value>Active</value></data>
+  <data name="撤銷來源" xml:space="preserve"><value>Revoke source</value></data>
+  <data name="我了解撤銷會立即停止該來源授權" xml:space="preserve"><value>I understand revocation immediately stops this source's authorization</value></data>
+  <data name="更換來源憑證" xml:space="preserve"><value>Rotate source credential</value></data>
+  <data name="更換後舊憑證立即失效，請更新使用該來源的 Collector 設定。服務身分與已核准狀態會保留。" xml:space="preserve"><value>The old credential becomes invalid immediately after rotation. Update the Collector configuration for this source. Service identities and approvals are retained.</value></data>
+  <data name="選擇來源" xml:space="preserve"><value>Select source</value></data>
+  <data name="請選擇來源" xml:space="preserve"><value>Select a source</value></data>
+  <data name="我了解舊憑證會立即失效" xml:space="preserve"><value>I understand the old credential becomes invalid immediately</value></data>
+  <data name="更換憑證" xml:space="preserve"><value>Rotate credential</value></data>
+  <data name="來源清單分頁" xml:space="preserve"><value>Source pagination</value></data>
+  <data name="建立憑證需要安全連線（HTTPS）。" xml:space="preserve"><value>Creating credentials requires a secure connection (HTTPS).</value></data>
+  <data name="請輸入 1 至 128 字的來源名稱。" xml:space="preserve"><value>Enter a source name of 1 to 128 characters.</value></data>
+  <data name="無法確認建立結果，請重新整理並檢查來源。" xml:space="preserve"><value>Unable to confirm creation. Refresh and check the source.</value></data>
+  <data name="請確認服務來源及環境。" xml:space="preserve"><value>Confirm the service source and environment.</value></data>
+  <data name="服務已加入，預設為私人；正式遙測接收尚未完成。服務識別碼：{0}" xml:space="preserve"><value>Service added as private by default; production telemetry ingestion is not yet complete. Service ID: {0}</value></data>
+  <data name="服務已過期或無法加入，請重新整理後確認。" xml:space="preserve"><value>The service expired or could not be added. Refresh and check.</value></data>
+  <data name="無法確認加入結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm the addition. Refresh and check.</value></data>
+  <data name="請確認撤銷來源的影響。" xml:space="preserve"><value>Confirm the effects of revoking the source.</value></data>
+  <data name="來源已撤銷。" xml:space="preserve"><value>Source revoked.</value></data>
+  <data name="找不到來源。" xml:space="preserve"><value>Source not found.</value></data>
+  <data name="無法確認撤銷結果，請重新整理並檢查。" xml:space="preserve"><value>Unable to confirm revocation. Refresh and check.</value></data>
+  <data name="更換憑證需要安全連線（HTTPS）。" xml:space="preserve"><value>Rotating credentials requires a secure connection (HTTPS).</value></data>
+  <data name="請選擇來源並確認更換憑證的影響。" xml:space="preserve"><value>Select a source and confirm the effects of rotating its credential.</value></data>
+  <data name="來源憑證已更換，請立即保存並更新 Collector 設定。" xml:space="preserve"><value>Source credential rotated. Save it now and update the Collector configuration.</value></data>
+  <data name="來源已變更、撤銷或不存在，請重新整理後確認。" xml:space="preserve"><value>The source changed, was revoked or no longer exists. Refresh and check.</value></data>
+  <data name="無法確認更換結果，請重新整理並檢查；如有需要可再次更換憑證。" xml:space="preserve"><value>Unable to confirm rotation. Refresh and check; rotate the credential again if necessary.</value></data>
+  <data name="無法確認撤銷結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm revocation. Refresh and check.</value></data>
 </root>
