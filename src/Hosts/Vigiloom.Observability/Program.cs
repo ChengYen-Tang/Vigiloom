@@ -60,6 +60,19 @@ builder.Services.AddHostedService<WorkDispatcher>();
 var app = builder.Build();
 var forwarded = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwarded is not null) app.UseForwardedHeaders(forwarded);
+app.UseWhen(context => context.Request.Path.StartsWithSegments(OtlpHttpEndpoints.Prefix), otlp =>
+    otlp.Use(async (context, next) =>
+    {
+        try { await next(); }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { throw; }
+        catch (Exception) when (!context.Response.HasStarted)
+        {
+            await OtlpResponse.Failure(StatusCodes.Status503ServiceUnavailable, "Telemetry receiver is unavailable; retry later.").ExecuteAsync(context);
+            return;
+        }
+        if (!context.Response.HasStarted && context.Response.StatusCode >= 400 && context.Response.ContentLength is null)
+            await OtlpResponse.Failure(context.Response.StatusCode, "Telemetry request was rejected.").ExecuteAsync(context);
+    }));
 app.UseMiddleware<OtlpTransportGuard>();
 app.UseAuthentication();
 app.UseAuthorization();
