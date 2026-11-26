@@ -14,19 +14,19 @@ internal static class IntelligenceEndpoints
         var admin = app.MapGroup("/api/v1/admin/intelligence/sources")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
         admin.MapGet("/{sourceId:guid}/revisions/{revisionId:guid}/baseline-check", async (Guid sourceId, Guid revisionId,
-            CustomBaselineStage stage, HttpContext context, CancellationToken token) =>
+            CustomBaselineAccess stage, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             return await stage.ReadAsync(sourceId, revisionId, token) is { } check ? Results.Ok(check) : Results.NotFound();
         }).Produces<BaselineCheck>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Read a locally authored baseline check before review");
-        admin.MapPost("/baseline-checks", async (CustomBaselineDraftRequest input, CustomBaselineStage stage, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/baseline-checks", async (CustomBaselineDraftRequest input, CustomBaselineAccess stage, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             return await ApiMutation.ExecuteAsync(context, async actor => StageResult(await stage.SaveAsync(null, null, input.Check, actor, token)), allowApiCredential: false);
         }).Produces<CustomBaselineStageResult>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409)
             .WithSummary("Stage a locally authored baseline check");
-        admin.MapPost("/{sourceId:guid}/baseline-revisions", async (Guid sourceId, CustomBaselineDraftRequest input, CustomBaselineStage stage, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/{sourceId:guid}/baseline-revisions", async (Guid sourceId, CustomBaselineDraftRequest input, CustomBaselineAccess stage, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             return await ApiMutation.ExecuteAsync(context, async actor => StageResult(await stage.SaveAsync(sourceId, input.ExpectedVersion, input.Check, actor, token)), allowApiCredential: false);

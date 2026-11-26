@@ -22,6 +22,7 @@ using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Testing.SqlServer;
@@ -64,6 +65,18 @@ public sealed class YaraRoutingTests(TestContext context)
             security.UseKestrel(0);
             using var securityClient = security.CreateClient();
             Assert.IsNotNull(await securityClient.GetFromJsonAsync<IntelligenceSourcePage>("/internal/v1/intelligence/sources/?page=1", token));
+            var custom = new BaselineCheck("", "Test", "linux", ["debian:12"], BaselineSources.LinuxShadowOperation, "/etc/shadow", "0640", "", "local");
+            using (var staged = await securityClient.PostAsJsonAsync("/internal/v1/intelligence/custom-baselines/stage",
+                new { SourceId = (Guid?)null, ExpectedVersion = (string?)null, Check = custom, ActorId = Guid.CreateVersion7() }, token))
+            {
+                staged.EnsureSuccessStatusCode();
+                var result = await staged.Content.ReadFromJsonAsync<CustomBaselineStageResult>(cancellationToken: token);
+                Assert.AreEqual(CustomBaselineStageStatus.Staged, result!.Status);
+                var saved = await securityClient.GetFromJsonAsync<CustomBaselineDraft>($"/internal/v1/intelligence/custom-baselines/{result.SourceId:D}/revisions/{result.RevisionId:D}/draft", token);
+                Assert.AreEqual(custom.Title, saved!.Check.Title);
+                var active = await securityClient.GetFromJsonAsync<BaselineSourceSnapshot>($"/internal/v1/intelligence/custom-baselines/{result.SourceId:D}/active", token);
+                Assert.AreEqual(BaselineSourceAvailability.NoActiveRevision, active!.Availability);
+            }
             using (var invalidPage = await securityClient.GetAsync("/internal/v1/intelligence/sources/?page=0", token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalidPage.StatusCode);
             using (var noAudit = await securityClient.PostAsJsonAsync($"/internal/v1/intelligence/sources/{Guid.CreateVersion7():D}/activation",
