@@ -9,6 +9,8 @@ using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Contracts.Agent.Baseline;
+using Vigiloom.Contracts.Events;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Microsoft.Data.SqlClient;
@@ -175,6 +177,53 @@ public sealed class SecurityWorkTests(TestContext context)
     {
         public SecurityAnalysisDbContext CreateDbContext() => new(options);
     }
+
+    [TestMethod]
+    public Task BaselineResultsAndTimelineAreCommittedTogether() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            await SecurityDatabaseCommand.RunAsync(database.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var now = DateTimeOffset.UtcNow;
+            var source = new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceSource { Key = BaselineSources.LinuxShadow };
+            var revision = new Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence.IntelligenceRevision { SourceId = source.Id, UpstreamVersion = "1", RetrievedAt = now,
+                Digest = new byte[32], Artifact = [1], SchemaVersion = "1", MappingVersion = "1", LicenseEvidence = "test", RecordCount = 1 };
+            await using (var db = new SecurityAnalysisDbContext(options))
+            {
+                db.IntelligenceSources.Add(source); db.IntelligenceRevisions.Add(revision);
+                db.IntelligenceActivationEvents.Add(new() { SourceId = source.Id, RevisionId = revision.Id, OccurredAt = now, Scheduled = true });
+                await db.SaveChangesAsync(token);
+            }
+            var agent = Guid.CreateVersion7(); var device = Guid.CreateVersion7();
+            var batch = new BaselineBatch(BaselineBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                [new(source.Id, revision.Id, "AAAAAAAAAAA=", BaselineSources.LinuxShadowCheck, now, "debian:12", BaselineOutcome.Pass, "private evidence"),
+                 new(source.Id, revision.Id, "AAAAAAAAAAA=", BaselineSources.LinuxShadowCheck, now, "debian:12", BaselineOutcome.Fail, "private evidence")]);
+            var host = new HostHandler(BaselineBatchCodec.Serialize(batch));
+            using var http = new HttpClient(host) { BaseAddress = new Uri("http://host/") };
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = database.ConnectionString }).Build();
+            var reference = new HostSecurityBatchReady(agent, batch.BatchId, device, 1, "baseline");
+            var work = new ServiceWork(nameof(HostSecurityBatchReady), JsonSerializer.Serialize(reference), Guid.CreateVersion7().ToString());
+            var failing = new SecurityWorkHandler(config, new TestClients(http), workWriter: new TemporalWorkWriter(new OutboxWriter([])));
+            await Assert.ThrowsExactlyAsync<ArgumentException>(() => failing.ExecuteAsync(work, token));
+            await using (var db = new SecurityAnalysisDbContext(options)) Assert.AreEqual(0, await db.BaselineObservations.CountAsync(token));
+            Assert.AreEqual(0, host.Deletes);
+            var consumer = new SecurityWorkHandler(config, new TestClients(http), workWriter: new TemporalWorkWriter(new OutboxWriter([new NoopHandler()])));
+            await consumer.ExecuteAsync(work, token);
+            await consumer.ExecuteAsync(work, token);
+            await using (var db = new SecurityAnalysisDbContext(options)) Assert.AreEqual(2, await db.BaselineObservations.CountAsync(token));
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT Payload FROM scheduling.Outbox WHERE MessageType = 'temporal.service-work'";
+            var envelope = JsonSerializer.Deserialize<TemporalWorkRequest>((string)(await command.ExecuteScalarAsync(token))!);
+            Assert.AreEqual(EventTimelineWork.BatchKind, envelope!.Work.Kind);
+            var deliveries = JsonSerializer.Deserialize<EventTimelineBatch>(envelope.Work.Payload)!;
+            Assert.HasCount(2, deliveries.Items);
+            Assert.AreNotEqual(deliveries.Items[0].MessageId, deliveries.Items[1].MessageId);
+            Assert.IsTrue(deliveries.Items.All(x => x.Entry.Source == "baseline" && x.Entry.ResourceId == device && !x.Entry.Evidence.Contains("private evidence")));
+            command.CommandText = "SELECT COUNT(*) FROM scheduling.Outbox WHERE MessageType = 'temporal.service-work'";
+            Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+        }, context.CancellationToken);
 
     [TestMethod]
     public Task RemovedIntegrityScopeDoesNotLeaveARecurringDelivery() =>
