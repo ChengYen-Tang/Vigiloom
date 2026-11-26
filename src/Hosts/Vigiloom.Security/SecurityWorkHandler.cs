@@ -21,7 +21,7 @@ using Vigiloom.Contracts.Operations;
 namespace Vigiloom.Security;
 
 /// <summary>Consumes Host batches and commits security effects with the delivery receipt.</summary>
-public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClientFactory clients, IEnumerable<IOutboxHandler>? handlers = null, IYaraTimelineWriter? timeline = null, TemporalWorkWriter? workWriter = null) : IServiceWorkHandler
+public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClientFactory clients, IEnumerable<IOutboxHandler>? handlers = null, IYaraTimelineWriter? timeline = null, TemporalWorkWriter? workWriter = null, IDetectionTimelineWriter? detectionTimeline = null) : IServiceWorkHandler
 {
     public async Task<string?> ExecuteAsync(ServiceWork work, CancellationToken cancellationToken)
     {
@@ -69,7 +69,7 @@ public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClien
         if (batch.Kind == "inventory" && InventoryChunkCodec.TryRead(payload, out var inventory) && inventory!.BatchId == batch.BatchId)
         {
             await transaction.SaveAsync("staging", token);
-            var result = await new InventoryStageWriter().StageAsync(sql, transaction, new(batch.AgentId, batch.DeviceId, batch.DeviceGeneration), inventory, now, token);
+            var result = await new InventoryStageWriter(detectionTimeline).StageAsync(sql, transaction, new(batch.AgentId, batch.DeviceId, batch.DeviceGeneration), inventory, now, token);
             if (result == InventoryStageResult.CapacityExceeded) throw new InvalidOperationException("Inventory staging is busy.");
             if (result is InventoryStageResult.Conflict or InventoryStageResult.Expired) await transaction.RollbackAsync("staging", token);
         }
