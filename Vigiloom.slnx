@@ -10,6 +10,7 @@
     <Project Path="src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj" />
   </Folder>
   <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/Vigiloom.Security/Vigiloom.Security.csproj" />
     <Project Path="src/Hosts/Vigiloom.HostMonitoring/Vigiloom.HostMonitoring.csproj" />
     <Project Path="src/Hosts/Vigiloom.Network/Vigiloom.Network.csproj" />
     <Project Path="src/Hosts/Vigiloom.Observability/Vigiloom.Observability.csproj" />
