@@ -30,6 +30,11 @@ builder.Services.AddAuthorization(options => options.AddPolicy("ServiceSource", 
 builder.Services.AddServiceDiscovery();
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
     builder.Configuration["Temporal:Namespace"] ?? "default");
+builder.Services.AddVigiloomTemporalWorker<ApplicationEventHandler>(builder.Configuration["Work:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
+builder.Services.AddScoped<ApplicationStateProjection>();
+builder.Services.AddHttpClient("resources", (services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped(provider => new OutboxWriter(provider.GetServices<IOutboxHandler>(), maxPayloadLength: null));
 builder.Services.AddHttpClient<TemporalHealthTransitionSink>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))
