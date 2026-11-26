@@ -276,4 +276,60 @@
   <data name="部分觀察：首次看到" xml:space="preserve"><value>部分观察：首次看到</value></data>
   <data name="部分觀察：資料變化" xml:space="preserve"><value>部分观察：数据变化</value></data>
   <data name="未知" xml:space="preserve"><value>未知</value></data>
+  <data name="漏洞比對" xml:space="preserve"><value>漏洞比对</value></data>
+  <data name="比對結果需要結合盤點與情報判讀" xml:space="preserve"><value>比对结果需要结合清单与情报判断</value></data>
+  <data name="目前以 {0} 來源套件版本比對；套件來自發行版的身分是未驗證的假設。未知或無公告資料不代表安全。" xml:space="preserve"><value>当前按 {0} 来源包版本比对；软件包来自发行版的身份是未经验证的假设。未知或无公告数据不代表安全。</value></data>
+  <data name="正在載入漏洞資料…" xml:space="preserve"><value>正在加载漏洞数据…</value></data>
+  <data name="作業系統生命週期尚未核實；舊系統的情報與修補覆蓋可能不足。" xml:space="preserve"><value>操作系统生命周期尚未核实；旧系统的情报与补丁覆盖可能不足。</value></data>
+  <data name="此作業系統版本尚未支援漏洞比對，無法判斷是否有漏洞。" xml:space="preserve"><value>此操作系统版本尚不支持漏洞比对，无法判断是否有漏洞。</value></data>
+  <data name="尚無評估結果" xml:space="preserve"><value>尚无评估结果</value></data>
+  <data name="請確認設備已完成盤點，並已啟用適用的漏洞情報來源。" xml:space="preserve"><value>请确认设备已完成清单采集，并已启用适用的漏洞情报来源。</value></data>
+  <data name="資料已過期或來源、Agent、盤點已變更；以下為上次評估，請勿視為目前狀態。" xml:space="preserve"><value>数据已过期或来源、Agent、清单已更改；以下为上次评估，请勿视为当前状态。</value></data>
+  <data name="盤點覆蓋" xml:space="preserve"><value>清单覆盖</value></data>
+  <data name="個套件" xml:space="preserve"><value>个软件包</value></data>
+  <data name="其中 {0} 個套件有未知結果。" xml:space="preserve"><value>其中 {0} 个软件包有未知结果。</value></data>
+  <data name="評估說明" xml:space="preserve"><value>评估说明</value></data>
+  <data name="版本比對是風險線索，不能證明實際遭入侵；未列出不代表沒有漏洞。" xml:space="preserve"><value>版本比对是风险线索，不能证明实际遭入侵；未列出不代表没有漏洞。</value></data>
+  <data name="無法建立公告比對的套件" xml:space="preserve"><value>无法建立公告比对的软件包</value></data>
+  <data name="以下列出缺少套件身分或未找到公告的套件；其他未知結果會列在公告比對表中。" xml:space="preserve"><value>以下列出缺少软件包身份或未找到公告的软件包；其他未知结果会列在公告比对表中。</value></data>
+  <data name="已安裝版本 {0}" xml:space="preserve"><value>已安装版本 {0}</value></data>
+  <data name="套件漏洞結果" xml:space="preserve"><value>软件包漏洞结果</value></data>
+  <data name="已標示 CISA 已知遭利用項目。" xml:space="preserve"><value>已标记 CISA 已知遭利用项目。</value></data>
+  <data name="已標示非官方驗證來源的 KEV 資料；來源未經系統驗證。" xml:space="preserve"><value>已标记非官方验证来源的 KEV 数据；来源未经系统验证。</value></data>
+  <data name="未標示不代表安全或未遭利用。" xml:space="preserve"><value>未标记不代表安全或未遭利用。</value></data>
+  <data name="已知遭利用情報目前不可用或已過期，未提供此標示。" xml:space="preserve"><value>已知遭利用情报当前不可用或已过期，未提供此标记。</value></data>
+  <data name="EPSS 情報目前不可用或已過期，未使用分數排序。" xml:space="preserve"><value>EPSS 情报当前不可用或已过期，未使用分数排序。</value></data>
+  <data name="套件或公告" xml:space="preserve"><value>软件包或公告</value></data>
+  <data name="例如 openssl 或 CVE" xml:space="preserve"><value>例如 openssl 或 CVE</value></data>
+  <data name="評估狀態" xml:space="preserve"><value>评估状态</value></data>
+  <data name="全部狀態" xml:space="preserve"><value>全部状态</value></data>
+  <data name="可能受影響" xml:space="preserve"><value>可能受影响</value></data>
+  <data name="版本顯示已修補" xml:space="preserve"><value>版本显示已修补</value></data>
+  <data name="不受影響" xml:space="preserve"><value>不受影响</value></data>
+  <data name="尚未評估" xml:space="preserve"><value>尚未评估</value></data>
+  <data name="查詢" xml:space="preserve"><value>查询</value></data>
+  <data name="沒有符合條件的公告比對結果；這不代表沒有漏洞。" xml:space="preserve"><value>没有符合条件的公告比对结果；这不代表没有漏洞。</value></data>
+  <data name="漏洞結果表格，可左右捲動" xml:space="preserve"><value>漏洞结果表格，可左右滚动</value></data>
+  <data name="套件" xml:space="preserve"><value>软件包</value></data>
+  <data name="公告" xml:space="preserve"><value>公告</value></data>
+  <data name="套件版本" xml:space="preserve"><value>软件包版本</value></data>
+  <data name="來源信心" xml:space="preserve"><value>来源可信度</value></data>
+  <data name="最後評估（UTC）" xml:space="preserve"><value>最后评估（UTC）</value></data>
+  <data name="歷史" xml:space="preserve"><value>历史</value></data>
+  <data name="查看歷史" xml:space="preserve"><value>查看历史</value></data>
+  <data name="正在載入歷史…" xml:space="preserve"><value>正在加载历史…</value></data>
+  <data name="此時間範圍沒有評估紀錄。" xml:space="preserve"><value>此时间范围没有评估记录。</value></data>
+  <data name="載入較早紀錄" xml:space="preserve"><value>加载较早记录</value></data>
+  <data name="資料或情報已更新，已回到第一頁。" xml:space="preserve"><value>数据或情报已更新，已返回第一页。</value></data>
+  <data name="無法載入漏洞資料，請稍後重試。" xml:space="preserve"><value>无法加载漏洞数据，请稍后重试。</value></data>
+  <data name="無法載入歷史，請稍後重試。" xml:space="preserve"><value>无法加载历史，请稍后重试。</value></data>
+  <data name="假設為發行版來源" xml:space="preserve"><value>假设为发行版来源</value></data>
+  <data name="來源衝突" xml:space="preserve"><value>来源冲突</value></data>
+  <data name="來源已驗證" xml:space="preserve"><value>来源已验证</value></data>
+  <data name="來源未知" xml:space="preserve"><value>来源未知</value></data>
+  <data name="依發行版公告的版本範圍判斷" xml:space="preserve"><value>按发行版公告的版本范围判断</value></data>
+  <data name="沒有找到可比對的公告，無法判定安全" xml:space="preserve"><value>没有找到可比对的公告，无法判定安全</value></data>
+  <data name="套件身分或版本不完整" xml:space="preserve"><value>软件包身份或版本不完整</value></data>
+  <data name="公告資料不足或有歧義" xml:space="preserve"><value>公告数据不足或有歧义</value></data>
+  <data name="判斷原因未知" xml:space="preserve"><value>判断原因未知</value></data>
 </root>
