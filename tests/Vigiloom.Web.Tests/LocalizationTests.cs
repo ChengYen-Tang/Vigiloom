@@ -124,4 +124,34 @@ public sealed class LocalizationTests(TestContext context)
         Assert.Contains("Enter your username.", text);
         Assert.Contains("Passwords do not match.", text);
     }
+
+    [TestMethod]
+    [DataRow("en", "Enter the one-time code.", "Passwords do not match.")]
+    [DataRow("zh-Hant", "請輸入一次性代碼。", "兩次密碼不一致。")]
+    [DataRow("zh-Hans", "请输入一次性代码。", "两次密码不一致。")]
+    public async Task ResetPasswordValidationUsesSelectedLanguage(string culture, string codeMessage, string mismatchMessage)
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Development");
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Vigiloom"] = "Server=localhost;Database=unused;Integrated Security=true;TrustServerCertificate=true"
+            }));
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.AcceptLanguage.ParseAdd(culture);
+        using var page = await client.GetAsync("/account/reset-password", context.CancellationToken);
+        var document = await new HtmlParser().ParseDocumentAsync(await page.Content.ReadAsStringAsync(context.CancellationToken), context.CancellationToken);
+        var fields = document.QuerySelector("form")!.QuerySelectorAll("input[type=hidden][name]")
+            .ToDictionary(element => element.GetAttribute("name")!, element => element.GetAttribute("value") ?? "");
+        fields["Input.UserName"] = "example";
+        fields["Input.Code"] = "";
+        fields["Input.Password"] = "password";
+        fields["Input.ConfirmPassword"] = "different";
+        using var response = await client.PostAsync("/account/reset-password", new FormUrlEncodedContent(fields), context.CancellationToken);
+        var text = (await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(context.CancellationToken), context.CancellationToken)).Body!.TextContent;
+        Assert.Contains(codeMessage, text);
+        Assert.Contains(mismatchMessage, text);
+    }
 }
