@@ -69,6 +69,40 @@ public sealed class SharedComponentsTests
     }
 
     [TestMethod]
+    [DataRow("en", "View data as a table", "No data")]
+    [DataRow("zh-Hant", "以表格查看資料", "無資料")]
+    [DataRow("zh-Hans", "以表格查看数据", "无数据")]
+    public async Task TimeSeries_UsesSelectedLanguageForMissingSamples(string culture, string tableLabel, string missingLabel)
+    {
+        var previous = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = new(culture);
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddLocalization();
+            services.AddMudServices();
+            services.AddSingleton<IJSRuntime, UnavailableJavaScript>();
+            services.AddSingleton<NavigationManager, TestNavigationManager>();
+            await using var provider = services.BuildServiceProvider();
+            await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+            await renderer.Dispatcher.InvokeAsync(async () =>
+            {
+                var chart = await renderer.RenderComponentAsync<TimeSeriesChart>(ParameterView.FromDictionary(new Dictionary<string, object?>
+                {
+                    [nameof(TimeSeriesChart.Title)] = "Custom device",
+                    [nameof(TimeSeriesChart.Points)] = new[] { new TimeSeriesPoint(DateTimeOffset.UtcNow, null) }
+                }));
+                var html = System.Net.WebUtility.HtmlDecode(chart.ToHtmlString());
+                Assert.Contains("Custom device", html);
+                Assert.Contains(tableLabel, html);
+                Assert.Contains(missingLabel, html);
+            });
+        }
+        finally { System.Globalization.CultureInfo.CurrentUICulture = previous; }
+    }
+
+    [TestMethod]
     public void TimeSeries_UsesActualUnevenTimestampsAndDoesNotConnectMissingSamples()
     {
         var start = new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
@@ -93,6 +127,7 @@ public sealed class SharedComponentsTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddMudServices();
+        services.AddLocalization();
         services.AddSingleton<IJSRuntime, UnavailableJavaScript>();
         services.AddSingleton<NavigationManager, TestNavigationManager>();
         await using var provider = services.BuildServiceProvider();

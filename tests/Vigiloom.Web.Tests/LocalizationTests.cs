@@ -31,6 +31,7 @@ public sealed class LocalizationTests(TestContext context)
         var document = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(context.CancellationToken), context.CancellationToken);
         Assert.Contains(title, document.Body!.TextContent);
         Assert.Contains(search, document.Body.TextContent);
+        Assert.Contains(title, document.Title ?? "");
     }
 
     [TestMethod]

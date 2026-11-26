@@ -1,20 +1,21 @@
 @using Vizor.ECharts
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ChartText> L
 
 <figure class="time-series-chart" data-runtime="@RendererInfo.Name">
     <figcaption>@Title @if (!string.IsNullOrWhiteSpace(Unit)) { <span>(@Unit)</span> }</figcaption>
     @if (Points.Count == 0)
     {
-        <p>目前沒有資料。</p>
+        <p>@L["目前沒有資料。"]</p>
     }
     else
     {
         <div role="img" aria-label="@Title"><EChart @key="options" Options="options" Width="auto" Height="280px" /></div>
         <details>
-            <summary>以表格查看資料</summary>
-            <table><thead><tr><th scope="col">時間（UTC）</th><th scope="col">數值 @Unit</th></tr></thead><tbody>
+            <summary>@L["以表格查看資料"]</summary>
+            <table><thead><tr><th scope="col">@L["時間（UTC）"]</th><th scope="col">@L["數值"] @Unit</th></tr></thead><tbody>
                 @foreach (var point in Points)
                 {
-                    <tr><td>@point.Time.ToUniversalTime().ToString("u")</td><td>@(point.Value?.ToString("G") ?? "無資料")</td></tr>
+                    <tr><td>@point.Time.ToUniversalTime().ToString("u")</td><td>@(point.Value?.ToString("G") ?? L["無資料"].Value)</td></tr>
                 }
             </tbody></table>
         </details>
