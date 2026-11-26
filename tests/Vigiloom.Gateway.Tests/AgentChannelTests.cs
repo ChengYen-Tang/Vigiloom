@@ -46,6 +46,7 @@ public sealed class AgentChannelTests
         {
             web.UseUrls("http://127.0.0.1:0");
             web.UseSetting("Temporal:Enabled", "false");
+            web.UseSetting("Hangfire:Enabled", "false");
             web.UseSetting("ConnectionStrings:SignalR", redis);
             web.ConfigureServices(services => services.AddHttpClient("resources")
                 .ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(agent, Guid.CreateVersion7())));
@@ -63,6 +64,7 @@ public sealed class AgentChannelTests
         {
             web.UseUrls("http://127.0.0.1:0");
             web.UseSetting("Temporal:Enabled", "false");
+            web.UseSetting("Hangfire:Enabled", "false");
             web.ConfigureServices(services => services.AddHttpClient("resources")
                 .ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(agent, other)));
         });

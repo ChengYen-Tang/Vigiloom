@@ -86,6 +86,24 @@ public sealed class HostObservationReceiverTests(TestContext context)
             Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await logReceiver.ReceiveAsync(identity, logBytes, token));
             Assert.AreEqual(2, sink.Calls);
             Assert.AreEqual(1, sink.StoredBatches);
+
+            var gate = new GateLogSink();
+            var delayedReceiver = new HostObservationReceiver(factory, TimeProvider.System, gate);
+            var delayed = log with { BatchId = Guid.CreateVersion7(), Items = [record with { MessageId = Guid.CreateVersion7() }] };
+            var delivery = delayedReceiver.ReceiveAsync(identity, AgentLogBatchCodec.Serialize(delayed), token);
+            await gate.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+            await using (var otherDb = await factory.CreateDbContextAsync(token))
+            {
+                await otherDb.ReceivedBatches.Where(x => x.AgentId == agentId && x.BatchId == delayed.BatchId).ExecuteDeleteAsync(token);
+                var replacement = new ReceivedBatch(agentId, delayed.BatchId, new byte[32], now, now, 1, 1);
+                otherDb.ReceivedBatches.Add(replacement);
+                otherDb.Entry(replacement).Property("PendingDelivery").CurrentValue = true;
+                await otherDb.SaveChangesAsync(token);
+            }
+            gate.Release.TrySetResult();
+            Assert.AreEqual(BatchReceiptStatus.Conflict, await delivery);
+            await using var final = await factory.CreateDbContextAsync(token);
+            Assert.IsTrue(await final.ReceivedBatches.AnyAsync(x => x.BatchId == delayed.BatchId && EF.Property<bool>(x, "PendingDelivery"), token));
         }, context.CancellationToken);
 
     private sealed class TestLogSink : IHostLogSink
@@ -98,6 +116,18 @@ public sealed class HostObservationReceiverTests(TestContext context)
             if (Calls == 1) StoredBatches++;
             // The first call models an Operations commit whose response was lost.
             return Task.FromResult(new LogReceipt(Calls == 1 ? LogReceiptStatus.Busy : LogReceiptStatus.Accepted));
+        }
+    }
+
+    private sealed class GateLogSink : IHostLogSink
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<LogReceipt> ReceiveAsync(RegisteredAgentIdentity identity, AgentLogBatch batch, CancellationToken token)
+        {
+            Started.TrySetResult();
+            await Release.Task.WaitAsync(token);
+            return new(LogReceiptStatus.Accepted);
         }
     }
 }
