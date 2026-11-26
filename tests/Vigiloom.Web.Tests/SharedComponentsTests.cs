@@ -49,6 +49,33 @@ public sealed class SharedComponentsTests
     }
 
     [TestMethod]
+    [DataRow("en", "No measurements yet")]
+    [DataRow("zh-Hant", "尚無量測資料")]
+    [DataRow("zh-Hans", "暂无测量数据")]
+    public async Task PingBadge_UsesSelectedLanguage(string culture, string expected)
+    {
+        var previous = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = new(culture);
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddLocalization();
+            services.AddMudServices();
+            services.AddSingleton<IJSRuntime, UnavailableJavaScript>();
+            services.AddSingleton<NavigationManager, TestNavigationManager>();
+            await using var provider = services.BuildServiceProvider();
+            await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+            await renderer.Dispatcher.InvokeAsync(async () =>
+            {
+                var badge = await renderer.RenderComponentAsync<PingStatusBadge>(ParameterView.Empty);
+                Assert.Contains(expected, System.Net.WebUtility.HtmlDecode(badge.ToHtmlString()));
+            });
+        }
+        finally { System.Globalization.CultureInfo.CurrentUICulture = previous; }
+    }
+
+    [TestMethod]
     [DataRow("2026-11-01T00:00:00+00:00", 24, "2026-11-01T00:00:00+00:00", 1, 1)]
     [DataRow("2026-11-01T23:00:00+00:00", 2, "2026-11-02T00:00:00+00:00", 2, 2)]
     [DataRow("2026-01-01T12:00:00+00:00", 2160, "2026-04-01T00:00:00+00:00", 91, 91)]

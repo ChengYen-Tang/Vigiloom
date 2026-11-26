@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="無法讀取">
+    <value>Unavailable</value>
+  </data>
+  <data xml:space="preserve" name="尚無量測資料">
+    <value>No measurements yet</value>
+  </data>
+  <data xml:space="preserve" name="資料過期">
+    <value>Data is stale</value>
+  </data>
+  <data xml:space="preserve" name="DNS 解析失敗">
+    <value>DNS resolution failed</value>
+  </data>
+  <data xml:space="preserve" name="監測器權限不足">
+    <value>Monitor permission denied</value>
+  </data>
+  <data xml:space="preserve" name="監測器錯誤">
+    <value>Monitor error</value>
+  </data>
+  <data xml:space="preserve" name="可達">
+    <value>Reachable</value>
+  </data>
+  <data xml:space="preserve" name="不可達">
+    <value>Unreachable</value>
+  </data>
+  <data xml:space="preserve" name="待確認">
+    <value>Pending</value>
+  </data>
+</root>

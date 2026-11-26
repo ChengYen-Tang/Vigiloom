@@ -1,0 +1,102 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="設備">
+    <value>Devices</value>
+  </data>
+  <data xml:space="preserve" name="管理網路設備與深入監控設備，查看各自的監測狀態。">
+    <value>Manage network and host-monitored devices and view their status.</value>
+  </data>
+  <data xml:space="preserve" name="新增設備">
+    <value>Add device</value>
+  </data>
+  <data xml:space="preserve" name="搜尋名稱或目標">
+    <value>Search by name or target</value>
+  </data>
+  <data xml:space="preserve" name="名稱、IP 或 DNS">
+    <value>Name, IP or DNS</value>
+  </data>
+  <data xml:space="preserve" name="排序">
+    <value>Sort by</value>
+  </data>
+  <data xml:space="preserve" name="名稱">
+    <value>Name</value>
+  </data>
+  <data xml:space="preserve" name="目標">
+    <value>Target</value>
+  </data>
+  <data xml:space="preserve" name="建立時間">
+    <value>Created</value>
+  </data>
+  <data xml:space="preserve" name="反向排序">
+    <value>Descending</value>
+  </data>
+  <data xml:space="preserve" name="顯示已封存">
+    <value>Show archived</value>
+  </data>
+  <data xml:space="preserve" name="搜尋">
+    <value>Search</value>
+  </data>
+  <data xml:space="preserve" name="無法載入設備，請稍後重新整理。">
+    <value>Unable to load devices. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的封存設備。">
+    <value>No archived devices match your search.</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的設備。">
+    <value>No devices match your search.</value>
+  </data>
+  <data xml:space="preserve" name="共 {0} 台設備">
+    <value>Devices: {0}</value>
+  </data>
+  <data xml:space="preserve" name="主要目標">
+    <value>Primary target</value>
+  </data>
+  <data xml:space="preserve" name="監控模式">
+    <value>Monitoring mode</value>
+  </data>
+  <data xml:space="preserve" name="主要目標 Ping">
+    <value>Primary target Ping</value>
+  </data>
+  <data xml:space="preserve" name="建立時間（UTC）">
+    <value>Created (UTC)</value>
+  </data>
+  <data xml:space="preserve" name="深入監控">
+    <value>Host monitoring</value>
+  </data>
+  <data xml:space="preserve" name="僅 Ping">
+    <value>Ping only</value>
+  </data>
+  <data xml:space="preserve" name="已封存">
+    <value>Archived</value>
+  </data>
+  <data xml:space="preserve" name="已停用">
+    <value>Disabled</value>
+  </data>
+  <data xml:space="preserve" name="查看詳情">
+    <value>View details</value>
+  </data>
+  <data xml:space="preserve" name="設備分頁">
+    <value>Device pages</value>
+  </data>
+  <data xml:space="preserve" name="上一頁">
+    <value>Previous</value>
+  </data>
+  <data xml:space="preserve" name="下一頁">
+    <value>Next</value>
+  </data>
+  <data xml:space="preserve" name="第 {0} 頁">
+    <value>Page {0}</value>
+  </data>
+</root>
