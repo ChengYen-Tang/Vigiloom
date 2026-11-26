@@ -320,6 +320,31 @@ public sealed class PingSqlTests
     }, snapshotReads);
 
     [TestMethod]
+    public Task SeparateWorkersReclaimExpiredPingLease() => WithReusableDatabase(async (resources, network, token) =>
+    {
+        var clock = new TestClock();
+        await SeedAsync(resources, token);
+        var first = new PingStore(network, new DevicePingSource(resources), clock);
+        var second = new PingStore(network, new DevicePingSource(resources), clock);
+        var settings = new PingSettings(network, clock, new Vigiloom.Modules.AlertingOperations.Application.OperationAuditWriter());
+        await settings.EnsureAsync(token);
+        var policy = await settings.GetAsync(token);
+        await first.ReconcileAsync(policy, token);
+        await DueAsync(network, token);
+        var original = Assert.ContainsSingle(await first.ClaimAsync(policy, 1, null, token));
+        var other = await second.ClaimAsync(policy, 8, null, token);
+        Assert.IsFalse(other.Any(item => item.DeviceId == original.DeviceId && item.Target == original.Target));
+        await using (var db = network.CreateDbContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE network.PingTargets SET LeaseUntil = DATEADD(second,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE DeviceId = {original.DeviceId} AND Target = {original.Target}", token);
+        var recovered = Assert.ContainsSingle(await second.ClaimAsync(policy, 1, null, token));
+        Assert.AreEqual(original.DeviceId, recovered.DeviceId);
+        Assert.AreEqual(original.Target, recovered.Target);
+        Assert.IsGreaterThan(original.Generation, recovered.Generation);
+        Assert.IsFalse(await first.CommitAsync(original, policy, new(PingOutcome.Success, original.Target, 1), clock.Now, "central", token));
+        Assert.IsTrue(await second.CommitAsync(recovered, policy, new(PingOutcome.Success, recovered.Target, 1), clock.Now, "central", token));
+    });
+
+    [TestMethod]
     public Task PingRetention_PreviewsAndAuditsShortenedPolicy() => WithReusableDatabase(async (resources, network, token) =>
     {
         var (device, _) = await SeedAsync(resources, token);
