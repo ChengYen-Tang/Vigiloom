@@ -6,6 +6,7 @@ using Vigiloom.Security;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Security");
@@ -26,6 +27,11 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
     builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
         builder.Configuration["Temporal:Namespace"] ?? "default");
     builder.Services.AddVigiloomTemporalWorker<SecurityWorkHandler>(builder.Configuration["Work:SecurityQueue"] ?? "vigiloom.security.agent");
+    builder.Services.AddScoped<IYaraScanNotifier, YaraScanNotifier>();
+    builder.Services.AddScoped(provider => new OutboxDispatcher(provider.GetRequiredService<IConfiguration>().GetConnectionString("Security")
+        ?? throw new InvalidOperationException("ConnectionStrings:Security is required."), provider.GetServices<IOutboxHandler>(),
+        provider.GetRequiredService<ILogger<OutboxDispatcher>>()));
+    builder.Services.AddHostedService<WorkDispatcher>();
 }
 
 var app = builder.Build();

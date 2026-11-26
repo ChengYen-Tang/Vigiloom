@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Work;
 using System.Text.Json;
@@ -72,10 +73,12 @@ public sealed class AgentChannelTests
         app.UseKestrel(0);
         using var http = app.CreateClient();
         var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var scanReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var wrongAgent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var first = Connect(http.BaseAddress!, "first");
         await using var second = Connect(http.BaseAddress!, "second");
         first.On("UpdateAvailable", () => received.TrySetResult());
+        first.On("ScanAvailable", () => scanReceived.TrySetResult());
         second.On("UpdateAvailable", () => wrongAgent.TrySetResult());
         await first.StartAsync(TestContext.CancellationToken);
         await second.StartAsync(TestContext.CancellationToken);
@@ -88,7 +91,9 @@ public sealed class AgentChannelTests
             JsonSerializer.Serialize(new AgentRegistrationChanged(agent, device, true))), TestContext.CancellationToken);
         await handler.ExecuteAsync(new ServiceWork(nameof(AgentAssignmentChanged),
             JsonSerializer.Serialize(new AgentAssignmentChanged(agent, Guid.CreateVersion7()))), TestContext.CancellationToken);
+        await handler.ExecuteAsync(new ServiceWork(nameof(YaraScanChanged), JsonSerializer.Serialize(new YaraScanChanged(agent))), TestContext.CancellationToken);
         await received.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken);
+        await scanReceived.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.CancellationToken);
         Assert.IsFalse(wrongAgent.Task.IsCompleted);
 
         await using var rejected = Connect(http.BaseAddress!, "invalid");
