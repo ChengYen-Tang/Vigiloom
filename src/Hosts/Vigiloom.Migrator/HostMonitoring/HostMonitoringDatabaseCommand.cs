@@ -39,6 +39,7 @@ internal static class HostMonitoringDatabaseCommand
             var mappings = new List<SqlTableDataMigration.TableMapping>
             {
                 new("agent", "Agents", "agent", "HostInboxStates"),
+                new("agent", "Agents", "agent", "HostAgentStatuses"),
                 new("agent", "ReceivedBatches", "agent", "ReceivedBatches", OptionalSourceColumns: ["PendingDelivery"]),
                 new("agent", "HostLogs", "agent", "HostLogMessageIds")
             };

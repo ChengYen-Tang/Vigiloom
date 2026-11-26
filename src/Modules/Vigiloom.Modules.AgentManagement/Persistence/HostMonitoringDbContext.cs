@@ -9,6 +9,7 @@ public sealed class HostMonitoringDbContext(DbContextOptions<HostMonitoringDbCon
 {
     public const string MigrationHistory = "__EFMigrationsHistory_HostMonitoring";
     public DbSet<HostInboxState> InboxStates => Set<HostInboxState>();
+    public DbSet<HostAgentStatus> AgentStatuses => Set<HostAgentStatus>();
     public DbSet<AgentReplayPolicy> ReplayPolicies => Set<AgentReplayPolicy>();
     public DbSet<AgentReplayGeneration> ReplayGenerations => Set<AgentReplayGeneration>();
     public DbSet<ReceivedBatch> ReceivedBatches => Set<ReceivedBatch>();
@@ -22,6 +23,23 @@ public sealed class HostMonitoringDbContext(DbContextOptions<HostMonitoringDbCon
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("agent");
+        var status = modelBuilder.Entity<HostAgentStatus>();
+        status.ToTable("HostAgentStatuses");
+        status.HasKey(x => x.Id).IsClustered(false);
+        status.Property(x => x.Id).ValueGeneratedNever();
+        status.Property(x => x.RowId).UseIdentityColumn();
+        status.HasIndex(x => x.RowId).IsUnique().IsClustered();
+        status.HasIndex(x => x.DeviceId);
+        status.Property(x => x.HeartbeatSafetyIntervalSeconds).HasDefaultValue(30);
+        status.Property(x => x.AppliedConfigurationRevision).HasMaxLength(64);
+        status.Property(x => x.QueueCapacityAppliedRevision).HasMaxLength(64);
+        status.Property(x => x.LogStatusJson).HasMaxLength(8192);
+        status.Property(x => x.InventoryConfigurationJson).HasMaxLength(2048);
+        status.Property(x => x.IntegrityConfigurationJson).HasMaxLength(512);
+        status.Property(x => x.BaselineConfigurationJson).HasMaxLength(512);
+        status.Property(x => x.RuntimeVersion).HasMaxLength(128);
+        status.Property(x => x.RuntimeIdentifier).HasMaxLength(32).IsUnicode(false);
+        status.Property(x => x.RuntimeModuleFailuresJson).HasMaxLength(1024);
         var inbox = modelBuilder.Entity<HostInboxState>();
         inbox.ToTable("HostInboxStates");
         inbox.HasKey(x => x.Id).IsClustered(false);
