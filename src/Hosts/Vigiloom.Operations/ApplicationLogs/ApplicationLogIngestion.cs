@@ -15,12 +15,25 @@ public sealed class ApplicationLogIngestion(IDbContextFactory<CentralLogsDbConte
 {
     public Task<LogReceipt> ReceiveAsync(ApplicationLogSubmission submission, CancellationToken token) => ReceiveBatchAsync([submission], token);
 
+    public Task<LogReceipt> ReceiveGroupedAsync(ApplicationLogBatch batch, CancellationToken token)
+    {
+        if (batch?.Resources is not { Count: > 0 and <= 256 } ||
+            batch.Resources.Any(resource => resource?.Scopes is null || resource.Scopes.Any(scope => scope is null)) ||
+            batch.Resources.Sum(resource => (long)resource.Scopes.Count) > 256)
+            return Task.FromResult(new LogReceipt(LogReceiptStatus.Invalid));
+        var submissions = batch.Resources.SelectMany(resource => resource.Scopes.Select(scope =>
+            new ApplicationLogSubmission(batch.SourceId, scope.ServiceId, scope.InstanceId, resource.ResourcePayload,
+                scope.ScopePayload, resource.ResourceSchemaUrl, scope.ScopeSchemaUrl, scope.Items))).ToArray();
+        return ReceiveBatchAsync(submissions, token);
+    }
+
     public async Task<LogReceipt> ReceiveBatchAsync(IReadOnlyList<ApplicationLogSubmission> submissions, CancellationToken token)
     {
         if (submissions is not { Count: > 0 and <= 256 } || submissions[0] is null) return new(LogReceiptStatus.Invalid);
         var sourceId = submissions[0].SourceId;
         var count = 0;
         long bytes = 0;
+        var resources = new HashSet<byte[]>(ReferenceEqualityComparer.Instance);
         foreach (var submission in submissions)
         {
             if (submission is null || submission.SourceId != sourceId || submission.SourceId.Version != 7 || submission.ServiceId.Version != 7 ||
@@ -28,7 +41,8 @@ public sealed class ApplicationLogIngestion(IDbContextFactory<CentralLogsDbConte
                 submission.ScopePayload is null or { Length: > 65536 } || submission.ResourceSchemaUrl is null or { Length: > 2048 } ||
                 submission.ScopeSchemaUrl is null or { Length: > 2048 } || submission.Items is not { Count: > 0 and <= 10000 })
                 return new(LogReceiptStatus.Invalid);
-            bytes += submission.ResourcePayload.Length + submission.ScopePayload.Length;
+            if (resources.Add(submission.ResourcePayload)) bytes += submission.ResourcePayload.Length;
+            bytes += submission.ScopePayload.Length;
             count += submission.Items.Count;
             if (count > 10000) return new(LogReceiptStatus.BatchTooLarge);
             foreach (var item in submission.Items)
