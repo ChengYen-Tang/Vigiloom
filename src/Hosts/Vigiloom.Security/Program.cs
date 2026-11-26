@@ -16,6 +16,8 @@ using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Security");
@@ -35,12 +37,16 @@ builder.Services.AddScoped<IntegrityQuery>();
 builder.Services.AddScoped<IntegrityChangeQuery>();
 builder.Services.AddScoped<SigmaDetectionHistory>();
 builder.Services.AddScoped<IocDetectionHistory>();
-builder.Services.AddHttpClient<IDeviceAgentSource, ResourceDevices>((services, client) =>
+builder.Services.AddScoped<VulnerabilityMonitoring>();
+builder.Services.AddScoped<IKevCatalog, KevCatalog>();
+builder.Services.AddHttpClient<ResourceDevices>((services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources";
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(30);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<IDeviceAgentSource>(services => services.GetRequiredService<ResourceDevices>());
+builder.Services.AddScoped<IAgentOwnerResolver>(services => services.GetRequiredService<ResourceDevices>());
 builder.Services.AddHttpClient("host", (services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Host:Url"] ?? "http://vigiloom-host-monitoring";
@@ -77,6 +83,17 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/internal/v1/yar
         catch (ArgumentException) { context.Response.StatusCode = StatusCodes.Status400BadRequest; }
     }));
 app.MapGet("/health/live", () => Results.Ok());
+var vulnerabilities = app.MapGroup("/internal/v1/devices/{deviceId:guid}/vulnerabilities");
+vulnerabilities.MapGet("/", async (Guid deviceId, int page, int gapPage, string? search, int? state, string? rankingVersion, VulnerabilityMonitoring monitoring, CancellationToken token) =>
+{
+    try { return await monitoring.GetCurrentAsync(deviceId, page, search, state, token, gapPage, rankingVersion) is { } result ? Results.Ok(result) : Results.NotFound(); }
+    catch (ArgumentException) { return Results.BadRequest(); }
+});
+vulnerabilities.MapGet("/{findingId:guid}/history", async (Guid deviceId, Guid findingId, DateTimeOffset from, DateTimeOffset until, string? cursor, VulnerabilityMonitoring monitoring, CancellationToken token) =>
+{
+    try { return await monitoring.GetHistoryAsync(deviceId, findingId, from, until, cursor, token) is { } result ? Results.Ok(result) : Results.NotFound(); }
+    catch (ArgumentException) { return Results.BadRequest(); }
+});
 var detections = app.MapGroup("/internal/v1/devices/{deviceId:guid}/detections");
 detections.MapGet("/sigma", async (Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, SigmaDetectionHistory history, CancellationToken token) =>
 {
