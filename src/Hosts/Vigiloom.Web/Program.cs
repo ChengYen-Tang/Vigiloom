@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.Telemetry;
 using Vigiloom.UpdateSecurity.AgentPackages;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Web.SpeedTests;
@@ -59,6 +60,7 @@ using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddVigiloomSelfTelemetry("Vigiloom.Web");
 
 if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Resources:Url"]))
 {

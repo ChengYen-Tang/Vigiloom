@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.Telemetry;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Vigiloom.Infrastructure.Authentication;
@@ -7,6 +8,7 @@ using Vigiloom.Gateway.Authentication;
 using Vigiloom.Gateway.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddVigiloomSelfTelemetry("Vigiloom.Gateway");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddVigiloomIdentityCredentialClient();
 builder.Services.AddVigiloomIdentityCookieClient();
