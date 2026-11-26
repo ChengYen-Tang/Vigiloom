@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="正在載入服務資料…" xml:space="preserve"><value>Loading service data…</value></data>
+  <data name="重新載入" xml:space="preserve"><value>Reload</value></data>
+  <data name="找不到服務" xml:space="preserve"><value>Service not found</value></data>
+  <data name="服務不存在或已無法存取。" xml:space="preserve"><value>The service does not exist or is no longer accessible.</value></data>
+  <data name="環境：" xml:space="preserve"><value>Environment: </value></data>
+  <data name="收集已停止" xml:space="preserve"><value>Collection stopped</value></data>
+  <data name="來源已撤銷" xml:space="preserve"><value>Source revoked</value></data>
+  <data name="已加入" xml:space="preserve"><value>Enrolled</value></data>
+  <data name="查看接入導引" xml:space="preserve"><value>View onboarding guide</value></data>
+  <data name="服務健康" xml:space="preserve"><value>Service health</value></data>
+  <data name="健康歷史保存 {0} 天；超過期限的資料可能已清除。進行中的狀態區間仍會保留。" xml:space="preserve"><value>Health history is retained for {0} days; older data may have been deleted. Ongoing status intervals are retained.</value></data>
+  <data name="目前狀態：" xml:space="preserve"><value>Current status: </value></data>
+  <data name="無法讀取" xml:space="preserve"><value>Unavailable</value></data>
+  <data name="健康狀態依已設定的檢查判斷，不代表主機或網路狀態。" xml:space="preserve"><value>Health is based on configured checks and does not represent host or network status.</value></data>
+  <data name="有 {0} 個檢查資料不足。" xml:space="preserve"><value> {0} checks have insufficient data.</value></data>
+  <data name="管理健康檢查" xml:space="preserve"><value>Manage health checks</value></data>
+  <data name="查看健康檢查依據" xml:space="preserve"><value>View health check evidence</value></data>
+  <data name="正在載入健康檢查依據…" xml:space="preserve"><value>Loading health check evidence…</value></data>
+  <data name="無法讀取健康檢查依據，請稍後再試。" xml:space="preserve"><value>Unable to load health check evidence. Please try again later.</value></data>
+  <data name="以下為每個檢查最近一次觀察，可能已過期，請以目前狀態為準。" xml:space="preserve"><value>These are the latest observations for each check; they may be stale. Refer to the current status.</value></data>
+  <data name="此頁尚無健康檢查觀察。" xml:space="preserve"><value>There are no health check observations on this page.</value></data>
+  <data name="健康檢查依據表格，可左右滑動" xml:space="preserve"><value>Health check evidence table, scroll horizontally</value></data>
+  <data name="檢查識別碼" xml:space="preserve"><value>Check ID</value></data>
+  <data name="最近觀察" xml:space="preserve"><value>Latest observation</value></data>
+  <data name="觀察時間（UTC）" xml:space="preserve"><value>Observed at (UTC)</value></data>
+  <data name="接收時間（UTC）" xml:space="preserve"><value>Received at (UTC)</value></data>
+  <data name="上一頁" xml:space="preserve"><value>Previous</value></data>
+  <data name="下一頁" xml:space="preserve"><value>Next</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>Page {0}</value></data>
+  <data name="最近 1 小時" xml:space="preserve"><value>Last hour</value></data>
+  <data name="最近 24 小時" xml:space="preserve"><value>Last 24 hours</value></data>
+  <data name="最近 7 天" xml:space="preserve"><value>Last 7 days</value></data>
+  <data name="開始時間（UTC）" xml:space="preserve"><value>Start time (UTC)</value></data>
+  <data name="結束時間（UTC）" xml:space="preserve"><value>End time (UTC)</value></data>
+  <data name="查詢" xml:space="preserve"><value>Search</value></data>
+  <data name="無法載入健康歷史，請縮短時間範圍或重新整理。" xml:space="preserve"><value>Unable to load health history. Shorten the time range or refresh.</value></data>
+  <data name="尚無健康歷史資料。" xml:space="preserve"><value>No health history is available.</value></data>
+  <data name="資料涵蓋率 {0}；可用率 {1}。時間為 UTC。" xml:space="preserve"><value>Data coverage: {0}; availability: {1}. Times are UTC.</value></data>
+  <data name="資料不足" xml:space="preserve"><value>Insufficient data</value></data>
+  <data name="此時間範圍沒有健康狀態資料。" xml:space="preserve"><value>No health status data for this time range.</value></data>
+  <data name="正常" xml:space="preserve"><value>Healthy</value></data>
+  <data name="降級" xml:space="preserve"><value>Degraded</value></data>
+  <data name="異常" xml:space="preserve"><value>Unhealthy</value></data>
+  <data name="未知或資料不足" xml:space="preserve"><value>Unknown or insufficient data</value></data>
+  <data name="；詳細時間與文字狀態如下。" xml:space="preserve"><value>; detailed times and status descriptions are shown below.</value></data>
+  <data name="以表格查看健康歷史（{0} 個區間）" xml:space="preserve"><value>View health history as a table ({0} intervals)</value></data>
+  <data name="表格可左右滑動查看完整內容。" xml:space="preserve"><value>Scroll horizontally to see the full table.</value></data>
+  <data name="健康歷史表格，可左右滑動" xml:space="preserve"><value>Health history table, scroll horizontally</value></data>
+  <data name="開始" xml:space="preserve"><value>Start</value></data>
+  <data name="結束" xml:space="preserve"><value>End</value></data>
+  <data name="狀態" xml:space="preserve"><value>Status</value></data>
+  <data name="資料不足的檢查" xml:space="preserve"><value>Checks with insufficient data</value></data>
+  <data name="部署關聯" xml:space="preserve"><value>Deployment relationships</value></data>
+  <data name="關聯由管理員依據部署資料確認，僅供導覽；不代表目前服務健康，也不會公開主機資訊。" xml:space="preserve"><value>Relationships are confirmed by an administrator based on deployment data and are for navigation only; they do not indicate current service health or expose host information publicly.</value></data>
+  <data name="管理部署關聯" xml:space="preserve"><value>Manage deployment relationships</value></data>
+  <data name="查看關聯主機" xml:space="preserve"><value>View linked hosts</value></data>
+  <data name="正在載入部署關聯…" xml:space="preserve"><value>Loading deployment relationships…</value></data>
+  <data name="無法讀取部署關聯，請稍後再試。" xml:space="preserve"><value>Unable to load deployment relationships. Please try again later.</value></data>
+  <data name="目前沒有管理員確認的關聯。" xml:space="preserve"><value>There are no administrator-confirmed relationships.</value></data>
+  <data name="部署關聯表格，可左右滑動" xml:space="preserve"><value>Deployment relationships table, scroll horizontally</value></data>
+  <data name="主機" xml:space="preserve"><value>Host</value></data>
+  <data name="執行個體" xml:space="preserve"><value>Instance</value></data>
+  <data name="確認依據" xml:space="preserve"><value>Evidence</value></data>
+  <data name="目前狀態" xml:space="preserve"><value>Current status</value></data>
+  <data name="設備已封存；" xml:space="preserve"><value>Device archived; </value></data>
+  <data name="執行個體已退役；" xml:space="preserve"><value>Instance retired; </value></data>
+  <data name="來源已撤銷；" xml:space="preserve"><value>Source revoked; </value></data>
+  <data name="服務已停收；" xml:space="preserve"><value>Service collection stopped; </value></data>
+  <data name="未解除" xml:space="preserve"><value>Active</value></data>
+  <data name="請檢查關聯" xml:space="preserve"><value>Check relationship</value></data>
+  <data name="HTTP 服務指標" xml:space="preserve"><value>HTTP service metrics</value></data>
+  <data name="無法讀取 HTTP 指標，請重新載入。" xml:space="preserve"><value>Unable to load HTTP metrics. Reload and try again.</value></data>
+  <data name="平均回應延遲" xml:space="preserve"><value>Mean response latency</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>No data yet</value></data>
+  <data name="暫無法計算" xml:space="preserve"><value>Not available</value></data>
+  <data name="錯誤率" xml:space="preserve"><value>Error rate</value></data>
+  <data name="收到的觀測區間（UTC）：{0} 至 {1}" xml:space="preserve"><value>Received observation period (UTC): {0} to {1}</value></data>
+  <data name="請求數" xml:space="preserve"><value>Requests</value></data>
+  <data name="無有效請求" xml:space="preserve"><value>No valid requests</value></data>
+  <data name="依收到的 HTTP duration histogram 計算；錯誤包含 HTTP 5xx 或 error.type。資料缺漏或來源重送可能影響觀測，不能保證涵蓋所有請求。" xml:space="preserve"><value>Calculated from received HTTP duration histograms; errors include HTTP 5xx or error.type. Missing data or retransmissions may affect observations, which may not cover every request.</value></data>
+  <data name="服務執行個體" xml:space="preserve"><value>Service instances</value></data>
+  <data name="無法讀取執行個體，請重新載入。" xml:space="preserve"><value>Unable to load instances. Reload and try again.</value></data>
+  <data name="目前沒有已識別的執行個體。" xml:space="preserve"><value>No instances have been identified.</value></data>
+  <data name="服務執行個體表格，可左右滑動" xml:space="preserve"><value>Service instances table, scroll horizontally</value></data>
+  <data name="來源識別" xml:space="preserve"><value>Source identity</value></data>
+  <data name="建立時間（UTC）" xml:space="preserve"><value>Created at (UTC)</value></data>
+  <data name="已退役" xml:space="preserve"><value>Retired</value></data>
+  <data name="未退役" xml:space="preserve"><value>Not retired</value></data>
+  <data name="觀測與證據" xml:space="preserve"><value>Observations and evidence</value></data>
+  <data name="尚無資料或目前無法取得" xml:space="preserve"><value>No data or currently unavailable</value></data>
+  <data name="最後接收（UTC）：Logs {0} · Metrics {1} · Traces {2}" xml:space="preserve"><value>Last received (UTC): Logs {0} · Metrics {1} · Traces {2}</value></data>
+  <data name="使用上方 UTC 時間範圍查詢日誌或追蹤；每次最多 31 天。Logs 保存 {0} 天，Traces 保存 {1} 天；實際資料依接收及清理狀況而定。" xml:space="preserve"><value>Use the UTC time range above to query logs or traces, up to 31 days at a time. Logs are retained for {0} days and traces for {1} days; actual data depends on ingestion and cleanup.</value></data>
+  <data name="查看 Logs" xml:space="preserve"><value>View logs</value></data>
+  <data name="查看 Traces" xml:space="preserve"><value>View traces</value></data>
+  <data name="正在載入證據…" xml:space="preserve"><value>Loading evidence…</value></data>
+  <data name="Logs（日誌）" xml:space="preserve"><value>Logs</value></data>
+  <data name="清除篩選" xml:space="preserve"><value>Clear filter</value></data>
+  <data name="這段時間沒有日誌資料。" xml:space="preserve"><value>No logs in this time range.</value></data>
+  <data name="服務日誌表格，可左右滑動" xml:space="preserve"><value>Service logs table, scroll horizontally</value></data>
+  <data name="時間（UTC）與來源" xml:space="preserve"><value>Time (UTC) and source</value></data>
+  <data name="等級" xml:space="preserve"><value>Severity</value></data>
+  <data name="內容" xml:space="preserve"><value>Content</value></data>
+  <data name="接收時間" xml:space="preserve"><value>Received time</value></data>
+  <data name="觀察時間" xml:space="preserve"><value>Observed time</value></data>
+  <data name="來源時間" xml:space="preserve"><value>Source time</value></data>
+  <data name="（內容已截短）" xml:space="preserve"><value>(content truncated)</value></data>
+  <data name="結果達到查詢上限，請縮短時間範圍。" xml:space="preserve"><value>The query limit was reached. Shorten the time range.</value></data>
+  <data name="Traces（追蹤）" xml:space="preserve"><value>Traces</value></data>
+  <data name="這段時間沒有追蹤資料。" xml:space="preserve"><value>No traces in this time range.</value></data>
+  <data name="服務追蹤表格，可左右滑動" xml:space="preserve"><value>Service traces table, scroll horizontally</value></data>
+  <data name="操作" xml:space="preserve"><value>Operation</value></data>
+  <data name="相關證據" xml:space="preserve"><value>Related evidence</value></data>
+  <data name="查看相關 Logs" xml:space="preserve"><value>View related logs</value></data>
+  <data name="登入已失效或沒有權限，請重新登入。" xml:space="preserve"><value>Your session has expired or you lack permission. Please sign in again.</value></data>
+  <data name="無法載入服務資料，請稍後再試。" xml:space="preserve"><value>Unable to load service data. Please try again later.</value></data>
+  <data name="請確認時間範圍沒有超過目前時間，且最多 366 天。" xml:space="preserve"><value>Ensure the time range does not extend beyond the current time and is at most 366 days.</value></data>
+  <data name="請選擇有效的 UTC 時間範圍：開始須早於結束，最多 366 天。" xml:space="preserve"><value>Choose a valid UTC time range: start must be before end, up to 366 days.</value></data>
+  <data name="查詢 Logs 或 Traces 時，請將時間範圍縮短至 31 天以內。" xml:space="preserve"><value>For logs or traces, shorten the time range to 31 days or less.</value></data>
+  <data name="無法載入證據，請稍後再試。" xml:space="preserve"><value>Unable to load evidence. Please try again later.</value></data>
+  <data name="目前有其他指標查詢正在執行，請稍後重新載入。" xml:space="preserve"><value>Another metrics query is running. Reload later.</value></data>
+  <data name="指標資料正在更新，請稍後重新載入。" xml:space="preserve"><value>Metrics are being updated. Reload later.</value></data>
+  <data name="指標來源有重疊或無法區分，暫不計算以免重複統計。" xml:space="preserve"><value>Metrics sources overlap or cannot be distinguished; calculation is skipped to avoid double counting.</value></data>
+  <data name="指標時間範圍或資料品質不足，暫無法可靠計算。" xml:space="preserve"><value>The metrics time range or data quality is insufficient for a reliable calculation.</value></data>
+  <data name="尚未收到可用的 HTTP 指標資料。" xml:space="preserve"><value>No usable HTTP metrics have been received.</value></data>
+  <data name="尚未設定健康檢查" xml:space="preserve"><value>Health checks not configured</value></data>
+  <data name="健康檢查已停用" xml:space="preserve"><value>Health checks disabled</value></data>
+  <data name="等待足夠的健康資料" xml:space="preserve"><value>Waiting for sufficient health data</value></data>
+  <data name="部分健康資料已過期" xml:space="preserve"><value>Some health data has expired</value></data>
+  <data name="健康檢查或授權狀態已變更，等待有效資料" xml:space="preserve"><value>Health checks or authorization changed; waiting for valid data</value></data>
+  <data name="檢查逾時" xml:space="preserve"><value>Check timed out</value></data>
+  <data name="連線失敗" xml:space="preserve"><value>Connection failed</value></data>
+  <data name="回應無效" xml:space="preserve"><value>Invalid response</value></data>
+  <data name="網路政策拒絕" xml:space="preserve"><value>Denied by network policy</value></data>
+  <data name="未知" xml:space="preserve"><value>Unknown</value></data>
+</root>

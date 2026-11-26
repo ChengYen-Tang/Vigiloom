@@ -168,6 +168,8 @@ public sealed class GroupManagementTests
         {
             var document = await new HtmlParser().ParseDocumentAsync(await servicePage.Content.ReadAsStringAsync(token), token);
             Assert.Contains("Groups", document.QuerySelector("#service-groups-heading")!.TextContent);
+            Assert.Contains("Service health", document.Body!.TextContent);
+            Assert.Contains("Deployment relationships", document.Body.TextContent);
             Assert.IsNotNull(document.QuerySelector($"a[href='/groups/{group.Id:D}']"));
         }
         using (var groupList = await adminClient.GetAsync("/groups", token))
