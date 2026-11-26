@@ -69,6 +69,20 @@ public sealed class CustomBaselineHttpTests(TestContext context)
             Assert.AreEqual(CustomBaselineStageStatus.Staged, saved.Status);
             var sourceId = saved.SourceId!.Value;
             var firstRevision = saved.RevisionId!.Value;
+            var editUrl = $"/settings/baseline-checks?source={sourceId:D}&revision={firstRevision:D}";
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync(editUrl, token))
+            {
+                var text = WebUtility.HtmlDecode(await english.Content.ReadAsStringAsync(token));
+                Assert.Contains("Custom security baseline", text);
+                Assert.Contains("SSH config permissions", text);
+                Assert.Contains("/etc/ssh/sshd_config", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync(editUrl, token))
+                Assert.Contains("自定义安全基准", WebUtility.HtmlDecode(await simplified.Content.ReadAsStringAsync(token)));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             await using var serviceScope = factory.Services.CreateAsyncScope();
             var stage = serviceScope.ServiceProvider.GetRequiredService<CustomBaselineStage>();
             var sources = serviceScope.ServiceProvider.GetRequiredService<IBaselineSource>();
