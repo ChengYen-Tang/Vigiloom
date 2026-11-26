@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Modules.ServiceObservability.Persistence;
@@ -27,7 +28,14 @@ public sealed class ObservabilityOtlpErrorsTests(TestContext context)
             {
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 { ["ConnectionStrings:Observability"] = database.ConnectionString }));
-                web.ConfigureTestServices(RemoveWorkers);
+                web.ConfigureTestServices(services =>
+                {
+                    RemoveWorkers(services);
+                    services.RemoveAll<IDbContextFactory<ServiceObservabilityDbContext>>();
+                    services.RemoveAll<DbContextOptions<ServiceObservabilityDbContext>>();
+                    services.AddPooledDbContextFactory<ServiceObservabilityDbContext>(options => options.UseSqlServer(database.ConnectionString,
+                        sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "service")));
+                });
             });
             using var client = host.CreateClient();
             var contexts = host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
@@ -54,7 +62,14 @@ public sealed class ObservabilityOtlpErrorsTests(TestContext context)
             {
                 ["ConnectionStrings:Observability"] = "Server=127.0.0.1,1;Database=Vigiloom_Unavailable;User Id=test;Password=test;Connect Timeout=1;TrustServerCertificate=true"
             }));
-            web.ConfigureTestServices(RemoveWorkers);
+            web.ConfigureTestServices(services =>
+            {
+                RemoveWorkers(services);
+                services.RemoveAll<IDbContextFactory<ServiceObservabilityDbContext>>();
+                services.RemoveAll<DbContextOptions<ServiceObservabilityDbContext>>();
+                services.AddPooledDbContextFactory<ServiceObservabilityDbContext>(options => options.UseSqlServer(
+                    "Server=127.0.0.1,1;Database=Vigiloom_Unavailable;User Id=test;Password=test;Connect Timeout=1;TrustServerCertificate=true"));
+            });
         });
         using var client = host.CreateClient(new() { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
         using var missing = await client.PostAsync("/api/v1/otlp/v1/metrics", new ByteArrayContent([]), context.CancellationToken);

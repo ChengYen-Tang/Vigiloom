@@ -89,6 +89,11 @@ app.MapGet("/internal/telemetry/source/identity", (HttpContext context) =>
 var internalApi = app.MapGroup("/internal/v1");
 app.MapOtlpHttpEndpoints();
 app.MapSelfOtlpEndpoints();
+app.MapPost("/api/v1/service-discovery/observations", (HttpContext context, ICandidateObserver candidates,
+    ReceptionRejectionDiagnostics diagnostics, CancellationToken token) =>
+    ServiceObservationEndpoint.ReceiveAsync(context, candidates, token, diagnostics))
+    .RequireAuthorization("ServiceSource")
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(ServiceObservationEndpoint.MaximumBytes));
 internalApi.MapGet("/observation-sources/{id:guid}/active", async (Guid id,
     IDbContextFactory<ServiceObservabilityDbContext> contexts, CancellationToken token) =>
 {
