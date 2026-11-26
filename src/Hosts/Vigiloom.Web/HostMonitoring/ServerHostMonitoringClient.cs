@@ -17,7 +17,7 @@ namespace Vigiloom.Web.HostMonitoring;
 
 internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider authentication, WorkspaceIdentityService identities,
     IDeviceInventoryAgent ownership, InventoryAccess inventory, IHostMetricHistory metrics, IHostMetricThresholds thresholds, IHostLogHistory logs,
-    IntegrityAccess integrity, SigmaDetectionHistory detections, IocDetectionHistory iocDetections, Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess retention, EventTimelineAudit audit) : IHostMonitoringClient
+    IntegrityAccess integrity, DetectionAccess detections, Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess retention, EventTimelineAudit audit) : IHostMonitoringClient
 {
     public async Task<DeviceInventoryView?> GetInventoryAsync(Guid deviceId, CancellationToken token)
     {
@@ -80,7 +80,7 @@ internal sealed class ServerHostMonitoringClient(AuthenticationStateProvider aut
     public async Task<IocDetectionPage?> GetIocDetectionsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, int page, CancellationToken token)
     {
         await AuthorizeAsync(token);
-        var result = await iocDetections.GetAsync(deviceId, from, until, page, token);
+        var result = await detections.GetIocAsync(deviceId, from, until, page, token);
         return result is null ? null : result with { RetentionDays = (await retention.GetAsync(token)).LogDays };
     }
     public async Task<DeviceIntegrityView?> GetIntegrityAsync(Guid deviceId, CancellationToken token)

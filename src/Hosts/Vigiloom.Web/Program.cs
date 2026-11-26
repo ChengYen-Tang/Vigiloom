@@ -493,6 +493,7 @@ builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Vulnera
 builder.Services.AddScoped<InventoryQuery>();
 builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.InventoryAccess>();
 builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.IntegrityAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.DetectionAccess>();
 builder.Services.AddScoped<IntegrityQuery>();
 builder.Services.AddScoped<IntegrityChangeQuery>();
 builder.Services.AddScoped<AgentIntegritySettingsMonitoring>(services => new(
