@@ -12,6 +12,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Security;
+using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
 
@@ -56,6 +58,24 @@ public sealed class YaraRoutingTests(TestContext context)
             using (var noCredential = await agent.GetAsync("/api/v1/agent/yara-scans/next", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, noCredential.StatusCode);
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid");
+            using (var inventory = await agent.GetAsync("/api/v1/agent/inventory-settings?contract=2", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, inventory.StatusCode);
+                var snapshot = await inventory.Content.ReadFromJsonAsync<InventorySettingsSnapshot>(cancellationToken: token);
+                Assert.IsNotNull(snapshot);
+                using var cached = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/inventory-settings?contract=2");
+                cached.Headers.IfNoneMatch.Add(inventory.Headers.ETag!);
+                using var unchanged = await agent.SendAsync(cached, token);
+                Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
+            }
+            using (var unsupported = await agent.GetAsync("/api/v1/agent/inventory-settings?contract=3", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, unsupported.StatusCode);
+            using (var integrity = await agent.GetAsync("/api/v1/agent/integrity-settings", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, integrity.StatusCode);
+                Assert.IsNotNull(await integrity.Content.ReadFromJsonAsync<IntegritySettingsSnapshot>(cancellationToken: token));
+                Assert.IsNotNull(integrity.Headers.ETag);
+            }
             Assert.AreEqual(job.Id, (await agent.GetFromJsonAsync<YaraScanJob>("/api/v1/agent/yara-scans/next", token))!.Id);
             using (var cancel = await securityClient.PostAsync($"/internal/v1/yara-scans/devices/{identity.DeviceId:D}/{job.Id:D}/cancel", null, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, cancel.StatusCode);
@@ -63,6 +83,8 @@ public sealed class YaraRoutingTests(TestContext context)
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "revoked");
             using var denied = await agent.GetAsync("/api/v1/agent/yara-scans/next", token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using var deniedSettings = await agent.GetAsync("/api/v1/agent/integrity-settings", token);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, deniedSettings.StatusCode);
         }, context.CancellationToken);
 
     private sealed class IdentityHandler(RegisteredAgentIdentity identity) : HttpMessageHandler

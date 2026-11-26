@@ -139,6 +139,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/channel") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/yara-scans") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/inventory-settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/integrity-settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/batches") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/heartbeat") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session") ||
@@ -148,6 +150,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/ch
     context.Request.Path.StartsWithSegments("/api/v1/agent/metric-settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/log-settings"), agent => agent.UseMiddleware<AgentAccess>());
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
+app.MapAgentSecuritySettingsEndpoints();
 app.MapGet("/api/v1/agent/yara-scans/next", async (HttpContext context, IHttpClientFactory clients, CancellationToken token) =>
 {
     context.Response.Headers.CacheControl = "private, no-store";

@@ -19,6 +19,7 @@ builder.Services.AddModuleSqlServer<SecurityAnalysisDbContext>(services =>
 builder.Services.AddServiceDiscovery();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<YaraScans>();
+builder.Services.AddScoped<AgentSecuritySettings>();
 builder.Services.AddHttpClient("host", (services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Host:Url"] ?? "http://vigiloom-host-monitoring";
@@ -55,6 +56,10 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/internal/v1/yar
         catch (ArgumentException) { context.Response.StatusCode = StatusCodes.Status400BadRequest; }
     }));
 app.MapGet("/health/live", () => Results.Ok());
+app.MapGet("/internal/v1/agent-settings/{deviceId:guid}/inventory", async (Guid deviceId, AgentSecuritySettings settings, CancellationToken token) =>
+    deviceId.Version == 7 ? Results.Ok(await settings.InventoryAsync(deviceId, token)) : Results.BadRequest());
+app.MapGet("/internal/v1/agent-settings/{deviceId:guid}/integrity", async (Guid deviceId, AgentSecuritySettings settings, CancellationToken token) =>
+    deviceId.Version == 7 ? Results.Ok(await settings.IntegrityAsync(deviceId, token)) : Results.BadRequest());
 var yara = app.MapGroup("/internal/v1/yara-scans");
 yara.MapPost("/create", async (YaraCreateCommand command, YaraScans scans, CancellationToken token) =>
     Results.Ok(await scans.CreateAsync(command.Identity, command.Request, command.ActorId, token)));
