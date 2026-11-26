@@ -202,6 +202,8 @@ public sealed class GroupManagementTests
         {
             var memberForm = await FormAsync(membersPage, "group-services", token);
             Assert.IsNotNull(memberForm.QuerySelector($"a[href='/services/{serviceId:D}']"));
+            Assert.Contains("健康狀態", memberForm.TextContent);
+            Assert.Contains("未知或資料不足", memberForm.TextContent);
             Assert.IsNull(memberForm.QuerySelector("button[value='add']"));
             Assert.IsNotNull(memberForm.QuerySelector("button[value='remove']"));
             var memberFields = Hidden(memberForm);
