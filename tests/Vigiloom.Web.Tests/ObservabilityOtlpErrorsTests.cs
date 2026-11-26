@@ -8,6 +8,7 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 using Vigiloom.Modules.ServiceObservability.Application;
+using Vigiloom.Modules.ServiceObservability.Domain;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -152,6 +153,26 @@ public sealed class ObservabilityOtlpErrorsTests(TestContext context)
             var auth = scope.ServiceProvider.GetRequiredService<SourceCredentials>();
             Assert.IsNull(await auth.AuthenticateVersionedAsync(credential.Secret, token));
             Assert.IsNotNull(await auth.AuthenticateVersionedAsync(rotated.Credential, token));
+            var now = DateTimeOffset.UtcNow;
+            var monitor = new MonitoredService(new ServiceCandidate(source.Id, "collector", "prod", "Collector", now), now);
+            await using (var db = await contexts.CreateDbContextAsync(token))
+            {
+                db.Services.Add(monitor);
+                await db.SaveChangesAsync(token);
+            }
+            using var register = await client.PostAsJsonAsync("/internal/v1/collectors", new RegisterCollectorCommand("Collector", monitor.Id, true, actor), token);
+            register.EnsureSuccessStatusCode();
+            var registered = await register.Content.ReadFromJsonAsync<CollectorChangeResult>(cancellationToken: token);
+            Assert.AreEqual(CollectorChangeStatus.Updated, registered!.Status);
+            using var targetIssue = await client.PostAsJsonAsync("/internal/v1/observation-sources", new IssueServiceSourceCommand("Target", actor), token);
+            var target = await targetIssue.Content.ReadFromJsonAsync<SourceCredentialIssue>(cancellationToken: token);
+            var collector = await client.GetFromJsonAsync<CollectorSummary>($"/internal/v1/collectors/{registered.CollectorId:D}", token);
+            Assert.IsNotNull(collector);
+            using var addRoute = await client.PostAsJsonAsync($"/internal/v1/collectors/{collector.Id:D}/routes",
+                new SetCollectorRouteCommand(target!.SourceId, collector.Version, "exporter", true, actor), token);
+            Assert.AreEqual(CollectorChangeStatus.Updated, await addRoute.Content.ReadFromJsonAsync<CollectorChangeStatus>(cancellationToken: token));
+            var routes = await client.GetFromJsonAsync<CollectorRouteSummary[]>($"/internal/v1/collectors/{collector.Id:D}/routes", token);
+            Assert.AreEqual(target.SourceId, routes!.Single().SourceId);
             using var revoke = await client.PostAsJsonAsync($"/internal/v1/observation-sources/{source.Id:D}/revoke", new RevokeServiceSourceCommand(actor), token);
             Assert.AreEqual(HttpStatusCode.NoContent, revoke.StatusCode);
             Assert.IsNull(await auth.AuthenticateVersionedAsync(rotated.Credential, token));

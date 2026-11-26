@@ -240,6 +240,9 @@ builder.Services.AddScoped<ReceptionRejectionReader>();
 builder.Services.AddScoped<CollectorObservations>();
 builder.Services.AddScoped<CollectorCounters>();
 builder.Services.AddScoped<CollectorAdministration>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.CollectorManagement>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddSingleton<OtlpConcurrency>();
 builder.Services.AddSingleton<MetricRollupPayloadGate>();
 builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
