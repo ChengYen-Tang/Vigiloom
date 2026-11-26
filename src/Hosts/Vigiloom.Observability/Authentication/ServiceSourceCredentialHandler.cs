@@ -28,6 +28,8 @@ internal sealed class ServiceSourceCredentialHandler(IOptionsMonitor<Authenticat
         var header = Request.Headers.Authorization.ToString();
         const string prefix = "Bearer ";
         var internalCheck = Request.Path.Equals("/internal/telemetry/source/identity", StringComparison.OrdinalIgnoreCase);
+        if (!internalCheck && !Request.Path.StartsWithSegments("/api/v1/otlp"))
+            return AuthenticateResult.NoResult();
         var ingress = Request.Path.StartsWithSegments("/api/v1/otlp") ||
             (internalCheck && Request.Headers["X-Vigiloom-Telemetry-Ingress"] == "otlp")
             ? ReceptionIngress.Otlp : ReceptionIngress.Discovery;
