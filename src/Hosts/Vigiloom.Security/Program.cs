@@ -70,6 +70,8 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", false))
     builder.Services.AddScoped<SignatureRefresh>();
     builder.Services.AddScoped<BaselineRefresh>();
     builder.Services.AddScoped<AdvisoryRefresh>();
+    builder.Services.AddScoped<InventoryExpiry>();
+    builder.Services.AddScoped<IntegrityExpiry>();
     builder.Services.AddScoped<IntelligenceRefreshJob>(); builder.Services.AddHostedService<IntelligenceRefreshSchedule>();
     builder.Services.AddScoped<DebianRefreshJob>(); builder.Services.AddHostedService<DebianRefreshSchedule>();
     builder.Services.AddScoped<UbuntuRefreshJob>(); builder.Services.AddHostedService<UbuntuRefreshSchedule>();
@@ -79,6 +81,8 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", false))
     builder.Services.AddScoped<SignatureRefreshJob>(); builder.Services.AddHostedService<SignatureRefreshSchedule>();
     builder.Services.AddScoped<BaselineRefreshJob>(); builder.Services.AddHostedService<BaselineRefreshSchedule>();
     builder.Services.AddScoped<AdvisoryRefreshJob>(); builder.Services.AddHostedService<AdvisoryRefreshSchedule>();
+    builder.Services.AddScoped<InventoryExpiryJob>(); builder.Services.AddHostedService<InventoryExpirySchedule>();
+    builder.Services.AddScoped<IntegrityExpiryJob>(); builder.Services.AddHostedService<IntegrityExpirySchedule>();
     builder.Services.AddHttpClient(IntelligenceHttp.KevClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
     builder.Services.AddHttpClient(IntelligenceHttp.DebianClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateDebianHandler);
     builder.Services.AddHttpClient(IntelligenceHttp.UbuntuClientName).ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateKevHandler);
