@@ -280,6 +280,10 @@ namespace Vigiloom.Modules.ServiceObservability.Persistence.Migrations
                     b.Property<DateTimeOffset?>("LastEvaluatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<long>("LastTransitionGeneration")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.Property<Guid?>("LeaseOwner")
                         .HasColumnType("uniqueidentifier");
 

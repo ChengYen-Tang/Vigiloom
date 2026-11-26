@@ -35,7 +35,8 @@ public sealed class HealthRunnerTests(TestContext context)
             var options = Options(database.ConnectionString);
             var targetId = await SeedAsync(options, 12345, token);
             var factory = new PooledDbContextFactory<ServiceObservabilityDbContext>(options);
-            var store = new HealthStore(factory, [new ServiceHealthAlertSink(new TestGroups())]);
+            var recording = new RecordingHealthSink();
+            var store = new HealthStore(factory, [new ServiceHealthAlertSink(new TestGroups()), recording]);
             async Task Observe(HealthObservationKind kind)
             {
                 await using (var db = new ServiceObservabilityDbContext(options))
@@ -67,6 +68,12 @@ public sealed class HealthRunnerTests(TestContext context)
             var recovered = Assert.ContainsSingle((await reader.GetEpisodesAsync(new NotificationQuery(1), token)).Items);
             Assert.IsNotNull(recovered.RecoveredAt);
             Assert.IsTrue(await operations.Set<Notification>().AllAsync(x => x.Source == "service-health" && x.Detail.Contains("Operations"), token));
+            Assert.IsGreaterThan(1, recording.Transitions.Count);
+            Assert.AreEqual(0L, recording.Transitions[0].PreviousTransitionGeneration);
+            for (var i = 1; i < recording.Transitions.Count; i++)
+                Assert.AreEqual(recording.Transitions[i - 1].Generation, recording.Transitions[i].PreviousTransitionGeneration);
+            await using var verify = new ServiceObservabilityDbContext(options);
+            Assert.AreEqual(recording.Transitions[^1].Generation, (await verify.HealthSchedules.SingleAsync(token)).LastTransitionGeneration);
         }, context.CancellationToken);
 
     [TestMethod]
@@ -138,10 +145,12 @@ public sealed class HealthRunnerTests(TestContext context)
     private sealed class RecordingHealthSink : IHealthTransitionSink
     {
         public ServiceHealthState? LastState { get; private set; }
+        public List<HealthTransition> Transitions { get; } = [];
         public Task RecordAsync(HealthTransition transition, System.Data.Common.DbConnection connection,
             System.Data.Common.DbTransaction transaction, CancellationToken token)
         {
             LastState = transition.State;
+            Transitions.Add(transition);
             return Task.CompletedTask;
         }
     }

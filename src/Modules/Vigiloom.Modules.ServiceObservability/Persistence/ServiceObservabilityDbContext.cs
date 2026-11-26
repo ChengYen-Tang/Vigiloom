@@ -81,6 +81,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         healthSchedule.HasKey(x => x.RowId).IsClustered();
         healthSchedule.Property(x => x.RowId).UseIdentityColumn();
         healthSchedule.Property(x => x.Version).IsRowVersion();
+        healthSchedule.Property(x => x.LastTransitionGeneration).IsConcurrencyToken();
         healthSchedule.Property(x => x.SourceVersion).HasColumnType("binary(8)");
         healthSchedule.Property(x => x.ServiceVersion).HasColumnType("binary(8)");
         healthSchedule.Property(x => x.InstanceVersion).HasColumnType("binary(8)");
