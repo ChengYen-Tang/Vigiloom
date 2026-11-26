@@ -63,6 +63,12 @@ public sealed class HostLogTests(TestContext context)
                 Guid.CreateVersion7(), AgentLogSourceKind.TextFile, "auth", 1, [item]);
             var input = new HostLogSubmission(Guid.CreateVersion7(), Guid.CreateVersion7(), 0, batch);
             using (var first = await client.PostAsJsonAsync("/internal/v1/host-logs", input, token)) Assert.AreEqual(HttpStatusCode.OK, first.StatusCode);
+            using (var identities = await client.PostAsJsonAsync("/internal/v1/host-logs/identities",
+                new HostLogReadRequest(input.AgentId, [item.MessageId, Guid.CreateVersion7()]), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, identities.StatusCode);
+                CollectionAssert.AreEquivalent(new[] { item.MessageId }, (await identities.Content.ReadFromJsonAsync<Guid[]>(cancellationToken: token))!);
+            }
             using (var read = await client.PostAsJsonAsync("/internal/v1/host-logs/read", new HostLogReadRequest(input.AgentId, [item.MessageId]), token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
