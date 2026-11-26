@@ -377,6 +377,22 @@ public sealed class SpeedHttpTests
         }
         using var reader = Client(factory);
         await LoginAsync(reader, "reader", token);
+        reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var englishDetails = await reader.GetAsync($"/speed-tests/{withCoordinates.Id:D}", token))
+        {
+            var text = await TextAsync(englishDetails, token);
+            Assert.Contains("Speed test result", text);
+            Assert.Contains("Server coordinates", text);
+            Assert.Contains("25.033, 121.5654", text);
+            Assert.Contains("Completed", text);
+        }
+        using (var englishList = await reader.GetAsync("/speed-tests", token))
+            Assert.Contains("Speed test history", await TextAsync(englishList, token));
+        reader.DefaultRequestHeaders.AcceptLanguage.Clear();
+        reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplifiedDetails = await reader.GetAsync($"/speed-tests/{withCoordinates.Id:D}", token))
+            Assert.Contains("测速结果", await TextAsync(simplifiedDetails, token));
+        reader.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var populatedPage = await reader.GetAsync($"/speed-tests/{withCoordinates.Id:D}", token);
         Assert.AreEqual(HttpStatusCode.OK, populatedPage.StatusCode);
         Assert.Contains("25.033, 121.5654", await TextAsync(populatedPage, token));

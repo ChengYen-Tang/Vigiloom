@@ -1,13 +1,14 @@
+@inject Microsoft.Extensions.Localization.IStringLocalizer<Vigiloom.Web.Client.Components.SpeedTests.SpeedText> L
 @using Vigiloom.Contracts.SpeedTests
 <EditForm Model="input" OnSubmit="SubmitAsync" class="device-filters">
     <DataAnnotationsValidator /><ValidationSummary />
-    <label for="speed-from">開始日期（UTC）<InputDate id="speed-from" @bind-Value="input.From" /></label>
-    <label for="speed-to">結束日期（UTC，含當日）<InputDate id="speed-to" @bind-Value="input.To" /></label>
-    <label for="speed-search">服務端<InputText id="speed-search" @bind-Value="input.Search" maxlength="100" placeholder="服務端名稱" /></label>
-    <label for="speed-sort">排序<InputSelect id="speed-sort" @bind-Value="input.Sort"><option value="time">時間</option><option value="download">下載</option><option value="upload">上傳</option></InputSelect></label>
-    <label><InputCheckbox @bind-Value="input.Descending" /> 由大到小</label>
-    <button type="submit" disabled="@Busy">套用篩選</button>
-    @if (error) { <p role="alert">請選擇最多 31 天的有效日期範圍。</p> }
+    <label for="speed-from">@L["開始日期（UTC）"]<InputDate id="speed-from" @bind-Value="input.From" /></label>
+    <label for="speed-to">@L["結束日期（UTC，含當日）"]<InputDate id="speed-to" @bind-Value="input.To" /></label>
+    <label for="speed-search">@L["服務端"]<InputText id="speed-search" @bind-Value="input.Search" maxlength="100" placeholder="@L["服務端名稱"]" /></label>
+    <label for="speed-sort">@L["排序"]<InputSelect id="speed-sort" @bind-Value="input.Sort"><option value="time">@L["時間"]</option><option value="download">@L["下載"]</option><option value="upload">@L["上傳"]</option></InputSelect></label>
+    <label><InputCheckbox @bind-Value="input.Descending" /> @L["由大到小"]</label>
+    <button type="submit" disabled="@Busy">@L["套用篩選"]</button>
+    @if (error) { <p role="alert">@L["請選擇最多 31 天的有效日期範圍。"]</p> }
 </EditForm>
 @code {
     [Parameter, EditorRequired] public SpeedHistoryQuery Query { get; set; } = default!;
