@@ -109,6 +109,10 @@ public sealed class YaraRoutingTests(TestContext context)
                 Assert.IsNotNull(integrity.Headers.ETag);
             }
             var scopeId = scopeResult.Scope.Scope.Id;
+            var status = await agent.GetFromJsonAsync<IntegrityScopeStatus>($"/api/v1/agent/integrity-status/{scopeId:D}", token);
+            Assert.IsNotNull(status);
+            Assert.IsTrue(status.ScopePresent);
+            Assert.AreEqual(scopeResult.Scope.Scope.Revision, status.CurrentRevision);
             using (var changed = await securityClient.PutAsJsonAsync(scopePath + scopeId.ToString("D"),
                 new { Policy = scopeInput with { ScanIntervalSeconds = 7200 }, scopeResult.Scope.Version, ActorId = actor }, token))
             {
@@ -124,6 +128,8 @@ public sealed class YaraRoutingTests(TestContext context)
                     (await retired.Content.ReadFromJsonAsync<IntegrityConfigurationResult>(cancellationToken: token))!.Status);
             var retiredIntegrity = await agent.GetFromJsonAsync<IntegritySettingsSnapshot>("/api/v1/agent/integrity-settings", token);
             Assert.IsFalse(retiredIntegrity!.Scopes.Any(scope => scope.Id == scopeId));
+            var retiredStatus = await agent.GetFromJsonAsync<IntegrityScopeStatus>($"/api/v1/agent/integrity-status/{scopeId:D}", token);
+            Assert.IsFalse(retiredStatus!.ScopePresent);
             using (var baseline = await agent.GetAsync("/api/v1/agent/baseline-settings", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, baseline.StatusCode);
@@ -143,6 +149,8 @@ public sealed class YaraRoutingTests(TestContext context)
             Assert.AreEqual(HttpStatusCode.Unauthorized, deniedSettings.StatusCode);
             using var deniedBaseline = await agent.GetAsync("/api/v1/agent/baseline-settings", token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, deniedBaseline.StatusCode);
+            using var deniedStatus = await agent.GetAsync($"/api/v1/agent/integrity-status/{scopeId:D}", token);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, deniedStatus.StatusCode);
         }, context.CancellationToken);
 
     private sealed class IdentityHandler(RegisteredAgentIdentity identity) : HttpMessageHandler
