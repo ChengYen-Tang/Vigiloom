@@ -47,6 +47,8 @@ public static class AgentHost
         builder.Services.AddSingleton<AgentLogStatusRuntime>();
         builder.Services.AddSingleton<AgentModuleFailures>();
         builder.Services.AddSingleton<AgentWorkNotifications>();
+        builder.Services.AddSingleton<AgentHeartbeatConnection>();
+        builder.Services.AddSingleton<IAgentHeartbeatTransport>(provider => provider.GetRequiredService<AgentHeartbeatConnection>());
         builder.Services.AddHostedService<AgentEnrollmentWorker>();
         builder.Services.AddHostedService<AgentConnectionWorker>();
         builder.Services.AddHostedService<AgentSettingsWorker>();

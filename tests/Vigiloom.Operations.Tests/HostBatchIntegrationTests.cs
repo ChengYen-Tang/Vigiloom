@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
@@ -307,6 +309,21 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             }
             using (var response = await proxyClient.GetAsync("/api/v1/agent-management/settings/platform", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+
+            await using (var channel = new HubConnectionBuilder().WithUrl(new Uri(proxyClient.BaseAddress!, "/api/v1/agent/channel"), options =>
+            {
+                options.Transports = HttpTransportType.WebSockets;
+                options.SkipNegotiation = true;
+                options.AccessTokenProvider = () => Task.FromResult<string?>("valid");
+            }).Build())
+            {
+                await channel.StartAsync(token);
+                var channelReport = new AgentHeartbeatReport(1, epoch, 3, queue, Runtime: new("2.0.0", "win-x64"));
+                Assert.AreEqual(204, await channel.InvokeAsync<int>("Heartbeat", "valid", channelReport, token));
+                await using var channelDb = new HostMonitoringDbContext(hostOptions);
+                Assert.AreEqual(3L, (await channelDb.AgentStatuses.SingleAsync(token)).QueueReportSequence);
+                Assert.AreEqual(401, await channel.InvokeAsync<int>("Heartbeat", "revoked", null, token));
+            }
 
             var identityBuilder = WebApplication.CreateBuilder();
             identityBuilder.WebHost.UseUrls("http://127.0.0.1:0");

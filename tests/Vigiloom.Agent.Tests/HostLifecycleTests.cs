@@ -936,6 +936,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 ["Vigiloom:Agent:Server"] = "https://example.test/"
             });
             builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "HeartbeatWorker"));
+            builder.Services.Remove(builder.Services.Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationType?.Name == "AgentConnectionWorker"));
             builder.Services.AddSingleton(runtime);
             builder.Services.AddSingleton(new AgentBatchClient(http, clock));
             builder.Services.AddSingleton<TimeProvider>(clock);

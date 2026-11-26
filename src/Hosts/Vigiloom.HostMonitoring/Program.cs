@@ -84,6 +84,7 @@ builder.Services.AddScoped<HostInboxCleanup>();
 builder.Services.AddScoped<HostLogIdentityCleanup>();
 builder.Services.AddScoped<HostWorkRetention>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<AgentHeartbeatLimits>();
 if (builder.Configuration.GetValue("Hangfire:Enabled", true))
 {
     builder.Services.AddHangfire((services, settings) => settings.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)

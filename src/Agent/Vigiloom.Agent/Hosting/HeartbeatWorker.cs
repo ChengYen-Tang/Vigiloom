@@ -11,7 +11,7 @@ using Vigiloom.Agent.Hosting.Baseline;
 namespace Vigiloom.Agent.Hosting;
 
 /// <summary>Runs the initial heartbeat schedule; configuration synchronization will supply its effective interval.</summary>
-internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettingsRuntime settings, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, IConfiguration configuration, TimeProvider clock, ILogger<HeartbeatWorker> logger, AgentLogStatusRuntime? logStatus = null, InventorySettingsRuntime? inventory = null, AgentIntegritySettingsRuntime? integrity = null, AgentBaselineSettingsRuntime? baseline = null, AgentModuleFailures? failures = null) : BackgroundService
+internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettingsRuntime settings, AgentQueueCapacityRuntime capacity, AgentMetricSettingsRuntime metrics, AgentLogSettingsRuntime logs, IConfiguration configuration, TimeProvider clock, ILogger<HeartbeatWorker> logger, AgentLogStatusRuntime? logStatus = null, InventorySettingsRuntime? inventory = null, AgentIntegritySettingsRuntime? integrity = null, AgentBaselineSettingsRuntime? baseline = null, AgentModuleFailures? failures = null, AgentHeartbeatConnection? connection = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -28,6 +28,7 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
                 var server = configuration["Vigiloom:Agent:Server"];
                 if (string.IsNullOrWhiteSpace(directory) || !Uri.TryCreate(server, UriKind.Absolute, out var uri))
                 {
+                    if (connection is not null) await connection.DisconnectAsync(stoppingToken);
                     settings.Bind(null);
                     capacity.Bind(null);
                     metrics.Bind(null);
@@ -44,6 +45,7 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
                     if (!string.Equals(directory, configuration["Vigiloom:Agent:StateDirectory"], StringComparison.Ordinal) ||
                         !string.Equals(server, configuration["Vigiloom:Agent:Server"], StringComparison.Ordinal))
                     {
+                        if (connection is not null) await connection.DisconnectAsync(stoppingToken);
                         settings.Bind(null);
                         capacity.Bind(null);
                         metrics.Bind(null);
@@ -55,6 +57,7 @@ internal sealed class HeartbeatWorker(AgentHeartbeatClient client, AgentSettings
                     }
                     else
                     {
+                        if (owner is null && connection is not null) await connection.DisconnectAsync(stoppingToken);
                         settings.Bind(owner);
                         capacity.Bind(owner);
                         metrics.Bind(owner);
