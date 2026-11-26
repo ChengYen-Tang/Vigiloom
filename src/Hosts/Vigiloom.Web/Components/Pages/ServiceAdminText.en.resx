@@ -595,4 +595,23 @@
   <data name="設定已變更，請重新整理。" xml:space="preserve"><value>Settings changed. Refresh the page.</value></data>
   <data name="預覽已過期或設定已變更，請重新預覽。" xml:space="preserve"><value>The preview expired or settings changed. Preview again.</value></data>
   <data name="清理尚未就緒或系統時間異常，請重新整理並檢查。" xml:space="preserve"><value>Cleanup is not ready or the system time is invalid. Refresh and check.</value></data>
+  <data name="編輯日誌來源" xml:space="preserve"><value>Edit log source</value></data>
+  <data name="返回日誌來源" xml:space="preserve"><value>Back to log sources</value></data>
+  <data name="來源位置與類型不能變更；如要改讀其他位置，請建立新來源。" xml:space="preserve"><value>A source location and type cannot be changed. Create a new source to read a different location.</value></data>
+  <data name="找不到來源或暫時無法讀取，請返回後重試。" xml:space="preserve"><value>The source was not found or could not be loaded. Go back and try again.</value></data>
+  <data name="目前來源位置：{0}" xml:space="preserve"><value>Current source location: {0}</value></data>
+  <data name="設定儲存後會定期同步；設備可能尚未套用。" xml:space="preserve"><value>Settings synchronize periodically after saving; the device may not have applied them yet.</value></data>
+  <data name="文字檔格式" xml:space="preserve"><value>Text file format</value></data>
+  <data name="每行一筆" xml:space="preserve"><value>One record per line</value></data>
+  <data name="縮排行接續前一筆" xml:space="preserve"><value>Indented lines continue the previous record</value></data>
+  <data name="啟用來源" xml:space="preserve"><value>Enable source</value></data>
+  <data name="移除來源" xml:space="preserve"><value>Remove source</value></data>
+  <data name="Agent 同步後會停止採集；移除不會立即刪除已接收的日誌。" xml:space="preserve"><value>The Agent stops collecting after synchronization. Removing a source does not immediately delete received logs.</value></data>
+  <data name="我了解移除後會停止採集" xml:space="preserve"><value>I understand collection will stop after removal</value></data>
+  <data name="無法確認來源或帳號，請重新整理。" xml:space="preserve"><value>Unable to confirm the source or account. Refresh the page.</value></data>
+  <data name="請確認來源名稱及文字檔格式。" xml:space="preserve"><value>Check the source name and text file format.</value></data>
+  <data name="無法確認儲存結果，請重新整理後查看。" xml:space="preserve"><value>Unable to confirm the save. Refresh and check.</value></data>
+  <data name="請先確認移除來源的影響。" xml:space="preserve"><value>First confirm the effects of removing the source.</value></data>
+  <data name="無法確認移除結果，請重新整理後查看。" xml:space="preserve"><value>Unable to confirm removal. Refresh and check.</value></data>
+  <data name="來源已變更或不存在，請重新整理後再試。" xml:space="preserve"><value>The source changed or no longer exists. Refresh and try again.</value></data>
 </root>
