@@ -496,6 +496,7 @@ builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.InventoryAccess>();
 builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.IntegrityAccess>();
 builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.DetectionAccess>();
 builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.VulnerabilityAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.BaselineAccess>();
 builder.Services.AddScoped<IntegrityQuery>();
 builder.Services.AddScoped<IntegrityChangeQuery>();
 builder.Services.AddScoped<AgentIntegritySettingsMonitoring>(services => new(

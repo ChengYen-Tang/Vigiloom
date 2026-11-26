@@ -16,6 +16,8 @@ using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Contracts.Agent.Baseline;
+using Vigiloom.Modules.SecurityAnalysis.Application.Baseline;
 using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
@@ -49,12 +51,15 @@ builder.Services.AddScoped<SigmaDetectionHistory>();
 builder.Services.AddScoped<IocDetectionHistory>();
 builder.Services.AddScoped<VulnerabilityMonitoring>();
 builder.Services.AddScoped<IKevCatalog, KevCatalog>();
+builder.Services.AddScoped<BaselineRemoteSources>();
+builder.Services.AddScoped<IAgentBaselineSyncReader>(services => services.GetRequiredService<BaselineRemoteSources>());
+builder.Services.AddScoped<IBaselineExceptionReader>(services => services.GetRequiredService<BaselineRemoteSources>());
+builder.Services.AddScoped<BaselineQuery>();
 if (builder.Configuration.GetValue("Hangfire:Enabled", false))
 {
     if (!builder.Configuration.GetValue("Temporal:Enabled", true))
         throw new InvalidOperationException("Temporal must be enabled for security intelligence audit delivery.");
     builder.Services.AddVigiloomDataProtection(builder.Configuration);
-    builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
     builder.Services.AddScoped<IntelligencePublication>();
     builder.Services.AddHangfire((services, settings) => settings.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
         .UseSimpleAssemblyNameTypeSerializer().UseRecommendedSerializerSettings()
@@ -105,6 +110,12 @@ builder.Services.AddHttpClient("host", (services, client) =>
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(30);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient("operations", (services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations";
+    client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddHttpClient<IHostLogReader, OperationsHostLogs>((services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations";
@@ -113,6 +124,8 @@ builder.Services.AddHttpClient<IHostLogReader, OperationsHostLogs>((services, cl
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 if (builder.Configuration.GetValue("Temporal:Enabled", true))
 {
+    builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
+    builder.Services.AddScoped<BaselineExceptions>();
     builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
         builder.Configuration["Temporal:Namespace"] ?? "default");
     builder.Services.AddScoped<ISigmaCatalog, SigmaCatalog>();
@@ -135,6 +148,14 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/internal/v1/yar
         catch (ArgumentException) { context.Response.StatusCode = StatusCodes.Status400BadRequest; }
     }));
 app.MapGet("/health/live", () => Results.Ok());
+app.MapGet("/internal/v1/devices/{deviceId:guid}/baseline", async (Guid deviceId, BaselineQuery query, CancellationToken token) =>
+    await query.GetAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound());
+app.MapPost("/internal/v1/devices/{deviceId:guid}/baseline-exceptions", async (Guid deviceId, BaselineExceptionCommand command, IServiceProvider services, CancellationToken token) =>
+{
+    var exceptions = services.GetService<BaselineExceptions>();
+    return exceptions is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) :
+        Results.Ok(await exceptions.RecordAsync(deviceId, command.Input.SourceKey, command.Input.RevisionId, command.Input.Reason, command.ActorId, token));
+});
 app.MapSecurityRetentionEndpoints();
 var vulnerabilities = app.MapGroup("/internal/v1/devices/{deviceId:guid}/vulnerabilities");
 vulnerabilities.MapGet("/", async (Guid deviceId, int page, int gapPage, string? search, int? state, string? rankingVersion, VulnerabilityMonitoring monitoring, CancellationToken token) =>
@@ -246,3 +267,4 @@ internal sealed record InventorySettingsCommand(InventorySettingsUpdate Update, 
 internal sealed record IntegrityCreateCommand(IntegrityScopeInput Policy, Guid ActorId);
 internal sealed record IntegrityUpdateCommand(IntegrityScopeInput Policy, string? Version, Guid ActorId);
 internal sealed record IntegrityRetireCommand(string? Version, Guid ActorId);
+internal sealed record BaselineExceptionCommand(BaselineExceptionInput Input, Guid ActorId);
