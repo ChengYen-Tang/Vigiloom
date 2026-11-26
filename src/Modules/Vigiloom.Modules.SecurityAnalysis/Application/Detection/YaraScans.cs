@@ -11,7 +11,7 @@ public sealed class YaraScans(IDbContextFactory<SecurityAnalysisDbContext> conte
 {
     public async Task<YaraScanJob> CreateAsync(RegisteredAgentIdentity identity, YaraScanRequest request, Guid actor, CancellationToken token)
     {
-        if (identity.AgentId.Version != 7 || identity.DeviceId.Version != 7 || actor.Version != 7 || !Valid(request))
+        if (identity is null || identity.AgentId.Version != 7 || identity.DeviceId.Version != 7 || identity.DeviceGeneration < 0 || actor.Version != 7 || !Valid(request))
             throw new ArgumentException("Invalid scan request.");
         var scan = new YaraScan { Id = Guid.CreateVersion7(), AgentId = identity.AgentId, DeviceId = identity.DeviceId,
             RequestedBy = actor, FilePath = request.FilePath, Rules = request.Rules, MaximumBytes = request.MaximumBytes,
