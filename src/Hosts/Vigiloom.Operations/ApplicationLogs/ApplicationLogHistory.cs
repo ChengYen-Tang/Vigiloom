@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Services;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 
 namespace Vigiloom.Operations.ApplicationLogs;
@@ -11,6 +12,15 @@ public sealed class ApplicationLogHistory(IDbContextFactory<CentralLogsDbContext
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         return await db.LogRecords.LongCountAsync(row => row.OccurredAt < before, token);
+    }
+
+    public async Task<IReadOnlyList<ApplicationLogLastReceived>> LastReceivedAsync(Guid[] serviceIds, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        return await db.LogRecords.AsNoTracking().Where(row => serviceIds.Contains(row.ServiceId))
+            .GroupBy(row => row.ServiceId)
+            .Select(group => new ApplicationLogLastReceived(group.Key, group.Max(row => row.ReceivedAt)))
+            .ToArrayAsync(token);
     }
 
     public async Task<DateTimeOffset?> LastReceivedAsync(Guid serviceId, CancellationToken token)

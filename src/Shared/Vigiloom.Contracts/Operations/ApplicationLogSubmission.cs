@@ -18,3 +18,5 @@ public sealed record ApplicationLogBatch(Guid SourceId, IReadOnlyList<Applicatio
 public sealed record ApplicationLogResource(byte[] ResourcePayload, string ResourceSchemaUrl, IReadOnlyList<ApplicationLogScope> Scopes);
 public sealed record ApplicationLogScope(Guid ServiceId, Guid? InstanceId, byte[] ScopePayload, string ScopeSchemaUrl,
     IReadOnlyList<ApplicationLogItem> Items);
+
+public sealed record ApplicationLogLastReceived(Guid ServiceId, DateTimeOffset ReceivedAt);

@@ -37,7 +37,7 @@ internal static class TelemetryHistoryEndpoints
         }).RequireAuthorization(Vigiloom.Web.Authentication.AccessPolicies.Administrator).RequireRateLimiting("api-client")
             .Produces<byte[]>(StatusCodes.Status200OK, contentType: "text/plain").ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithSummary("Download the application SDK configuration example");
-        app.MapGet("/api/v1/service-reception", async (ReceptionOverview overview, CancellationToken token, int page = 1) =>
+        app.MapGet("/api/v1/service-reception", async (ReceptionManagement overview, CancellationToken token, int page = 1) =>
         {
             if (page is < 1 or > 200) return Results.BadRequest();
             return Results.Ok(await overview.ListAsync(page, token));

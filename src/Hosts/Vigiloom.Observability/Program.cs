@@ -108,6 +108,11 @@ builder.Services.AddHttpClient<IApplicationLogRetentionCounter, ApplicationLogRe
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
 builder.Services.AddScoped<TelemetryRetentionSettings>();
+builder.Services.AddHttpClient<IReceptionLogTimes, ReceptionLogTimes>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<ReceptionOverview>();
+builder.Services.AddScoped<ReceptionRejectionReader>();
 builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddSingleton<OtlpConcurrency>();
 builder.Services.AddSingleton<IHealthTransitionSink, HealthTransitionDispatcher>();
@@ -196,6 +201,10 @@ app.MapServiceReads();
 app.MapTelemetryHistoryEndpoints();
 app.MapRetentionEndpoints();
 app.MapSourceEndpoints();
+internalApi.MapGet("/reception", async (ReceptionOverview overview, CancellationToken token, int page = 1) =>
+    page is < 1 or > 200 ? Results.BadRequest() : Results.Ok(await overview.ListAsync(page, token)));
+internalApi.MapGet("/reception/rejections", async (ReceptionRejectionReader reader, CancellationToken token) => Results.Ok(await reader.ListAsync(token)));
+
 app.MapCollectorEndpoints();
 app.Run();
 

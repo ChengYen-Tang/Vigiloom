@@ -237,6 +237,9 @@ builder.Services.AddScoped<ServiceHttpMetricsReader>();
 builder.Services.AddScoped<ServiceDetailsReader>();
 builder.Services.AddScoped<ReceptionOverview>();
 builder.Services.AddScoped<ReceptionRejectionReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.ReceptionManagement>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<CollectorObservations>();
 builder.Services.AddScoped<CollectorCounters>();
 builder.Services.AddScoped<CollectorAdministration>();
