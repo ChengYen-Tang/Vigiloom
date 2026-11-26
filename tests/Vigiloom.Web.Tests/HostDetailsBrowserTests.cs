@@ -276,6 +276,11 @@ public sealed class HostDetailsBrowserTests
         await page.Locator("#metric-kind").GetByText("CPU usage", new() { Exact = true }).WaitForAsync(new() { State = WaitForSelectorState.Attached });
         await page.GetByRole(AriaRole.Button, new() { Name = "Inventory", Exact = true }).ClickAsync();
         await page.GetByText("No inventory data of this type.", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "View inventory changes", Exact = true }).ClickAsync();
+        var englishChanges = page.GetByRole(AriaRole.Region, new() { Name = "Inventory changes table, scroll horizontally" });
+        await englishChanges.GetByText("Example package", new() { Exact = true }).WaitForAsync();
+        await englishChanges.GetByText("Before", new() { Exact = true }).ClickAsync();
+        await englishChanges.GetByText("Version：1.0", new() { Exact = false }).WaitForAsync();
         await using var localizedContext = await browser.NewContextAsync();
         var localizedPage = await localizedContext.NewPageAsync();
         await localizedPage.GotoAsync($"{url}/account/login");
@@ -293,6 +298,8 @@ public sealed class HostDetailsBrowserTests
         await localizedPage.GetByRole(AriaRole.Region, new() { Name = "阈值评估结果" }).GetByText("未知：样本已过期", new() { Exact = true }).WaitForAsync();
         await localizedPage.GetByRole(AriaRole.Button, new() { Name = "资产清单", Exact = true }).ClickAsync();
         await localizedPage.GetByText("目前没有这类清单数据。", new() { Exact = true }).WaitForAsync();
+        await localizedPage.GetByRole(AriaRole.Button, new() { Name = "查看清单变更", Exact = true }).ClickAsync();
+        await localizedPage.GetByRole(AriaRole.Region, new() { Name = "清单变更表格，可左右滚动" }).GetByText("Example package", new() { Exact = true }).WaitForAsync();
         await localizedGate.ReleaseAsync();
     }, TestContext.CancellationToken);
 

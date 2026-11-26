@@ -257,4 +257,23 @@
   <data name="收合成員（{0}）" xml:space="preserve"><value>收起成员（{0}）</value></data>
   <data name="第 {0} 頁" xml:space="preserve"><value>第 {0} 页</value></data>
   <data name="尚無資料" xml:space="preserve"><value>尚无数据</value></data>
+  <data name="盤點變更" xml:space="preserve"><value>清单变更</value></data>
+  <data name="依觀察時間顯示這台設備各次 Agent 註冊的歷史；部分觀察不代表完整新增或移除。" xml:space="preserve"><value>按观察时间显示此设备各次 Agent 注册的历史；部分观察不代表完整新增或移除。</value></data>
+  <data name="查看盤點變更" xml:space="preserve"><value>查看清单变更</value></data>
+  <data name="全部來源（包含程序與服務）" xml:space="preserve"><value>全部来源（包含进程与服务）</value></data>
+  <data name="正在載入盤點變更…" xml:space="preserve"><value>正在加载清单变更…</value></data>
+  <data name="無法讀取盤點變更，請稍後重試。" xml:space="preserve"><value>无法读取清单变更，请稍后重试。</value></data>
+  <data name="盤點變更表格，可左右捲動" xml:space="preserve"><value>清单变更表格，可左右滚动</value></data>
+  <data name="來源／Agent" xml:space="preserve"><value>来源／Agent</value></data>
+  <data name="變更" xml:space="preserve"><value>变更</value></data>
+  <data name="詳細資料" xml:space="preserve"><value>详细信息</value></data>
+  <data name="這段時間沒有盤點變更。" xml:space="preserve"><value>这段时间没有清单变更。</value></data>
+  <data name="較新盤點變更" xml:space="preserve"><value>较新清单变更</value></data>
+  <data name="較早盤點變更" xml:space="preserve"><value>较早清单变更</value></data>
+  <data name="新增" xml:space="preserve"><value>新增</value></data>
+  <data name="修改" xml:space="preserve"><value>修改</value></data>
+  <data name="移除" xml:space="preserve"><value>移除</value></data>
+  <data name="部分觀察：首次看到" xml:space="preserve"><value>部分观察：首次看到</value></data>
+  <data name="部分觀察：資料變化" xml:space="preserve"><value>部分观察：数据变化</value></data>
+  <data name="未知" xml:space="preserve"><value>未知</value></data>
 </root>
