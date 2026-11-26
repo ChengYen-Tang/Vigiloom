@@ -238,6 +238,7 @@ jobs:
         run: |
           docker compose -f packaging/temporal/compose.yaml -p vigiloom-temporal-ci up -d --wait
           echo 'VIGILOOM_TEST_TEMPORAL=127.0.0.1:7233' >> "$GITHUB_ENV"
+          echo 'VIGILOOM_TEST_TEMPORAL_ISOLATED=127.0.0.1:7233' >> "$GITHUB_ENV"
       - name: Test current services and Agent
         shell: pwsh
         run: ./tools/ci/test-current.ps1
