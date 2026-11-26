@@ -5,54 +5,55 @@
 @using Vigiloom.Contracts.Notifications
 @inject INotificationReader Reader
 @inject ILogger<Notifications> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<EventText> L
 
-<PageTitle>通知紀錄 - Vigiloom</PageTitle>
+<PageTitle>@L["通知紀錄"] - Vigiloom</PageTitle>
 <main class="notifications-page">
     <header class="notifications-heading">
-        <h1>通知紀錄</h1>
-        <p>查看 Ping、服務健康、行為規則與漏洞評估產生的通知。</p>
+        <h1>@L["通知紀錄"]</h1>
+        <p>@L["查看 Ping、服務健康、行為規則與漏洞評估產生的通知。"]</p>
     </header>
-    <section class="delivery-notice" aria-label="通知派送狀態">
-        <strong>LINE 通知</strong>
-        <p>管理員可設定 LINE 群組接收通知；此處的紀錄不代表通知已送達。</p>
+    <section class="delivery-notice" aria-label="@L["通知派送狀態"]">
+        <strong>@L["LINE 通知"]</strong>
+        <p>@L["管理員可設定 LINE 群組接收通知；此處的紀錄不代表通知已送達。"]</p>
     </section>
-    <section class="notifications-panel" aria-label="篩選通知">
+    <section class="notifications-panel" aria-label="@L["篩選通知"]">
         <form method="get" action="/notifications">
-            <div class="filter-field"><label for="notification-source">來源</label><select id="notification-source" name="source">
-                <option value="" selected="@(string.IsNullOrEmpty(Source))">全部來源</option>
+            <div class="filter-field"><label for="notification-source">@L["來源"]</label><select id="notification-source" name="source">
+                <option value="" selected="@(string.IsNullOrEmpty(Source))">@L["全部來源"]</option>
                 <option value="ping" selected="@(Source == "ping")">Ping</option>
-                <option value="service-health" selected="@(Source == "service-health")">服務健康</option>
-                <option value="sigma" selected="@(Source == "sigma")">行為規則</option>
-                <option value="ioc" selected="@(Source == "ioc")">IOC 比對</option>
-                <option value="vulnerability" selected="@(Source == "vulnerability")">漏洞評估</option>
+                <option value="service-health" selected="@(Source == "service-health")">@L["服務健康"]</option>
+                <option value="sigma" selected="@(Source == "sigma")">@L["行為規則"]</option>
+                <option value="ioc" selected="@(Source == "ioc")">@L["IOC 比對"]</option>
+                <option value="vulnerability" selected="@(Source == "vulnerability")">@L["漏洞評估"]</option>
             </select></div>
-            <div class="filter-field"><label for="notification-from">開始日期（UTC）</label><input id="notification-from" type="date" name="from" value="@From" /></div>
-            <div class="filter-field"><label for="notification-to">結束日期（UTC）</label><input id="notification-to" type="date" name="to" value="@To" /></div>
-            <button type="submit">查詢</button><a href="/notifications">清除篩選</a>
+            <div class="filter-field"><label for="notification-from">@L["開始日期（UTC）"]</label><input id="notification-from" type="date" name="from" value="@From" /></div>
+            <div class="filter-field"><label for="notification-to">@L["結束日期（UTC）"]</label><input id="notification-to" type="date" name="to" value="@To" /></div>
+            <button type="submit">@L["查詢"]</button><a href="/notifications">@L["清除篩選"]</a>
         </form>
         @if (error is not null) { <p class="notification-error" role="alert">@error</p> }
     </section>
     @if (result is not null)
     {
         <section class="notifications-panel" aria-labelledby="notifications-results">
-            <h2 id="notifications-results">通知紀錄</h2>
-            <p>通知及已恢復告警保存 @result.RetentionDays 天；尚未排入派送的通知與進行中的告警會保留。</p>
-            @if (result.Items.Count == 0) { <p>沒有符合條件的通知紀錄。</p> }
+            <h2 id="notifications-results">@L["通知紀錄"]</h2>
+            <p>@L["通知及已恢復告警保存 {0} 天；尚未排入派送的通知與進行中的告警會保留。", result.RetentionDays]</p>
+            @if (result.Items.Count == 0) { <p>@L["沒有符合條件的通知紀錄。"]</p> }
             else
             {
-                <p class="scroll-hint">左右滑動查看完整通知。</p>
-                <div class="notifications-table" role="region" aria-label="通知紀錄，可左右捲動" tabindex="0">
-                    <table><thead><tr><th>時間（UTC）</th><th>來源</th><th>通知內容</th><th>相關對象</th></tr></thead><tbody>
+                <p class="scroll-hint">@L["左右滑動查看完整通知。"]</p>
+                <div class="notifications-table" role="region" aria-label="@L["通知紀錄，可左右捲動"]" tabindex="0">
+                    <table><thead><tr><th>@L["時間（UTC）"]</th><th>@L["來源"]</th><th>@L["通知內容"]</th><th>@L["相關對象"]</th></tr></thead><tbody>
                     @foreach (var entry in result.Items)
                     {
                         <tr @key="entry.Id">
                             <td>@entry.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td>
-                            <td><span class="source-badge">@SourceLabel(entry.Source)</span></td>
+                            <td><span class="source-badge">@L[SourceLabel(entry.Source)]</span></td>
                             <td><strong>@entry.Title</strong><div>@entry.Detail</div></td>
-                            <td>@if (ResourceLink(entry) is { } link) { <a href="@link">@(entry.Source == "service-health" ? "查看服務" : "查看設備")</a> } else { <span>—</span> }
+                            <td>@if (ResourceLink(entry) is { } link) { <a href="@link">@(entry.Source == "service-health" ? L["查看服務"].Value : L["查看設備"].Value)</a> } else { <span>—</span> }
                                 @if (entry.Source is "sigma" or "ioc" && entry.ResourceId is { } device && entry.EvidenceOwnerId is { } agent && entry.EvidenceId is { } message)
-                                { <a href="@($"/devices/{device:D}/host-logs/{agent:D}/{message:D}")">查看原始事件</a> }
-                                @if (entry.Source == "sigma" && entry.RuleTestId is { } test) { <a href="@($"/events/rules/{test:D}")">查看規則依據</a> }
+                                { <a href="@($"/devices/{device:D}/host-logs/{agent:D}/{message:D}")">@L["查看原始事件"]</a> }
+                                @if (entry.Source == "sigma" && entry.RuleTestId is { } test) { <a href="@($"/events/rules/{test:D}")">@L["查看規則依據"]</a> }
                             </td>
                         </tr>
                     }
@@ -60,10 +61,10 @@
                 </div>
                 @if (result.Page > 1 || result.HasMore)
                 {
-                    <nav class="notification-pages" aria-label="通知紀錄分頁">
-                        @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">上一頁</a> }
-                        <span>第 @result.Page 頁</span>
-                        @if (result.HasMore) { <a href="@PageUrl(result.Page + 1)">下一頁</a> }
+                    <nav class="notification-pages" aria-label="@L["通知紀錄分頁"]">
+                        @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">@L["上一頁"]</a> }
+                        <span>@L["第 {0} 頁", result.Page]</span>
+                        @if (result.HasMore) { <a href="@PageUrl(result.Page + 1)">@L["下一頁"]</a> }
                     </nav>
                 }
             }
@@ -72,34 +73,34 @@
     @if (episodes is not null)
     {
         <section class="notifications-panel" aria-labelledby="alert-episodes">
-            <h2 id="alert-episodes">Ping 與服務告警生命週期</h2>
-            <p>同一設備目標尚未恢復時，不重複建立 Ping 不可達通知。服務檢查的相同異常狀態不重複通知；異常狀態改變時仍會通知。未知狀態不代表恢復。</p>
-            <p>「尚未恢復」表示告警尚未關閉，不代表一定有最新的異常量測；日期依告警開始時間篩選。</p>
-            @if (episodes.Items.Count == 0) { <p>沒有符合條件的 Ping 或服務告警。</p> }
+            <h2 id="alert-episodes">@L["Ping 與服務告警生命週期"]</h2>
+            <p>@L["同一設備目標尚未恢復時，不重複建立 Ping 不可達通知。服務檢查的相同異常狀態不重複通知；異常狀態改變時仍會通知。未知狀態不代表恢復。"]</p>
+            <p>@L["「尚未恢復」表示告警尚未關閉，不代表一定有最新的異常量測；日期依告警開始時間篩選。"]</p>
+            @if (episodes.Items.Count == 0) { <p>@L["沒有符合條件的 Ping 或服務告警。"]</p> }
             else
             {
-                <p class="scroll-hint">左右滑動查看完整告警。</p>
-                <div class="notifications-table" role="region" aria-label="告警生命週期，可左右捲動" tabindex="0">
-                    <table><thead><tr><th>開始時間（UTC）</th><th>來源</th><th>監控目標</th><th>最後告警狀態</th><th>結束時間（UTC）</th><th>相關對象</th></tr></thead><tbody>
+                <p class="scroll-hint">@L["左右滑動查看完整告警。"]</p>
+                <div class="notifications-table" role="region" aria-label="@L["告警生命週期，可左右捲動"]" tabindex="0">
+                    <table><thead><tr><th>@L["開始時間（UTC）"]</th><th>@L["來源"]</th><th>@L["監控目標"]</th><th>@L["最後告警狀態"]</th><th>@L["結束時間（UTC）"]</th><th>@L["相關對象"]</th></tr></thead><tbody>
                     @foreach (var episode in episodes.Items)
                     {
                         <tr @key="episode.Id">
                             <td>@episode.OpenedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td>
-                            <td><span class="source-badge">@SourceLabel(episode.Source)</span></td>
-                            <td>@(episode.Target ?? $"服務檢查 {episode.CheckId:D}")</td>
-                            <td>@EpisodeState(episode)</td>
-                            <td>@(episode.RecoveredAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? "尚未恢復")</td>
-                            <td><a href="@($"/{(episode.Source == "ping" ? "devices" : "services")}/{episode.ResourceId:D}")">@(episode.Source == "ping" ? "查看設備" : "查看服務")</a></td>
+                            <td><span class="source-badge">@L[SourceLabel(episode.Source)]</span></td>
+                            <td>@(episode.Target ?? L["服務檢查 {0}", episode.CheckId?.ToString("D") ?? ""].Value)</td>
+                            <td>@L[EpisodeState(episode)]</td>
+                            <td>@(episode.RecoveredAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? L["尚未恢復"].Value)</td>
+                            <td><a href="@($"/{(episode.Source == "ping" ? "devices" : "services")}/{episode.ResourceId:D}")">@(episode.Source == "ping" ? L["查看設備"].Value : L["查看服務"].Value)</a></td>
                         </tr>
                     }
                     </tbody></table>
                 </div>
                 @if (episodes.Page > 1 || episodes.HasMore)
                 {
-                    <nav class="notification-pages" aria-label="告警生命週期分頁">
-                        @if (episodes.Page > 1) { <a href="@AlertPageUrl(episodes.Page - 1)">上一頁</a> }
-                        <span>第 @episodes.Page 頁</span>
-                        @if (episodes.HasMore) { <a href="@AlertPageUrl(episodes.Page + 1)">下一頁</a> }
+                    <nav class="notification-pages" aria-label="@L["告警生命週期分頁"]">
+                        @if (episodes.Page > 1) { <a href="@AlertPageUrl(episodes.Page - 1)">@L["上一頁"]</a> }
+                        <span>@L["第 {0} 頁", episodes.Page]</span>
+                        @if (episodes.HasMore) { <a href="@AlertPageUrl(episodes.Page + 1)">@L["下一頁"]</a> }
                     </nav>
                 }
             }

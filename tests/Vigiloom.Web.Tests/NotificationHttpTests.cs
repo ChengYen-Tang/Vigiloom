@@ -69,6 +69,25 @@ public sealed class NotificationHttpTests(TestContext context)
             Assert.AreEqual(HttpStatusCode.Redirect, denied.StatusCode);
             using var reader = PingTestSite.Client(factory);
             await PingTestSite.LoginAsync(reader, "reader", token);
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await reader.GetAsync("/notifications?source=ping", token))
+            {
+                var englishDocument = await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token);
+                var text = englishDocument.Body!.TextContent;
+                Assert.Contains("Notifications", text);
+                Assert.Contains("Ping and service alert lifecycle", text);
+                Assert.Contains("Not recovered", text);
+                Assert.Contains("Ping 無法連線", text);
+                Assert.IsNull(englishDocument.QuerySelector(".notifications-table script"));
+            }
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await reader.GetAsync("/notifications?source=ping", token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("通知记录", text);
+            }
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var page = await reader.GetAsync("/notifications?source=ping", token);
             Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);
             var html = await page.Content.ReadAsStringAsync(token);

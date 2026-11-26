@@ -52,4 +52,37 @@
   <data name="無法確認登入身分。" xml:space="preserve"><value>无法确认登录身份。</value></data>
   <data name="請確認篩選條件與頁碼。" xml:space="preserve"><value>请确认筛选条件与页码。</value></data>
   <data name="無法載入事件，請稍後再試。" xml:space="preserve"><value>无法加载事件，请稍后再试。</value></data>
+  <data name="通知紀錄" xml:space="preserve"><value>通知记录</value></data>
+  <data name="查看 Ping、服務健康、行為規則與漏洞評估產生的通知。" xml:space="preserve"><value>查看 Ping、服务健康、行为规则与漏洞评估产生的通知。</value></data>
+  <data name="通知派送狀態" xml:space="preserve"><value>通知派送状态</value></data>
+  <data name="LINE 通知" xml:space="preserve"><value>LINE 通知</value></data>
+  <data name="管理員可設定 LINE 群組接收通知；此處的紀錄不代表通知已送達。" xml:space="preserve"><value>管理员可设置 LINE 群组接收通知；此处的记录不代表通知已送达。</value></data>
+  <data name="篩選通知" xml:space="preserve"><value>筛选通知</value></data>
+  <data name="通知及已恢復告警保存 {0} 天；尚未排入派送的通知與進行中的告警會保留。" xml:space="preserve"><value>通知及已恢复告警保存 {0} 天；尚未排入派送的通知与进行中的告警会保留。</value></data>
+  <data name="沒有符合條件的通知紀錄。" xml:space="preserve"><value>没有符合条件的通知记录。</value></data>
+  <data name="左右滑動查看完整通知。" xml:space="preserve"><value>左右滑动查看完整通知。</value></data>
+  <data name="通知紀錄，可左右捲動" xml:space="preserve"><value>通知记录，可左右滚动</value></data>
+  <data name="通知內容" xml:space="preserve"><value>通知内容</value></data>
+  <data name="通知紀錄分頁" xml:space="preserve"><value>通知记录分页</value></data>
+  <data name="Ping 與服務告警生命週期" xml:space="preserve"><value>Ping 与服务告警生命周期</value></data>
+  <data name="同一設備目標尚未恢復時，不重複建立 Ping 不可達通知。服務檢查的相同異常狀態不重複通知；異常狀態改變時仍會通知。未知狀態不代表恢復。" xml:space="preserve"><value>同一设备目标尚未恢复时，不重复建立 Ping 不可达通知。服务检查的相同异常状态不重复通知；异常状态改变时仍会通知。未知状态不代表恢复。</value></data>
+  <data name="「尚未恢復」表示告警尚未關閉，不代表一定有最新的異常量測；日期依告警開始時間篩選。" xml:space="preserve"><value>「尚未恢复」表示告警尚未关闭，不代表一定有最新的异常测量；日期依告警开始时间筛选。</value></data>
+  <data name="沒有符合條件的 Ping 或服務告警。" xml:space="preserve"><value>没有符合条件的 Ping 或服务告警。</value></data>
+  <data name="左右滑動查看完整告警。" xml:space="preserve"><value>左右滑动查看完整告警。</value></data>
+  <data name="告警生命週期，可左右捲動" xml:space="preserve"><value>告警生命周期，可左右滚动</value></data>
+  <data name="開始時間（UTC）" xml:space="preserve"><value>开始时间（UTC）</value></data>
+  <data name="監控目標" xml:space="preserve"><value>监控目标</value></data>
+  <data name="最後告警狀態" xml:space="preserve"><value>最后告警状态</value></data>
+  <data name="結束時間（UTC）" xml:space="preserve"><value>结束时间（UTC）</value></data>
+  <data name="服務檢查 {0}" xml:space="preserve"><value>服务检查 {0}</value></data>
+  <data name="尚未恢復" xml:space="preserve"><value>尚未恢复</value></data>
+  <data name="告警生命週期分頁" xml:space="preserve"><value>告警生命周期分页</value></data>
+  <data name="已恢復" xml:space="preserve"><value>已恢复</value></data>
+  <data name="不可達" xml:space="preserve"><value>不可达</value></data>
+  <data name="降級" xml:space="preserve"><value>降级</value></data>
+  <data name="異常" xml:space="preserve"><value>异常</value></data>
+  <data name="未知" xml:space="preserve"><value>未知</value></data>
+  <data name="請選擇有效的通知來源。" xml:space="preserve"><value>请选择有效的通知来源。</value></data>
+  <data name="頁碼無效，請重新查詢。" xml:space="preserve"><value>页码无效，请重新查询。</value></data>
+  <data name="無法載入通知紀錄，請稍後再試。" xml:space="preserve"><value>无法加载通知记录，请稍后再试。</value></data>
 </root>
