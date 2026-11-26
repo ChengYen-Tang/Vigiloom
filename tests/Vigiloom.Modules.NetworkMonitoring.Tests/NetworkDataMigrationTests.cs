@@ -23,8 +23,8 @@ public sealed class NetworkDataMigrationTests(TestContext context)
             var device = Guid.CreateVersion7();
             await using (var db = Create(source.ConnectionString))
             {
-                db.PingTargets.Add(new PingTargetState { DeviceId = device, Target = "example.org", DeviceVersion = new byte[8],
-                    Generation = 42, LastTransitionGeneration = 12, Enabled = true, DueAt = DateTimeOffset.UtcNow, State = Reachability.Unreachable });
+                db.PingTargets.Add(new PingTargetState { DeviceId = device, Target = "example.org", DeviceVersion = [255, 255, 255, 255, 255, 255, 255, 255],
+                    Generation = 42, LastTransitionGeneration = 12, Enabled = true, DueAt = DateTimeOffset.UtcNow, LeaseUntil = DateTimeOffset.UtcNow.AddMinutes(1), State = Reachability.Unreachable });
                 db.PingStateEvents.Add(new PingStateEvent { DeviceId = device, Target = "example.org", Generation = 12,
                     OccurredAt = DateTimeOffset.UtcNow, Previous = Reachability.Reachable, Current = Reachability.Unreachable });
                 db.PingSamples.Add(new PingSample(device, "central", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, true, 3));
@@ -37,6 +37,8 @@ public sealed class NetworkDataMigrationTests(TestContext context)
             await using var copied = Create(target.ConnectionString);
             var state = await copied.PingTargets.SingleAsync(token);
             Assert.AreEqual(42L, state.LastTransitionGeneration);
+            CollectionAssert.AreEqual(new byte[8], state.DeviceVersion);
+            Assert.IsNull(state.LeaseUntil);
             Assert.AreEqual(Reachability.Unreachable, state.State);
             Assert.AreEqual(1, await copied.PingStateEvents.CountAsync(token));
             Assert.AreEqual(3d, (await copied.PingSamples.SingleAsync(token)).LatencyMilliseconds);

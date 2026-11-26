@@ -20,8 +20,9 @@ public static class NetworkDataMigration
     public static Task CopyAsync(string sourceConnection, string targetConnection, CancellationToken token = default) =>
         SqlTableDataMigration.CopyAsync(sourceConnection, targetConnection, Tables, token, async (_, target, transaction, ct) =>
         {
-            // Operations copies the source target generations as its cursor at the same stopped-worker cutover.
-            await using var command = new SqlCommand("UPDATE network.PingTargets SET LastTransitionGeneration = Generation", target, transaction);
+            // Resource rowversions are regenerated in the new database. Force reconciliation against
+            // the new version space while preserving the generation baseline shared with Operations.
+            await using var command = new SqlCommand("UPDATE network.PingTargets SET LastTransitionGeneration = Generation, DeviceVersion = 0x0000000000000000, LeaseUntil = NULL", target, transaction);
             await command.ExecuteNonQueryAsync(ct);
         });
 }
