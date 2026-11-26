@@ -186,6 +186,9 @@ builder.Services.AddScoped<IGroupManagement>(services =>
         ? services.GetRequiredService<GroupManagement>()
         : services.GetRequiredService<Vigiloom.Web.Groups.RemoteGroupManagement>());
 builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Events.RemoteTimelineReader>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineAudit>();
 builder.Services.AddScoped<ServiceMembership>();
 builder.Services.AddHttpClient<RemoteServiceMembership>((services, client) =>
