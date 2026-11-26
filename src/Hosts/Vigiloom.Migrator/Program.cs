@@ -20,6 +20,13 @@ using Vigiloom.Migrator.Operations;
 using Vigiloom.Migrator.Resources;
 using Vigiloom.Migrator.Network;
 using Vigiloom.Migrator.Observability;
+using Vigiloom.Migrator.HostMonitoring;
+
+if (args is ["initialize-host-observations"] or ["migrate-host-observations"])
+{
+    await HostMonitoringDatabaseCommand.RunAsync(copyExisting: args[0] == "migrate-host-observations");
+    return;
+}
 
 if (args is ["initialize-observability"] or ["migrate-observability"])
 {
@@ -53,7 +60,7 @@ var freshInstall = args is ["fresh-install"];
 if (args.Length > 0 && !freshInstall)
 {
     if (args.Length != 2 || args[0] != "recover-admin")
-        throw new ArgumentException("Usage: Vigiloom.Migrator [fresh-install | initialize-identity | migrate-identity | initialize-resources | migrate-resources | initialize-operations | migrate-operations | initialize-network | migrate-network | initialize-observability | migrate-observability | recover-admin <account-name>]");
+        throw new ArgumentException("Usage: Vigiloom.Migrator [fresh-install | initialize-identity | migrate-identity | initialize-resources | migrate-resources | initialize-operations | migrate-operations | initialize-network | migrate-network | initialize-observability | migrate-observability | initialize-host-observations | migrate-host-observations | recover-admin <account-name>]");
     await LocalRecoveryCommand.RunAsync(args[1]);
     return;
 }

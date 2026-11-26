@@ -24,6 +24,100 @@ public sealed class ProxyTests
 {
     public TestContext TestContext { get; set; } = null!;
     [TestMethod]
+    public async Task KeepsAgentBatchesOnExistingReceiverUntilSecurityCutover()
+    {
+        await using var upstream = await StartUpstreamAsync("existing-agent", TestContext.CancellationToken);
+        var address = upstream.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        var identityBuilder = WebApplication.CreateBuilder();
+        identityBuilder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var identity = identityBuilder.Build();
+        identity.MapGet("/api/v1/agent/identity", () => Results.Json(new { AgentId = Guid.CreateVersion7(), DeviceId = Guid.CreateVersion7() }));
+        await identity.StartAsync(TestContext.CancellationToken);
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web => web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ReverseProxy:Clusters:agent:Destinations:agent:Address"] = address,
+            ["Vigiloom:Gateway:AgentIdentityAddress"] = identity.Urls.Single()
+        })));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-agent");
+        using var response = await client.PostAsync("/api/v1/agent/batches", null, TestContext.CancellationToken);
+        Assert.AreEqual("existing-agent", await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
+    }
+
+    [TestMethod]
+    public async Task RoutesAgentMetricSettingsToHostAfterAuthentication()
+    {
+        await using var host = await StartUpstreamAsync("host-monitoring", TestContext.CancellationToken);
+        var identityBuilder = WebApplication.CreateBuilder();
+        identityBuilder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var identity = identityBuilder.Build();
+        identity.MapGet("/api/v1/agent/identity", () => Results.Json(new { AgentId = Guid.CreateVersion7(), DeviceId = Guid.CreateVersion7() }));
+        await identity.StartAsync(TestContext.CancellationToken);
+        static string Address(WebApplication app) => app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web => web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = Address(host),
+            ["ReverseProxy:Routes:agent-batches:ClusterId"] = "host-monitoring",
+            ["Vigiloom:Gateway:AgentIdentityAddress"] = Address(identity)
+        })));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        using (var denied = await client.GetAsync("/api/v1/agent/metric-settings", TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-agent");
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/metric-settings", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/log-settings", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/settings", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/queue-capacity", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/queue-session", TestContext.CancellationToken));
+        foreach (var path in new[] { "/api/v1/agent/queue-session", "/api/v1/agent/heartbeat", "/api/v1/agent/update-results", "/api/v1/agent/batches" })
+        {
+            using var response = await client.PostAsync(path, null, TestContext.CancellationToken);
+            Assert.AreEqual("host-monitoring", await response.Content.ReadAsStringAsync(TestContext.CancellationToken));
+        }
+    }
+
+    [TestMethod]
+    public async Task HostAgentTransportKeepsPerAgentRateLimit()
+    {
+        await using var host = await StartUpstreamAsync("host-monitoring", TestContext.CancellationToken);
+        var identityBuilder = WebApplication.CreateBuilder();
+        identityBuilder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var identity = identityBuilder.Build();
+        var agentId = Guid.CreateVersion7();
+        var deviceId = Guid.CreateVersion7();
+        identity.MapGet("/api/v1/agent/identity", () => Results.Json(new { AgentId = agentId, DeviceId = deviceId }));
+        await identity.StartAsync(TestContext.CancellationToken);
+        static string Address(WebApplication app) => app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web => web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = Address(host),
+            ["Vigiloom:Gateway:AgentIdentityAddress"] = Address(identity),
+            ["Vigiloom:Agent:Transport:RequestsPerMinute"] = "1"
+        })));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-agent");
+        using (var first = await client.PostAsync("/api/v1/agent/heartbeat", null, TestContext.CancellationToken)) Assert.AreEqual(HttpStatusCode.OK, first.StatusCode);
+        using var limited = await client.GetAsync("/api/v1/agent/queue-session", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        Assert.AreEqual("60", limited.Headers.RetryAfter!.ToString());
+    }
+    [TestMethod]
+    public async Task RoutesAgentChannelOnlyOverHttps()
+    {
+        await using var host = await StartUpstreamAsync("host-monitoring", TestContext.CancellationToken);
+        var address = host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
+            web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = address
+            })));
+        using var https = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        Assert.AreEqual("host-monitoring", await https.GetStringAsync("/api/v1/agent/channel", TestContext.CancellationToken));
+        using var http = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("http://localhost") });
+        using var denied = await http.GetAsync("/api/v1/agent/channel", TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+    }
+    [TestMethod]
     public async Task RoutesNetworkReadsWithoutExposingInternalOrAdministrativeEndpoints()
     {
         await using var web = await StartUpstreamAsync("web", TestContext.CancellationToken);
@@ -309,6 +403,7 @@ public sealed class ProxyTests
             host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ReverseProxy:Clusters:agent:Destinations:agent:Address"] = address,
+                ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = address,
                 ["Vigiloom:Gateway:AgentIdentityAddress"] = address
             })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });

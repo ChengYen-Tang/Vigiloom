@@ -45,6 +45,17 @@ namespace Vigiloom.Worker.Tests;
 public sealed class HostLifecycleTests(TestContext testContext)
 {
     [TestMethod]
+    public void HostCutoverRetiresLegacyMetricSchedules()
+    {
+        var builder = WorkerHost.CreateBuilder(["--Services:HostMonitoring:Url=http://host"]);
+        var hosted = builder.Services.Where(service => service.ServiceType == typeof(IHostedService))
+            .Select(service => service.ImplementationType?.Name).ToArray();
+        Assert.DoesNotContain("HostMetricRollupSchedule", hosted);
+        Assert.DoesNotContain("HostMetricRetentionSchedule", hosted);
+        Assert.Contains("RetiredHostMetricSchedule", hosted);
+    }
+
+    [TestMethod]
     public void NetworkCutoverStopsLegacyPingAndSpeedWorkers()
     {
         var builder = WorkerHost.CreateBuilder(["--Services:Network:Url=http://network"]);

@@ -46,7 +46,11 @@ public static class AgentHost
         builder.Services.AddSingleton<Vigiloom.Agent.Hosting.Baseline.AgentBaselineSettingsRuntime>();
         builder.Services.AddSingleton<AgentLogStatusRuntime>();
         builder.Services.AddSingleton<AgentModuleFailures>();
+        builder.Services.AddSingleton<AgentWorkNotifications>();
+        builder.Services.AddSingleton<AgentHeartbeatConnection>();
+        builder.Services.AddSingleton<IAgentHeartbeatTransport>(provider => provider.GetRequiredService<AgentHeartbeatConnection>());
         builder.Services.AddHostedService<AgentEnrollmentWorker>();
+        builder.Services.AddHostedService<AgentConnectionWorker>();
         builder.Services.AddHostedService<AgentSettingsWorker>();
         builder.Services.AddHostedService<AgentUpdateWorker>();
         builder.Services.AddHostedService<YaraScanWorker>();

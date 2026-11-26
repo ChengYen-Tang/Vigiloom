@@ -9,7 +9,7 @@ using Vigiloom.Contracts.Agent;
 namespace Vigiloom.Agent.Core.Transport;
 
 /// <summary>Sends authenticated heartbeats and ordered queue status for one Agent process.</summary>
-public sealed class AgentHeartbeatClient(HttpClient http)
+public sealed class AgentHeartbeatClient(HttpClient http, IAgentHeartbeatTransport? transport = null)
 {
     private readonly SemaphoreSlim gate = new(1, 1);
     private Guid? agentId;
@@ -228,6 +228,8 @@ public sealed class AgentHeartbeatClient(HttpClient http)
         return SendAsync();
         async Task<HttpResponseMessage> SendAsync()
         {
+            if (transport is not null && await transport.SendAsync(server, credential, report, token) is { } status)
+                return new HttpResponseMessage(status);
             using var request = CreateRequest(HttpMethod.Post, new Uri(server, "api/v1/agent/heartbeat"), credential);
             if (report is not null) request.Content = JsonContent.Create(report);
             return await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);

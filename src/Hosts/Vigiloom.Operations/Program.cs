@@ -153,12 +153,22 @@ app.MapPost("/internal/v1/host-logs/read", async (HostLogReadRequest input, Host
         return Results.BadRequest();
     return Results.Ok(await reader.ReadAsync(input.AgentId, input.MessageIds, token));
 });
+app.MapPost("/internal/v1/host-logs/identities", async (HostLogReadRequest input, IDbContextFactory<CentralLogsDbContext> contexts, CancellationToken token) =>
+{
+    if (input.AgentId.Version != 7 || input.MessageIds is null || input.MessageIds.Count > Vigiloom.Contracts.Agent.AgentLogBatchCodec.MaximumItems)
+        return Results.BadRequest();
+    await using var db = await contexts.CreateDbContextAsync(token);
+    return Results.Ok(await db.HostLogs.AsNoTracking().Where(x => x.AgentId == input.AgentId && input.MessageIds.Contains(x.MessageId))
+        .Select(x => x.MessageId).ToArrayAsync(token));
+});
 app.MapGet("/internal/v1/host-logs/{deviceId:guid}", async (Guid deviceId, DateTimeOffset from, DateTimeOffset until,
     string? cursor, Guid? sourceId, HostLogHistory history, CancellationToken token) =>
 {
     try { return Results.Ok(await history.GetAsync(deviceId, from, until, cursor, sourceId, token)); }
     catch (ArgumentException) { return Results.BadRequest(); }
 });
+app.MapGet("/internal/v1/host-logs/{deviceId:guid}/{agentId:guid}/{messageId:guid}", async (Guid deviceId, Guid agentId, Guid messageId, HostLogHistory history, CancellationToken token) =>
+    await history.GetEvidenceAsync(deviceId, agentId, messageId, token) is { } result ? Results.Ok(result) : Results.NotFound());
 app.MapPost("/internal/v1/application-logs", async (ApplicationLogSubmission input, ApplicationLogIngestion ingestion, CancellationToken token) =>
     MapReceipt(await ingestion.ReceiveAsync(input, token)))
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(8 * 1024 * 1024));

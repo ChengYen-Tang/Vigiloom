@@ -35,3 +35,13 @@ public sealed record AgentQueueMonitoring(DateTimeOffset ReportedAt, AgentQueueS
 
 /// <summary>Latest authenticated metric-loss snapshot, not proof of complete historical accounting.</summary>
 public sealed record AgentMetricLossMonitoring(DateTimeOffset ReportedAt, AgentMetricLossReport Snapshot);
+
+public interface IAgentStatusReader
+{
+    Task<AgentConnectionStatus?> GetAsync(Guid deviceId, CancellationToken token);
+}
+
+public interface IAgentOverviewReader
+{
+    Task<IReadOnlyDictionary<Guid, AgentConnectionStatus>> GetConnectionsAsync(IReadOnlyList<Guid> deviceIds, CancellationToken token);
+}

@@ -11,10 +11,10 @@ internal static class AgentInboxSettingsEndpoints
     {
         var admin = app.MapGroup("/api/v1/settings/agent-inbox")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
-        admin.MapGet("/", async (AgentInboxSettings settings, CancellationToken token) => Results.Ok(await settings.GetAsync(token)))
+        admin.MapGet("/", async (IAgentInboxSettings settings, CancellationToken token) => Results.Ok(await settings.GetAsync(token)))
             .Produces<AgentInboxSettingsSnapshot>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithDescription("Requires an Administrator session. Last cleanup time is the last batch that deleted receipts.");
-        admin.MapPost("/cutover", async (AgentInboxCutoverRequest input, AgentInboxSettings settings, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/cutover", async (AgentInboxCutoverRequest input, IAgentInboxSettings settings, HttpContext context, CancellationToken token) =>
         {
             if (!input.ConfirmedReceiversStoppedAndDrained)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["confirmation"] = ["All old receiver processes must be stopped and in-flight transactions drained."] });
@@ -22,14 +22,14 @@ internal static class AgentInboxSettingsEndpoints
                 ? Results.NoContent() : Results.Conflict(), allowApiCredential: false);
         }).Produces(204).Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithDescription("Requires an Administrator session and antiforgery token. Confirm that all old receiver processes and their in-flight transactions have stopped before enabling cleanup.");
-        admin.MapPost("/preview", async (AgentInboxPreviewRequest input, AgentInboxSettings settings, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/preview", async (AgentInboxPreviewRequest input, IAgentInboxSettings settings, HttpContext context, CancellationToken token) =>
         {
             if (!AgentInboxPolicyLimits.IsValid(input.ReplaySeconds, input.RetentionDays)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["policy"] = ["Invalid inbox policy."] });
             return await ApiMutation.ExecuteAsync(context, async actor => await settings.PreviewAsync(input.ReplaySeconds, input.RetentionDays, input.Version, actor, token) is { } preview
                 ? Results.Ok(preview) : Results.Conflict(), allowApiCredential: false);
         }).Produces<AgentInboxSettingsPreview>().Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
             .WithDescription("Requires an Administrator session and antiforgery token. Returns 409 if the policy changed or cleanup is not ready.");
-        admin.MapPut("/", async (AgentInboxSettingsUpdate input, AgentInboxSettings settings, HttpContext context, CancellationToken token) =>
+        admin.MapPut("/", async (AgentInboxSettingsUpdate input, IAgentInboxSettings settings, HttpContext context, CancellationToken token) =>
         {
             if (!AgentInboxPolicyLimits.IsValid(input.ReplaySeconds, input.RetentionDays)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["policy"] = ["Invalid inbox policy."] });
             return await ApiMutation.ExecuteAsync(context, async actor =>

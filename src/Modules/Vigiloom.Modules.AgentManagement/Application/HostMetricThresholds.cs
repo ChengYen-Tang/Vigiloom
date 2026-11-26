@@ -13,6 +13,18 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Manages threshold policies and evaluates a single exact metric series on demand.</summary>
 public sealed class HostMetricThresholds(IDbContextFactory<AgentManagementDbContext> contexts, IDeviceAgentSource devices, TimeProvider clock)
+    : HostMetricThresholdCore<AgentManagementDbContext>(contexts, clock,
+        async (device, token) => await devices.GetAsync(device, token) is not null,
+        (db, device, agent, token) => db.Agents.AnyAsync(x => x.Id == agent && x.DeviceId == device, token));
+
+public sealed class HostMonitoringThresholds(IDbContextFactory<HostMonitoringDbContext> contexts, TimeProvider clock)
+    : HostMetricThresholdCore<HostMonitoringDbContext>(contexts, clock,
+        (_, _) => Task.FromResult(true),
+        (db, device, agent, token) => db.InboxStates.AnyAsync(x => x.Id == agent && x.DeviceId == device, token));
+
+public abstract class HostMetricThresholdCore<TContext>(IDbContextFactory<TContext> contexts, TimeProvider clock,
+    Func<Guid, CancellationToken, Task<bool>> deviceExists,
+    Func<TContext, Guid, Guid, CancellationToken, Task<bool>> agentExists) : IHostMetricThresholds where TContext : DbContext
 {
     private const int MaximumPerDevice = 500;
 
@@ -20,17 +32,17 @@ public sealed class HostMetricThresholds(IDbContextFactory<AgentManagementDbCont
         string source, string? dimension, CancellationToken token)
     {
         ValidateSeries(deviceId, agentId, kind, source, dimension);
-        if (await devices.GetAsync(deviceId, token) is null) return null;
+        if (!await deviceExists(deviceId, token)) return null;
         await using var db = await contexts.CreateDbContextAsync(token);
-        if (!await db.Agents.AsNoTracking().AnyAsync(x => x.Id == agentId && x.DeviceId == deviceId, token)) return null;
+        if (!await agentExists(db, deviceId, agentId, token)) return null;
         var hash = HashSeries(agentId, kind, source, dimension);
-        var row = await db.HostMetricThresholds.AsNoTracking().SingleOrDefaultAsync(x => x.DeviceId == deviceId && x.SeriesHash == hash, token);
+        var row = await db.Set<HostMetricThreshold>().AsNoTracking().SingleOrDefaultAsync(x => x.DeviceId == deviceId && x.SeriesHash == hash, token);
         var now = clock.GetUtcNow();
         if (row is null) return new(HostMetricThresholdState.NotConfigured, null, now, null, null);
         VerifySeries(row, agentId, kind, source, dimension);
         var view = ToView(row);
         if (!row.Enabled) return new(HostMetricThresholdState.Disabled, null, now, view, null);
-        var sample = await db.HostMetrics.AsNoTracking()
+        var sample = await db.Set<HostMetric>().AsNoTracking()
             .Where(x => x.AgentId == agentId && x.Kind == kind &&
                 EF.Functions.Collate(x.Source, "Latin1_General_100_BIN2") == source && EF.Functions.DataLength(x.Source) == EF.Functions.DataLength(source) &&
                 (dimension == null ? x.Dimension == null : x.Dimension != null &&
@@ -63,20 +75,20 @@ public sealed class HostMetricThresholds(IDbContextFactory<AgentManagementDbCont
         try { version = Convert.FromBase64String(input.Version ?? ""); }
         catch (FormatException) { return null; }
         if (version.Length is not (0 or 8)) return null;
-        if (await devices.GetAsync(deviceId, token) is null) return null;
+        if (!await deviceExists(deviceId, token)) return null;
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
         await AgentDeviceLock.AcquireAsync(db, deviceId, token);
-        if (!await db.Agents.AnyAsync(x => x.Id == agentId && x.DeviceId == deviceId, token)) return null;
+        if (!await agentExists(db, deviceId, agentId, token)) return null;
         var hash = HashSeries(agentId, kind, source, dimension);
-        var row = await db.HostMetricThresholds.SingleOrDefaultAsync(x => x.DeviceId == deviceId && x.SeriesHash == hash, token);
+        var row = await db.Set<HostMetricThreshold>().SingleOrDefaultAsync(x => x.DeviceId == deviceId && x.SeriesHash == hash, token);
         if (row is null)
         {
             if (version.Length != 0) return null;
-            if (await db.HostMetricThresholds.CountAsync(x => x.DeviceId == deviceId, token) >= MaximumPerDevice)
+            if (await db.Set<HostMetricThreshold>().CountAsync(x => x.DeviceId == deviceId, token) >= MaximumPerDevice)
                 throw new ArgumentException("Too many metric thresholds for this device.");
             row = new HostMetricThreshold { DeviceId = deviceId, AgentId = agentId, Kind = kind, Source = source, Dimension = dimension, SeriesHash = hash };
-            db.HostMetricThresholds.Add(row);
+            db.Set<HostMetricThreshold>().Add(row);
         }
         else
         {
@@ -92,7 +104,7 @@ public sealed class HostMetricThresholds(IDbContextFactory<AgentManagementDbCont
         try
         {
             await db.SaveChangesAsync(token);
-            db.HostMetricThresholdAudits.Add(new HostMetricThresholdAudit { ThresholdId = row.Id, DeviceId = deviceId,
+            db.Set<HostMetricThresholdAudit>().Add(new HostMetricThresholdAudit { ThresholdId = row.Id, DeviceId = deviceId,
                 ActorId = actorId, OccurredAt = clock.GetUtcNow(), Enabled = row.Enabled, Comparison = row.Comparison,
                 Value = row.Value, FreshnessSeconds = row.FreshnessSeconds, Version = row.Version.ToArray() });
             await db.SaveChangesAsync(token);

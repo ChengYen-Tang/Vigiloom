@@ -15,6 +15,43 @@ public sealed class AgentHeartbeatClientTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
+    public async Task HeartbeatFallsBackToHttpOnlyWhenConnectionIsUnavailable()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests", Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var vault = new IdentityVault(root);
+            var owner = new AgentSettingsOwner(Guid.CreateVersion7(), "https://example.test/", vault.StateDirectory);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = owner.Server, AgentId = owner.AgentId,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var handler = new CaptureHandler();
+            using var http = new HttpClient(handler);
+            var connection = new HeartbeatTransport();
+            var client = new AgentHeartbeatClient(http, connection);
+            Assert.AreEqual(HeartbeatResult.Accepted, await client.SendAsync(vault, new Uri(owner.Server), token));
+            Assert.HasCount(1, handler.Reports);
+            Assert.AreEqual(connection.LastReport!.Sequence, handler.Reports[0].Sequence);
+            connection.Result = HttpStatusCode.Unauthorized;
+            Assert.AreEqual(HeartbeatResult.Unauthorized, await client.SendAsync(vault, new Uri(owner.Server), token));
+            Assert.HasCount(1, handler.Reports);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    private sealed class HeartbeatTransport : IAgentHeartbeatTransport
+    {
+        public HttpStatusCode? Result { get; set; }
+        public AgentHeartbeatReport? LastReport { get; private set; }
+        public Task<HttpStatusCode?> SendAsync(Uri server, string credential, AgentHeartbeatReport? report, CancellationToken token)
+        {
+            LastReport = report;
+            return Task.FromResult(Result);
+        }
+    }
+
+    [TestMethod]
     public async Task Heartbeat_DoesNotSendPreviousOwnersModuleFailures()
     {
         var root = Path.Combine(Path.GetTempPath(), "VigiloomHeartbeatClientTests", Path.GetRandomFileName());

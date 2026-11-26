@@ -10,7 +10,7 @@ internal static class HostMetricThresholdEndpoints
     {
         const string route = "/api/v1/devices/{deviceId:guid}/host-metric-threshold";
         app.MapGet(route, async (Guid deviceId, Guid agentId, AgentMetricKind kind, string source, string? dimension,
-            HttpContext context, HostMetricThresholds thresholds, CancellationToken token) =>
+            HttpContext context, IHostMetricThresholds thresholds, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             try
@@ -24,7 +24,7 @@ internal static class HostMetricThresholdEndpoints
           .WithSummary("Evaluate the current threshold for one exact host metric series");
 
         app.MapPut(route, async (Guid deviceId, Guid agentId, AgentMetricKind kind, string source, string? dimension,
-            HostMetricThresholdInput input, HttpContext context, HostMetricThresholds thresholds, CancellationToken token) =>
+            HostMetricThresholdInput input, HttpContext context, IHostMetricThresholds thresholds, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             try

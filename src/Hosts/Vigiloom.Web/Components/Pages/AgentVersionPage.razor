@@ -6,7 +6,7 @@
 @using Vigiloom.Contracts.Devices
 @inject IDeviceManagement Devices
 @inject IAgentRegistration Agents
-@inject AgentMonitoring Monitoring
+@inject Vigiloom.Contracts.Devices.IAgentStatusReader Monitoring
 @inject ILogger<AgentVersionPage> Logger
 
 <PageTitle>Agent 版本 - Vigiloom</PageTitle>

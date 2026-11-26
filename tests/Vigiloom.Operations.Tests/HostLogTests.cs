@@ -63,6 +63,12 @@ public sealed class HostLogTests(TestContext context)
                 Guid.CreateVersion7(), AgentLogSourceKind.TextFile, "auth", 1, [item]);
             var input = new HostLogSubmission(Guid.CreateVersion7(), Guid.CreateVersion7(), 0, batch);
             using (var first = await client.PostAsJsonAsync("/internal/v1/host-logs", input, token)) Assert.AreEqual(HttpStatusCode.OK, first.StatusCode);
+            using (var identities = await client.PostAsJsonAsync("/internal/v1/host-logs/identities",
+                new HostLogReadRequest(input.AgentId, [item.MessageId, Guid.CreateVersion7()]), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, identities.StatusCode);
+                CollectionAssert.AreEquivalent(new[] { item.MessageId }, (await identities.Content.ReadFromJsonAsync<Guid[]>(cancellationToken: token))!);
+            }
             using (var read = await client.PostAsJsonAsync("/internal/v1/host-logs/read", new HostLogReadRequest(input.AgentId, [item.MessageId]), token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
@@ -118,6 +124,10 @@ public sealed class HostLogTests(TestContext context)
             var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(-5).ToString("O"));
             var until = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(5).ToString("O"));
             var hostHistory = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{input.DeviceId:D}?from={from}&until={until}", token);
+            var evidence = await client.GetFromJsonAsync<HostLogEvidenceView>($"/internal/v1/host-logs/{input.DeviceId:D}/{input.AgentId:D}/{item.MessageId:D}", token);
+            Assert.AreEqual(item.Content, evidence!.Content);
+            using (var wrongDevice = await client.GetAsync($"/internal/v1/host-logs/{Guid.CreateVersion7():D}/{input.AgentId:D}/{item.MessageId:D}", token))
+                Assert.AreEqual(HttpStatusCode.NotFound, wrongDevice.StatusCode);
             Assert.HasCount(1, hostHistory!.Items);
             Assert.AreEqual(item.MessageId, hostHistory.Items[0].MessageId);
             var otherHost = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{Guid.CreateVersion7():D}?from={from}&until={until}", token);

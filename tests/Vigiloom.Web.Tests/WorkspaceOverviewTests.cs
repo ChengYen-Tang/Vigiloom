@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Workspace;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.NetworkMonitoring.Domain;
@@ -29,6 +30,48 @@ namespace Vigiloom.Web.Tests;
 [TestCategory("Database")]
 public sealed class WorkspaceOverviewTests(TestContext context)
 {
+    [TestMethod]
+    public Task OverviewUsesHostServiceForAgentStatus() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var reader = new OnlineAgentStatus();
+        using var baseFactory = PingTestSite.CreateFactory(database.ConnectionString);
+        using var factory = baseFactory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            { ["Services:HostMonitoring:Url"] = "http://host-monitoring" }));
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IAgentOverviewReader>();
+                services.AddSingleton<IAgentOverviewReader>(reader);
+            });
+        });
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        var host = new Device("Remote monitored host", "host.example", true, DateTimeOffset.UtcNow);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+        {
+            db.Devices.Add(host);
+            await db.SaveChangesAsync(token);
+        }
+        using var client = PingTestSite.Client(factory);
+        await PingTestSite.LoginAsync(client, "reader", token);
+        var overview = await client.GetFromJsonAsync<WorkspaceOverview>("/api/v1/workspace/overview", token);
+        Assert.IsNotNull(overview);
+        Assert.AreEqual("連線中", overview.Agents.Items.Single(x => x.Id == host.Id).State);
+        reader.Fail = true;
+        var unavailable = await client.GetFromJsonAsync<WorkspaceOverview>("/api/v1/workspace/overview", token);
+        Assert.IsNotNull(unavailable);
+        Assert.IsTrue(unavailable.Agents.Unavailable);
+        Assert.IsFalse(unavailable.Ping.Unavailable);
+    }, context.CancellationToken);
+
+    private sealed class OnlineAgentStatus : IAgentOverviewReader
+    {
+        public bool Fail { get; set; }
+        public Task<IReadOnlyDictionary<Guid, AgentConnectionStatus>> GetConnectionsAsync(IReadOnlyList<Guid> deviceIds, CancellationToken token) =>
+            Fail ? throw new HttpRequestException("Host service unavailable") :
+                Task.FromResult<IReadOnlyDictionary<Guid, AgentConnectionStatus>>(deviceIds.ToDictionary(id => id,
+                    id => new AgentConnectionStatus(id, AgentConnectionState.Online, DateTimeOffset.UtcNow, 90)));
+    }
     [TestMethod]
     [TestCategory("Browser")]
     [Timeout(120000, CooperativeCancellation = true)]

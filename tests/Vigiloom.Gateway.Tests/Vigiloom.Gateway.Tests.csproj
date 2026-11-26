@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Gateway/Vigiloom.Gateway.csproj" />
+    <ProjectReference Include="../../src/Hosts/Vigiloom.HostMonitoring/Vigiloom.HostMonitoring.csproj" Aliases="HostMonitoring" />
   </ItemGroup>
 </Project>

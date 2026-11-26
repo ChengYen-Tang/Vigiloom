@@ -7,9 +7,9 @@
 @using Vigiloom.Modules.Resources.Application
 @using Vigiloom.Infrastructure.LogAdmission
 @inject IDeviceManagement Devices
-@inject HostLogConfiguration Sources
-@inject HostLogMonitoring Monitoring
-@inject PolicyAdministration Quota
+@inject IHostLogConfiguration Sources
+@inject IHostLogMonitoring Monitoring
+@inject Vigiloom.Web.LogQuota.LogQuotaReader Quota
 @inject TimeProvider Clock
 @inject NavigationManager Navigation
 @inject ILogger<HostLogSources> Logger
@@ -94,7 +94,7 @@
                 try
                 {
                     status = await Monitoring.GetAsync(Id, HttpContext.RequestAborted);
-                    var limits = (await Quota.GetAsync(HttpContext.RequestAborted)).Values;
+                    var limits = await Quota.GetAsync(HttpContext.RequestAborted);
                     if (items is not null && status is not null)
                     {
                         var desired = AgentLogSettingsSnapshot.Create(items.Select(x => x.Settings), Math.Min(AgentLogBatchCodec.MaximumItems, Math.Min(limits.SourceBurst, limits.GlobalBurst)));

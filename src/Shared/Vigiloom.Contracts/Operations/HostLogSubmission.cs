@@ -1,4 +1,5 @@
 using Vigiloom.Contracts.Agent;
+using System.Text.Json.Serialization;
 
 namespace Vigiloom.Contracts.Operations;
 
@@ -11,4 +12,4 @@ public sealed record HostLogReadRequest(Guid AgentId, IReadOnlyCollection<Guid> 
 public enum LogReceiptStatus { Accepted, Invalid, Conflict, RateLimited, BatchTooLarge, Busy }
 
 /// <summary>The result of saving a Log submission.</summary>
-public sealed record LogReceipt(LogReceiptStatus Status, TimeSpan? RetryAfter = null);
+public sealed record LogReceipt([property: JsonRequired] LogReceiptStatus Status, TimeSpan? RetryAfter = null);

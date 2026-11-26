@@ -1,0 +1,133 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Operations;
+using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Domain;
+using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Testing.SqlServer;
+
+namespace Vigiloom.Modules.AgentManagement.Tests;
+
+[TestClass]
+[TestCategory("Integration")]
+[TestCategory("Database")]
+public sealed class HostObservationReceiverTests(TestContext context)
+{
+    [TestMethod]
+    public Task StoresAndDeduplicatesBatchesAndTheirItems() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<HostMonitoringDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable(HostMonitoringDbContext.MigrationHistory, "agent")).Options;
+            var factory = new PooledDbContextFactory<HostMonitoringDbContext>(options);
+            await using (var db = await factory.CreateDbContextAsync(token))
+            {
+                await db.Database.MigrateAsync(token);
+                var policy = new AgentReplayPolicy();
+                var policyTime = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+                policy.InitializeFresh(policyTime);
+                policy.BeginCleanupCutover(policyTime);
+                db.ReplayPolicies.Add(policy);
+                await db.SaveChangesAsync(token);
+            }
+            var receiver = new HostObservationReceiver(factory, TimeProvider.System);
+            var agentId = Guid.CreateVersion7();
+            var identity = new RegisteredAgentIdentity(agentId, Guid.CreateVersion7(), 1);
+            var now = DateTimeOffset.UtcNow;
+            var item = new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.CpuTotalPercent, "cpu", null, 42);
+            var batch = new AgentMetricBatch(AgentMetricBatchCodec.SchemaVersion, Guid.CreateVersion7(), now, [item]);
+            var data = AgentMetricBatchCodec.Serialize(batch);
+            Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(identity, data, token));
+            Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(identity, data, token));
+            Assert.AreEqual(BatchReceiptStatus.Unauthorized, await receiver.ReceiveAsync(identity with { DeviceGeneration = 2 }, data, token));
+            var expired = AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), EnqueuedAt = now.AddDays(-2) });
+            Assert.AreEqual(BatchReceiptStatus.Expired, await receiver.ReceiveAsync(identity, expired, token));
+            await using (var rejected = await factory.CreateDbContextAsync(token))
+            {
+                var state = await rejected.InboxStates.SingleAsync(token);
+                Assert.AreEqual(AgentReplayIssue.Expired, state.LastReplayIssue);
+                Assert.IsNotNull(state.ReplayClockFloor);
+            }
+            var future = AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), EnqueuedAt = now.AddMinutes(10) });
+            Assert.AreEqual(BatchReceiptStatus.TimestampAhead, await receiver.ReceiveAsync(identity, future, token));
+            var changed = AgentMetricBatchCodec.Serialize(batch with { Items = [item with { Value = 43 }] });
+            Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(identity, changed, token));
+            var repeatedItem = AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7() });
+            Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(identity, repeatedItem, token));
+            var conflictingItem = AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [item with { Value = 43 }] });
+            Assert.AreEqual(BatchReceiptStatus.Conflict, await receiver.ReceiveAsync(identity, conflictingItem, token));
+            var concurrent = AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7() });
+            var results = await Task.WhenAll(receiver.ReceiveAsync(identity, concurrent, token), receiver.ReceiveAsync(identity, concurrent, token));
+            CollectionAssert.AreEquivalent(new[] { BatchReceiptStatus.Accepted, BatchReceiptStatus.AlreadyAccepted }, results);
+            var newItem = item with { MessageId = Guid.CreateVersion7() };
+            var first = AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [newItem] });
+            var second = AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [newItem] });
+            var repeatedResults = await Task.WhenAll(receiver.ReceiveAsync(identity, first, token), receiver.ReceiveAsync(identity, second, token));
+            Assert.IsTrue(repeatedResults.All(result => result == BatchReceiptStatus.Accepted));
+            await using var snapshot = await factory.CreateDbContextAsync(token);
+            Assert.AreEqual(2, await snapshot.HostMetrics.CountAsync(token));
+            Assert.AreEqual(5, await snapshot.ReceivedBatches.CountAsync(token));
+            Assert.IsTrue(await snapshot.ReceivedBatches.AllAsync(x => x.TrustedReceivedAt != null && x.RetainUntil != null, token));
+            var sink = new TestLogSink();
+            var logReceiver = new HostObservationReceiver(factory, TimeProvider.System, sink);
+            var logId = Guid.CreateVersion7();
+            var record = new AgentLogRecord(logId, now, "message", null, null, null, null, null);
+            var log = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                Guid.CreateVersion7(), AgentLogSourceKind.Journal, "System", 1, [record]);
+            var logBytes = AgentLogBatchCodec.Serialize(log);
+            Assert.AreEqual(BatchReceiptStatus.CapacityExceeded, await logReceiver.ReceiveAsync(identity, logBytes, token));
+            var changedLog = AgentLogBatchCodec.Serialize(log with { Items = [record with { Content = "changed" }] });
+            Assert.AreEqual(BatchReceiptStatus.Conflict, await logReceiver.ReceiveAsync(identity, changedLog, token));
+            var crossType = AgentMetricBatchCodec.Serialize(batch with { BatchId = Guid.CreateVersion7(), Items = [item with { MessageId = logId }] });
+            Assert.AreEqual(BatchReceiptStatus.Conflict, await logReceiver.ReceiveAsync(identity, crossType, token));
+            Assert.AreEqual(BatchReceiptStatus.Accepted, await logReceiver.ReceiveAsync(identity, logBytes, token));
+            Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await logReceiver.ReceiveAsync(identity, logBytes, token));
+            Assert.AreEqual(2, sink.Calls);
+            Assert.AreEqual(1, sink.StoredBatches);
+
+            var gate = new GateLogSink();
+            var delayedReceiver = new HostObservationReceiver(factory, TimeProvider.System, gate);
+            var delayed = log with { BatchId = Guid.CreateVersion7(), Items = [record with { MessageId = Guid.CreateVersion7() }] };
+            var delivery = delayedReceiver.ReceiveAsync(identity, AgentLogBatchCodec.Serialize(delayed), token);
+            await gate.Started.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+            await using (var otherDb = await factory.CreateDbContextAsync(token))
+            {
+                await otherDb.ReceivedBatches.Where(x => x.AgentId == agentId && x.BatchId == delayed.BatchId).ExecuteDeleteAsync(token);
+                var replacement = new ReceivedBatch(agentId, delayed.BatchId, new byte[32], now, now, 1, 1);
+                otherDb.ReceivedBatches.Add(replacement);
+                otherDb.Entry(replacement).Property("PendingDelivery").CurrentValue = true;
+                await otherDb.SaveChangesAsync(token);
+            }
+            gate.Release.TrySetResult();
+            Assert.AreEqual(BatchReceiptStatus.Conflict, await delivery);
+            await using var final = await factory.CreateDbContextAsync(token);
+            Assert.IsTrue(await final.ReceivedBatches.AnyAsync(x => x.BatchId == delayed.BatchId && EF.Property<bool>(x, "PendingDelivery"), token));
+        }, context.CancellationToken);
+
+    private sealed class TestLogSink : IHostLogSink
+    {
+        public int Calls { get; private set; }
+        public int StoredBatches { get; private set; }
+        public Task<LogReceipt> ReceiveAsync(RegisteredAgentIdentity identity, AgentLogBatch batch, CancellationToken token)
+        {
+            Calls++;
+            if (Calls == 1) StoredBatches++;
+            // The first call models an Operations commit whose response was lost.
+            return Task.FromResult(new LogReceipt(Calls == 1 ? LogReceiptStatus.Busy : LogReceiptStatus.Accepted));
+        }
+    }
+
+    private sealed class GateLogSink : IHostLogSink
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<LogReceipt> ReceiveAsync(RegisteredAgentIdentity identity, AgentLogBatch batch, CancellationToken token)
+        {
+            Started.TrySetResult();
+            await Release.Task.WaitAsync(token);
+            return new(LogReceiptStatus.Accepted);
+        }
+    }
+}

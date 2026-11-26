@@ -12,18 +12,18 @@ internal static class HostLogSettingsEndpoints
     {
         var admin = app.MapGroup("/api/v1/agent-management/devices/{deviceId:guid}/log-sources")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
-        admin.MapGet("/", async (Guid deviceId, HostLogConfiguration settings, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/", async (Guid deviceId, IHostLogConfiguration settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await settings.ListAsync(deviceId, token) is { } list ? Results.Ok(list) : Results.NotFound();
         }).Produces<IReadOnlyList<HostLogSourceView>>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
-        admin.MapGet("/{sourceId:guid}", async (Guid deviceId, Guid sourceId, HostLogConfiguration settings, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/{sourceId:guid}", async (Guid deviceId, Guid sourceId, IHostLogConfiguration settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             var list = await settings.ListAsync(deviceId, token);
             return list?.FirstOrDefault(x => x.Settings.SourceId == sourceId) is { } source ? Results.Ok(source) : Results.NotFound();
         }).Produces<HostLogSourceView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
-        admin.MapPost("/", async (Guid deviceId, HostLogSourceCreate input, HostLogConfiguration settings, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/", async (Guid deviceId, HostLogSourceCreate input, IHostLogConfiguration settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await ApiMutation.ExecuteAsync(context, async actor =>
@@ -32,7 +32,7 @@ internal static class HostLogSettingsEndpoints
                 catch (ArgumentException) { return Invalid(); }
             }, allowApiCredential: false);
         }).Produces<HostLogSourceView>(201).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429);
-        admin.MapPut("/{sourceId:guid}", async (Guid deviceId, Guid sourceId, HostLogSourceUpdate input, HostLogConfiguration settings, HttpContext context, CancellationToken token) =>
+        admin.MapPut("/{sourceId:guid}", async (Guid deviceId, Guid sourceId, HostLogSourceUpdate input, IHostLogConfiguration settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await ApiMutation.ExecuteAsync(context, async actor =>
@@ -41,7 +41,7 @@ internal static class HostLogSettingsEndpoints
                 catch (ArgumentException) { return Invalid(); }
             }, allowApiCredential: false);
         }).Produces<HostLogSourceView>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429);
-        admin.MapPost("/{sourceId:guid}/retire", async (Guid deviceId, Guid sourceId, HostLogSourceRetire input, HostLogConfiguration settings, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/{sourceId:guid}/retire", async (Guid deviceId, Guid sourceId, HostLogSourceRetire input, IHostLogConfiguration settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await ApiMutation.ExecuteAsync(context, async actor =>

@@ -7,8 +7,12 @@ internal static class AgentRegistrationEndpoints
 {
     internal static void MapInternalAgentRegistration(this RouteGroupBuilder api)
     {
+        api.MapPost("/devices/agent-overview", (Guid[] deviceIds, AgentRegistration agents, CancellationToken token) => agents.OverviewAsync(deviceIds, token));
+        api.MapPost("/agents/active", (Guid[] agentIds, AgentRegistration agents, CancellationToken token) => agents.ActiveAsync(agentIds, token));
         api.MapGet("/devices/{id:guid}/agents", async (Guid id, AgentRegistration agents, CancellationToken token) =>
             await agents.ListAsync(id, token) is { } registrations ? Results.Ok(registrations) : Results.NotFound());
+        api.MapGet("/devices/{id:guid}/agent-ownership", async (Guid id, AgentRegistration agents, CancellationToken token) =>
+            await agents.GetOwnershipAsync(id, token) is { } ownership ? Results.Ok(ownership) : Results.NotFound());
         api.MapPost("/devices/{id:guid}/agent-enrollments", async (Guid id, AgentEnrollmentCommand request, AgentRegistration agents, CancellationToken token) =>
             Results.Ok(await agents.IssueAsync(id, request.ActorId, token)));
         api.MapPost("/agent-enrollments/redeem", async (AgentRedeemCommand request, AgentRegistration agents, CancellationToken token) =>
