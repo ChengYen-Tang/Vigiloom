@@ -69,8 +69,13 @@ public sealed class HostMetricRetentionSettings(IDbContextFactory<AgentManagemen
     internal static async Task EnsureAsync(IDbContextFactory<AgentManagementDbContext> contexts, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
-        if (await db.HostMetricRetentionSettings.AnyAsync(x => x.Slot == 1, token)) return;
-        db.HostMetricRetentionSettings.Add(new HostMetricRetentionSetting());
+        await EnsureAsync(db, token);
+    }
+
+    internal static async Task EnsureAsync(DbContext db, CancellationToken token)
+    {
+        if (await db.Set<HostMetricRetentionSetting>().AnyAsync(x => x.Slot == 1, token)) return;
+        db.Set<HostMetricRetentionSetting>().Add(new HostMetricRetentionSetting());
         try { await db.SaveChangesAsync(token); }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { }
     }

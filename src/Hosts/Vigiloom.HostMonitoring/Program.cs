@@ -6,6 +6,7 @@ using Vigiloom.Infrastructure.Work;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AgentManagement.Application.HostMetrics;
 using Hangfire;
 using Hangfire.SqlServer;
 using Vigiloom.Infrastructure.Scheduling;
@@ -78,7 +79,9 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", true))
         .UseSqlServerStorage(services.GetRequiredService<IConfiguration>().GetConnectionString("Scheduling")
             ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."), SchedulingRegistration.StorageOptions(prepareSchema: false)));
     builder.Services.AddScoped<HostInboxRetentionJob>();
+    builder.Services.AddScoped<HostMetricMaintenance>();
     builder.Services.AddHostedService<HostInboxRetentionSchedule>();
+    builder.Services.AddHostedService<HostMetricMaintenanceSchedule>();
     builder.Services.AddHangfireServer(options => { options.Queues = ["host"]; options.IsLightweightServer = true; });
 }
 builder.Services.AddHttpClient("resources", (services, client) =>
