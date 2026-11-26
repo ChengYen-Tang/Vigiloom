@@ -198,4 +198,154 @@
   <data xml:space="preserve" name="額外目標須為有效且不重複的 IPv4、IPv6 或 DNS 名稱。">
     <value>Additional targets must be valid and distinct IPv4, IPv6 or DNS names.</value>
   </data>
+  <data xml:space="preserve" name="設備詳情">
+    <value>Device details</value>
+  </data>
+  <data xml:space="preserve" name="← 返回設備清單">
+    <value>← Back to devices</value>
+  </data>
+  <data xml:space="preserve" name="無法載入設備，請稍後重試。">
+    <value>Unable to load the device. Try again later.</value>
+  </data>
+  <data xml:space="preserve" name="找不到設備">
+    <value>Device not found</value>
+  </data>
+  <data xml:space="preserve" name="此設備不存在，請返回清單。">
+    <value>This device does not exist. Return to the list.</value>
+  </data>
+  <data xml:space="preserve" name="監控已啟用">
+    <value>Monitoring enabled</value>
+  </data>
+  <data xml:space="preserve" name="監控已停用">
+    <value>Monitoring disabled</value>
+  </data>
+  <data xml:space="preserve" name="公開設定">
+    <value>Public settings</value>
+  </data>
+  <data xml:space="preserve" name="監測資訊">
+    <value>Monitoring information</value>
+  </data>
+  <data xml:space="preserve" name="查看 Ping 歷史">
+    <value>View Ping history</value>
+  </data>
+  <data xml:space="preserve" name="額外目標">
+    <value>Additional targets</value>
+  </data>
+  <data xml:space="preserve" name="無">
+    <value>None</value>
+  </data>
+  <data xml:space="preserve" name="Ping 狀態">
+    <value>Ping status</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取">
+    <value>Unable to load</value>
+  </data>
+  <data xml:space="preserve" name="尚無量測資料">
+    <value>No measurements yet</value>
+  </data>
+  <data xml:space="preserve" name="尚無資料">
+    <value>No data yet</value>
+  </data>
+  <data xml:space="preserve" name="Ping 量測">
+    <value>Ping measurements</value>
+  </data>
+  <data xml:space="preserve" name="每個目標分別量測，DNS 或監測器錯誤不代表設備不可達。">
+    <value>Targets are measured separately. DNS and monitor errors do not mean that a device is unreachable.</value>
+  </data>
+  <data xml:space="preserve" name="目前每 {0} 秒一次，逾時 {1} 秒；連續 {2} 次失敗判不可達、{3} 次成功恢復。">
+    <value>Every {0} seconds, with a {1}-second timeout; {2} consecutive failures mark the target unreachable, and {3} successes restore it.</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取 Ping 資料，請稍後再試。">
+    <value>Unable to load Ping data. Try again later.</value>
+  </data>
+  <data xml:space="preserve" name="設備已封存，不排入新量測。">
+    <value>This device is archived and will not be scheduled for new measurements.</value>
+  </data>
+  <data xml:space="preserve" name="設備已停用，不排入新量測。">
+    <value>This device is disabled and will not be scheduled for new measurements.</value>
+  </data>
+  <data xml:space="preserve" name="實際位址">
+    <value>Resolved address</value>
+  </data>
+  <data xml:space="preserve" name="目前狀態">
+    <value>Current status</value>
+  </data>
+  <data xml:space="preserve" name="最近結果">
+    <value>Latest result</value>
+  </data>
+  <data xml:space="preserve" name="成功延遲">
+    <value>Successful latency</value>
+  </data>
+  <data xml:space="preserve" name="量測時間（UTC）">
+    <value>Measured at (UTC)</value>
+  </data>
+  <data xml:space="preserve" name="位置">
+    <value>Location</value>
+  </data>
+  <data xml:space="preserve" name="恢復設備">
+    <value>Restore device</value>
+  </data>
+  <data xml:space="preserve" name="封存設備">
+    <value>Archive device</value>
+  </data>
+  <data xml:space="preserve" name="恢復後保留原設備身分，監控維持停用；需要時可編輯啟用。">
+    <value>The device identity is retained. Monitoring stays disabled until you enable it.</value>
+  </data>
+  <data xml:space="preserve" name="封存會停止後續監測並保留設備與歷史資料。應用服務不會因此刪除。">
+    <value>Archiving stops future monitoring and retains the device and its history. Application services are not deleted.</value>
+  </data>
+  <data xml:space="preserve" name="我了解以上影響">
+    <value>I understand these effects</value>
+  </data>
+  <data xml:space="preserve" name="確認恢復">
+    <value>Confirm restore</value>
+  </data>
+  <data xml:space="preserve" name="確認封存">
+    <value>Confirm archive</value>
+  </data>
+  <data xml:space="preserve" name="請先確認操作影響。">
+    <value>Confirm that you understand the effects first.</value>
+  </data>
+  <data xml:space="preserve" name="設備狀態已變更，請重新整理後再試。">
+    <value>The device status changed. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="無法確認操作結果，請重新整理並檢查設備狀態。">
+    <value>Unable to confirm the result. Refresh and check the device status.</value>
+  </data>
+  <data xml:space="preserve" name="成功">
+    <value>Success</value>
+  </data>
+  <data xml:space="preserve" name="逾時">
+    <value>Timed out</value>
+  </data>
+  <data xml:space="preserve" name="無法到達">
+    <value>Unreachable</value>
+  </data>
+  <data xml:space="preserve" name="DNS 失敗">
+    <value>DNS failed</value>
+  </data>
+  <data xml:space="preserve" name="權限不足">
+    <value>Permission denied</value>
+  </data>
+  <data xml:space="preserve" name="監測器錯誤">
+    <value>Monitor error</value>
+  </data>
+  <data xml:space="preserve" name="資料過期">
+    <value>Data is stale</value>
+  </data>
+  <data xml:space="preserve" name="DNS 解析失敗">
+    <value>DNS resolution failed</value>
+  </data>
+  <data xml:space="preserve" name="監測器權限不足">
+    <value>Monitor permission denied</value>
+  </data>
+  <data xml:space="preserve" name="可達">
+    <value>Reachable</value>
+  </data>
+  <data xml:space="preserve" name="不可達">
+    <value>Unreachable</value>
+  </data>
+  <data xml:space="preserve" name="待確認">
+    <value>Pending</value>
+  </data>
 </root>

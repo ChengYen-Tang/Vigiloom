@@ -130,6 +130,17 @@ public sealed class DeviceManagementTests
             Assert.DoesNotContain("編輯設備", content);
             Assert.DoesNotContain("確認封存", content);
         }
+        reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var response = await reader.GetAsync($"/devices/{devices.Items[0].Id:D}", token))
+        {
+            var content = (await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+            Assert.Contains("Monitoring information", content);
+            Assert.Contains("Ping measurements", content);
+            Assert.Contains("Test router", content);
+            Assert.Contains("example.com", content);
+            Assert.DoesNotContain("Confirm archive", content);
+        }
+        reader.DefaultRequestHeaders.AcceptLanguage.Clear();
         using (var response = await reader.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("No", "example.org", [], false), token)) Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
         using (var response = await admin.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("No CSRF", "example.org", [], false), token)) Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
         using var apiReader = Client(factory);
