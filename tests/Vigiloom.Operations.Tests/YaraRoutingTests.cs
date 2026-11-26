@@ -63,6 +63,9 @@ public sealed class YaraRoutingTests(TestContext context)
             });
             security.UseKestrel(0);
             using var securityClient = security.CreateClient();
+            Assert.IsNotNull(await securityClient.GetFromJsonAsync<IntelligenceSourcePage>("/internal/v1/intelligence/sources/?page=1", token));
+            using (var invalidPage = await securityClient.GetAsync("/internal/v1/intelligence/sources/?page=0", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidPage.StatusCode);
             var baselineView = await securityClient.GetFromJsonAsync<DeviceBaselineView>($"/internal/v1/devices/{identity.DeviceId:D}/baseline", token);
             Assert.IsNotNull(baselineView);
             Assert.AreEqual(identity.DeviceId, baselineView.DeviceId);
