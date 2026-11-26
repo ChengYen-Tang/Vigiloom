@@ -23,8 +23,15 @@ builder.Services.AddHttpClient<IHostLogSink, OperationsLogSink>((services, clien
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(30);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<IHostLogIdentities, OperationsLogIdentities>((services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations";
+    client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(5);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<HostObservationReceiver>();
 builder.Services.AddScoped<HostInboxCleanup>();
+builder.Services.AddScoped<HostLogIdentityCleanup>();
 builder.Services.AddSingleton(TimeProvider.System);
 if (builder.Configuration.GetValue("Hangfire:Enabled", true))
 {
