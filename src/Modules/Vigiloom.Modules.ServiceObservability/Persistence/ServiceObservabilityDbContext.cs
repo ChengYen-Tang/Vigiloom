@@ -130,6 +130,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         source.Property(x => x.RowId).UseIdentityColumn();
         source.HasIndex(x => x.RowId).IsUnique().IsClustered();
         source.Property(x => x.Name).HasMaxLength(128).IsRequired();
+        source.HasIndex(x => x.IsSelf).IsUnique().HasFilter("[IsSelf] = 1");
         source.Property(x => x.Verifier).HasColumnType("binary(32)").IsRequired();
         source.Property(x => x.Version).IsRowVersion();
 

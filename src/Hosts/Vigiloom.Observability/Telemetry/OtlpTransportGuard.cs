@@ -3,7 +3,8 @@ namespace Vigiloom.Observability.Telemetry;
 /// <summary>Bounds OTLP work, including authentication and body read, before entering the endpoint.</summary>
 internal sealed class OtlpTransportGuard(RequestDelegate next, OtlpConcurrency concurrency)
 {
-    public Task InvokeAsync(HttpContext context) => context.Request.Path.StartsWithSegments(OtlpHttpEndpoints.Prefix)
+    public Task InvokeAsync(HttpContext context) => context.Request.Path.StartsWithSegments(OtlpHttpEndpoints.Prefix) ||
+        context.Request.Path.StartsWithSegments(SelfOtlpEndpoints.Prefix)
         ? ProcessAsync(context, next, concurrency, TimeSpan.FromSeconds(30))
         : next(context);
 

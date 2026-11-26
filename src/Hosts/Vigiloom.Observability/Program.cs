@@ -19,6 +19,7 @@ var database = builder.Configuration.GetConnectionString("Observability")
 builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(_ => database, "service", pooled: true);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<SourceCredentials>();
+builder.Services.AddScoped<SelfSourceProvider>();
 builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
     () => provider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
     provider.GetRequiredService<ILogger<ReceptionRejectionDiagnostics>>()));
@@ -42,6 +43,9 @@ builder.Services.AddHttpClient<TemporalHealthTransitionSink>((services, client) 
 builder.Services.AddHttpClient<ICandidateObserver, RemoteCandidateObserver>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<SelfCandidateObserver>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddHttpClient<IApplicationLogDelivery, ApplicationLogDelivery>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
@@ -60,7 +64,8 @@ builder.Services.AddHostedService<WorkDispatcher>();
 var app = builder.Build();
 var forwarded = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwarded is not null) app.UseForwardedHeaders(forwarded);
-app.UseWhen(context => context.Request.Path.StartsWithSegments(OtlpHttpEndpoints.Prefix), otlp =>
+app.UseWhen(context => context.Request.Path.StartsWithSegments(OtlpHttpEndpoints.Prefix) ||
+    context.Request.Path.StartsWithSegments(SelfOtlpEndpoints.Prefix), otlp =>
     otlp.Use(async (context, next) =>
     {
         try { await next(); }
@@ -83,6 +88,7 @@ app.MapGet("/internal/telemetry/source/identity", (HttpContext context) =>
 }).RequireAuthorization("ServiceSource");
 var internalApi = app.MapGroup("/internal/v1");
 app.MapOtlpHttpEndpoints();
+app.MapSelfOtlpEndpoints();
 internalApi.MapGet("/observation-sources/{id:guid}/active", async (Guid id,
     IDbContextFactory<ServiceObservabilityDbContext> contexts, CancellationToken token) =>
 {
