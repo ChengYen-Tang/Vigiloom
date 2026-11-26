@@ -23,6 +23,7 @@ using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Identity;
 using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
@@ -129,6 +130,18 @@ public sealed class NetworkHostTests(TestContext context)
             var status = await response.Content.ReadFromJsonAsync<DevicePingStatus>(cancellationToken: token);
             Assert.IsNotNull(status);
             Assert.AreEqual("example.org", Assert.ContainsSingle(status.Targets).Target);
+        }
+        using (var response = await client.PostAsJsonAsync("/internal/v1/ping/statuses", new[] { new PingDeviceSnapshot(id, version, ["example.org"]) }, token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            var statuses = await response.Content.ReadFromJsonAsync<Dictionary<Guid, DevicePingStatus>>(cancellationToken: token);
+            Assert.IsNotNull(statuses);
+            Assert.AreEqual("example.org", Assert.ContainsSingle(statuses[id].Targets).Target);
+        }
+        using (var response = await client.PostAsJsonAsync("/internal/v1/speed/history", new SpeedHistoryQuery(now.AddDays(-1), now), token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.IsNotNull(await response.Content.ReadFromJsonAsync<SpeedHistoryPage>(cancellationToken: token));
         }
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(20));

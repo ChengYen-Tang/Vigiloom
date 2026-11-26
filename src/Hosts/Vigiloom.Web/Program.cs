@@ -374,6 +374,12 @@ builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingRetentionSettings>();
 builder.Services.AddScoped<PingStore>();
+builder.Services.AddHttpClient<Vigiloom.Web.Network.RemotePingStatusReader>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingStatusReader>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"])
+        ? services.GetRequiredService<PingStore>() : services.GetRequiredService<Vigiloom.Web.Network.RemotePingStatusReader>());
 builder.Services.AddScoped<Vigiloom.Modules.NetworkMonitoring.Application.PingHistory.PingHistoryReader>();
 builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingHistoryClient, Vigiloom.Web.Network.ServerPingHistoryClient>();
 builder.Services.AddScoped<SpeedSettings>();
@@ -381,6 +387,9 @@ builder.Services.AddScoped<SpeedRetentionSettings>();
 builder.Services.AddScoped<SpeedQueue>();
 builder.Services.AddScoped<SpeedHistory>();
 builder.Services.AddScoped<ISpeedHistoryClient, ServerSpeedHistoryClient>();
+builder.Services.AddHttpClient<Vigiloom.Web.SpeedTests.RemoteSpeedHistory>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostMonitoringClient, Vigiloom.Web.HostMonitoring.ServerHostMonitoringClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Vulnerabilities.IVulnerabilityClient, Vigiloom.Web.HostMonitoring.ServerVulnerabilityClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Services.IServiceDetailsClient, Vigiloom.Web.ServiceDetails.ServerServiceDetailsClient>();
