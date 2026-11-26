@@ -16,7 +16,7 @@ internal sealed record HealthNetworkSnapshot(Guid Id, long Generation, byte[] Ve
 
 /// <summary>Claims bounded work and fences result writes against current authorization and settings.</summary>
 internal sealed class HealthStore(IDbContextFactory<ServiceObservabilityDbContext> contexts,
-    IEnumerable<IHealthTransitionSink>? transitionSinks = null)
+    IEnumerable<IHealthTransitionSink>? transitionSinks = null, IHealthObservationSink? observations = null)
 {
     internal async Task<HealthNetworkSnapshot?> NetworkAsync(CancellationToken token)
     {
@@ -201,6 +201,9 @@ internal sealed class HealthStore(IDbContextFactory<ServiceObservabilityDbContex
         }
         db.HealthObservations.Add(new HealthObservation(lease.TargetId, lease.Generation, network.Generation,
             work.SourceVersion, work.ServiceVersion, work.InstanceVersion, work.TargetVersion, network.Version, kind, observedAt, receivedAt));
+        if (observations is not null)
+            await observations.RecordAsync(work.ServiceId, work.Lease.TargetId, kind, receivedAt,
+                db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
         await db.SaveChangesAsync(token);
         var completed = await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [service].[HealthSchedules] SET [LeaseOwner] = NULL, [LeaseUntil] = NULL, [DueAt] = DATEADD(second, {work.IntervalSeconds}, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE [TargetId] = {lease.TargetId} AND [LeaseOwner] = {lease.Owner} AND [Generation] = {lease.Generation} AND [Enabled] = 1 AND [LeaseUntil] > TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')", token);
         if (completed != 1) return false;

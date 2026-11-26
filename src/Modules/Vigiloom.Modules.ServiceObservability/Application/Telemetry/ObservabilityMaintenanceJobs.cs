@@ -28,6 +28,28 @@ public sealed class ObservabilityRetentionJob(TelemetryRetentionCleanup cleanup,
             await using var db = await contexts.CreateDbContextAsync(token);
             await using var tx = await db.Database.BeginTransactionAsync(token);
             var policy = await db.TelemetryRetentionSettings.FromSqlRaw("SELECT * FROM [service].[TelemetryRetentionSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [Slot] = 1").SingleAsync(token);
+            using var response = await client.PostAsJsonAsync("internal/v1/timeline/trace-cleanup", new ApplicationLogCleanupRequest(policy.TraceDays), token);
+            response.EnsureSuccessStatusCode();
+            var removed = await response.Content.ReadFromJsonAsync<int>(cancellationToken: token);
+            await tx.CommitAsync(token);
+            if (removed < 500) break;
+        }
+        while (true)
+        {
+            await using var db = await contexts.CreateDbContextAsync(token);
+            await using var tx = await db.Database.BeginTransactionAsync(token);
+            var policy = await db.TelemetryRetentionSettings.FromSqlRaw("SELECT * FROM [service].[TelemetryRetentionSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [Slot] = 1").SingleAsync(token);
+            using var response = await client.PostAsJsonAsync("internal/v1/timeline/health-cleanup", new ApplicationLogCleanupRequest(policy.HealthDays), token);
+            response.EnsureSuccessStatusCode();
+            var removed = await response.Content.ReadFromJsonAsync<int>(cancellationToken: token);
+            await tx.CommitAsync(token);
+            if (removed < 500) break;
+        }
+        while (true)
+        {
+            await using var db = await contexts.CreateDbContextAsync(token);
+            await using var tx = await db.Database.BeginTransactionAsync(token);
+            var policy = await db.TelemetryRetentionSettings.FromSqlRaw("SELECT * FROM [service].[TelemetryRetentionSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [Slot] = 1").SingleAsync(token);
             using var response = await client.PostAsJsonAsync("internal/v1/application-logs/cleanup", new ApplicationLogCleanupRequest(policy.LogDays), token);
             response.EnsureSuccessStatusCode();
             var result = await response.Content.ReadFromJsonAsync<ApplicationLogCleanupResult>(cancellationToken: token)

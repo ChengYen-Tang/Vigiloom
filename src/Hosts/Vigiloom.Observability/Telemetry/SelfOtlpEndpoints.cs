@@ -29,8 +29,8 @@ internal static class SelfOtlpEndpoints
                     ? new ExportMetricsPartialSuccess { RejectedDataPoints = r.Rejected, ErrorMessage = Rejected } : null }, token,
                 internalSource: await source.GetAsync(token)));
         group.MapPost("/v1/traces", async (HttpContext context, SelfSourceProvider source, SelfCandidateObserver candidates,
-            IDbContextFactory<ServiceObservabilityDbContext> db, IApplicationLogDelivery logs, CancellationToken token) =>
-            await OtlpHttpReceiver.ReceiveAsync(context, ExportTraceServiceRequest.Parser, new TelemetryExports(db, candidates, logs).TracesAsync,
+            IDbContextFactory<ServiceObservabilityDbContext> db, IApplicationLogDelivery logs, ITraceTimelineSink timeline, CancellationToken token) =>
+            await OtlpHttpReceiver.ReceiveAsync(context, ExportTraceServiceRequest.Parser, new TelemetryExports(db, candidates, logs, timeline).TracesAsync,
                 r => new ExportTraceServiceResponse { PartialSuccess = r.Status == ExportStatus.Partial
                     ? new ExportTracePartialSuccess { RejectedSpans = r.Rejected, ErrorMessage = Rejected } : null }, token,
                 internalSource: await source.GetAsync(token)));
