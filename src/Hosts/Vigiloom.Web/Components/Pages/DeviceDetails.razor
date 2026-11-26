@@ -34,21 +34,21 @@
         <section class="device-panel"><h2>@L["監測資訊"]</h2><p><a href="@($"/devices/{Id:D}/ping-history")">@L["查看 Ping 歷史"]</a></p><dl class="device-details"><div><dt>@L["主要目標"]</dt><dd>@device.Address</dd></div><div><dt>@L["額外目標"]</dt><dd>@(device.AdditionalTargets.Count == 0 ? L["無"].Value : string.Join(", ", device.AdditionalTargets))</dd></div><div><dt>@L["Ping 狀態"]</dt><dd>@L[device.Archived ? "已封存" : !device.Enabled ? "已停用" : pingError ? "無法讀取" : pingStatus?.Targets.FirstOrDefault(x => x.Target == device.Address)?.DisplayState ?? "尚無量測資料"]</dd></div><div><dt>@L["建立時間（UTC）"]</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
             @if (device.DeepMonitoring)
             {
-                <div><dt>Agent 狀態</dt><dd>@(agentError ? "無法讀取" : AgentState(agentStatus?.State))</dd></div>
-                <div><dt>Agent 最後回報（UTC）</dt><dd>@(agentStatus?.LastHeartbeatAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
-                <div><dt>Agent CPU（單一邏輯處理器為 100%）</dt><dd>@(agentStatus?.Process?.CpuPercent is { } cpu ? $"{cpu:F1}%" : "尚無資料")</dd></div>
-                <div><dt>Agent 記憶體工作集</dt><dd>@(agentStatus?.Process?.WorkingSetBytes is { } memory ? QueueBytes(memory) : "尚無資料")</dd></div>
-                <div><dt>Agent 資源回報（UTC）</dt><dd>@(agentStatus?.Process?.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
+                <div><dt>@L["Agent 狀態"]</dt><dd>@L[agentError ? "無法讀取" : AgentState(agentStatus?.State)]</dd></div>
+                <div><dt>@L["Agent 最後回報（UTC）"]</dt><dd>@(agentStatus?.LastHeartbeatAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚無資料"].Value)</dd></div>
+                <div><dt>@L["Agent CPU（單一邏輯處理器為 100%）"]</dt><dd>@(agentStatus?.Process?.CpuPercent is { } cpu ? $"{cpu:F1}%" : L["尚無資料"].Value)</dd></div>
+                <div><dt>@L["Agent 記憶體工作集"]</dt><dd>@(agentStatus?.Process?.WorkingSetBytes is { } memory ? QueueBytes(memory) : L["尚無資料"].Value)</dd></div>
+                <div><dt>@L["Agent 資源回報（UTC）"]</dt><dd>@(agentStatus?.Process?.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚無資料"].Value)</dd></div>
             }
         </dl>
             @if (device.DeepMonitoring)
             {
-                <h3>本次 Agent 執行期間的最近採集錯誤</h3>
-                @if (agentStatus?.Process?.ModuleFailures is not { } failures) { <p>尚無資料。</p> }
-                else if (failures.Count == 0) { <p>尚無回報的採集錯誤。</p> }
-                else { <ul>@foreach (var failure in failures) { <li>@ModuleName(failure.Module)：@failure.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</li> }</ul> }
+                <h3>@L["本次 Agent 執行期間的最近採集錯誤"]</h3>
+                @if (agentStatus?.Process?.ModuleFailures is not { } failures) { <p>@L["尚無資料。"]</p> }
+                else if (failures.Count == 0) { <p>@L["尚無回報的採集錯誤。"]</p> }
+                else { <ul>@foreach (var failure in failures) { <li>@L[ModuleName(failure.Module)]：@failure.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</li> }</ul> }
             }
-            @if (device.DeepMonitoring) { <p>Agent 狀態與設備 Ping 分開判斷；@(agentStatus?.OfflineAfterSeconds ?? 90) 秒未回報顯示失聯。重新整理頁面可查看最新狀態。</p><a href="@($"/devices/{Id:D}/agent-version")">查看 Agent 版本</a> <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">管理 Agent 身分</a> <a href="@($"/devices/{Id:D}/log-sources")">管理主機日誌來源</a> <a href="@($"/devices/{Id:D}/integrity-scopes")">管理完整性監控</a></Authorized></AuthorizeView> }
+            @if (device.DeepMonitoring) { <p>@L["Agent 狀態與設備 Ping 分開判斷；{0} 秒未回報顯示失聯。重新整理頁面可查看最新狀態。", agentStatus?.OfflineAfterSeconds ?? 90]</p><a href="@($"/devices/{Id:D}/agent-version")">@L["查看 Agent 版本"]</a> <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">@L["管理 Agent 身分"]</a> <a href="@($"/devices/{Id:D}/log-sources")">@L["管理主機日誌來源"]</a> <a href="@($"/devices/{Id:D}/integrity-scopes")">@L["管理完整性監控"]</a></Authorized></AuthorizeView> }
         </section>
         @if (device.DeepMonitoring)
         {
@@ -60,11 +60,11 @@
                 else if (capacityStatus is { } capacity)
                 {
                     <dl class="device-details">
-                        <div><dt>容量設定狀態</dt><dd>@SettingsState(capacity.State)</dd></div>
+                        <div><dt>容量設定狀態</dt><dd>@L[SettingsState(capacity.State)]</dd></div>
                         <div><dt>目標容量</dt><dd>@QueueBytes(capacity.Desired.Capacity.PayloadBytes)／@capacity.Desired.Capacity.BatchCount 批</dd></div>
                         <div><dt>Agent 已套用容量</dt><dd>@(capacity.Applied is { } appliedCapacity ? $"{QueueBytes(appliedCapacity.Capacity.PayloadBytes)}／{appliedCapacity.Capacity.BatchCount} 批" : "尚無已套用回報")</dd></div>
                     </dl>
-                    @if (capacity.Failure is { } capacityFailure) { <p class="device-alert" role="status">@SettingsFailure(capacityFailure)</p> }
+                    @if (capacity.Failure is { } capacityFailure) { <p class="device-alert" role="status">@L[SettingsFailure(capacityFailure)]</p> }
                 }
                 @if (agentError) { <p role="alert">無法讀取傳送狀態，請稍後重新整理。</p> }
                 else
@@ -165,23 +165,23 @@
                 }
             </section>
             <section class="device-panel">
-                <h2>Agent 設定同步</h2>
-                @if (settingsError) { <p role="alert">無法讀取設定狀態，請稍後重新整理。</p> }
-                else if (settingsStatus is null) { <p>尚無設定狀態。</p> }
+                <h2>@L["Agent 設定同步"]</h2>
+                @if (settingsError) { <p role="alert">@L["無法讀取設定狀態，請稍後重新整理。"]</p> }
+                else if (settingsStatus is null) { <p>@L["尚無設定狀態。"]</p> }
                 else
                 {
                     <dl class="device-details">
-                        <div><dt>同步狀態</dt><dd>@SettingsState(settingsStatus.State)</dd></div>
-                        <div><dt>期望心跳間隔</dt><dd>@settingsStatus.Desired.Settings.HeartbeatSeconds 秒</dd></div>
-                        <div><dt>Agent 已套用心跳間隔</dt><dd>@(settingsStatus.Applied?.Settings.HeartbeatSeconds is { } seconds ? $"{seconds} 秒" : "尚無資料")</dd></div>
-                        <div><dt>Agent 已套用設定同步間隔</dt><dd>@(settingsStatus.Applied?.Settings.SettingsPollSeconds is { } poll ? $"{poll} 秒" : "尚無資料")</dd></div>
-                        <div><dt>Agent 已套用資料傳送間隔</dt><dd>@(settingsStatus.Applied?.Settings.BatchIntervalSeconds is { } batch ? $"{batch} 秒" : "尚無資料")</dd></div>
-                        <div><dt>最後設定回報（UTC）</dt><dd>@(settingsStatus.ReportedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
+                        <div><dt>@L["同步狀態"]</dt><dd>@L[SettingsState(settingsStatus.State)]</dd></div>
+                        <div><dt>@L["期望心跳間隔"]</dt><dd>@L["{0} 秒", settingsStatus.Desired.Settings.HeartbeatSeconds]</dd></div>
+                        <div><dt>@L["Agent 已套用心跳間隔"]</dt><dd>@(settingsStatus.Applied?.Settings.HeartbeatSeconds is { } seconds ? L["{0} 秒", seconds].Value : L["尚無資料"].Value)</dd></div>
+                        <div><dt>@L["Agent 已套用設定同步間隔"]</dt><dd>@(settingsStatus.Applied?.Settings.SettingsPollSeconds is { } poll ? L["{0} 秒", poll].Value : L["尚無資料"].Value)</dd></div>
+                        <div><dt>@L["Agent 已套用資料傳送間隔"]</dt><dd>@(settingsStatus.Applied?.Settings.BatchIntervalSeconds is { } batch ? L["{0} 秒", batch].Value : L["尚無資料"].Value)</dd></div>
+                        <div><dt>@L["最後設定回報（UTC）"]</dt><dd>@(settingsStatus.ReportedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚無資料"].Value)</dd></div>
                     </dl>
-                    @if (settingsStatus.Failure is { } failure) { <p class="device-alert" role="status">@SettingsFailure(failure)</p> }
-                    <p>設定由 Agent 定期同步；離線時顯示最後回報的狀態，不代表設定已更新。</p>
+                    @if (settingsStatus.Failure is { } failure) { <p class="device-alert" role="status">@L[SettingsFailure(failure)]</p> }
+                    <p>@L["設定由 Agent 定期同步；離線時顯示最後回報的狀態，不代表設定已更新。"]</p>
                 }
-                <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent-settings")">編輯此設備的 Agent 設定</a></Authorized></AuthorizeView>
+                <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent-settings")">@L["編輯此設備的 Agent 設定"]</a></Authorized></AuthorizeView>
             </section>
         }
         <section class="device-panel"><h2>@L["Ping 量測"]</h2>
@@ -306,6 +306,6 @@
         AgentModule.Metrics => "資源指標", AgentModule.Logs => "日誌", AgentModule.Inventory => "資產盤點",
         AgentModule.Integrity => "完整性監控", AgentModule.Baseline => "安全基線", _ => "未知模組"
     };
-    private static string QueueBytes(long bytes) => bytes < 1024 * 1024
-        ? $"{bytes:N0} 位元組" : $"{bytes / 1048576d:N2} MiB";
+    private string QueueBytes(long bytes) => bytes < 1024 * 1024
+        ? L["{0} 位元組", bytes.ToString("N0")].Value : $"{bytes / 1048576d:N2} MiB";
 }

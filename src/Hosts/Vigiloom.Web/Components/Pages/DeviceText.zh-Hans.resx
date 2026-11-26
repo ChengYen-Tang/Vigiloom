@@ -348,4 +348,157 @@
   <data xml:space="preserve" name="待確認">
     <value>待确认</value>
   </data>
+  <data xml:space="preserve" name="Agent 狀態">
+    <value>Agent 状态</value>
+  </data>
+  <data xml:space="preserve" name="Agent 最後回報（UTC）">
+    <value>Agent 最后回报（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="Agent CPU（單一邏輯處理器為 100%）">
+    <value>Agent CPU（单一逻辑处理器为 100%）</value>
+  </data>
+  <data xml:space="preserve" name="Agent 記憶體工作集">
+    <value>Agent 内存工作集</value>
+  </data>
+  <data xml:space="preserve" name="Agent 資源回報（UTC）">
+    <value>Agent 资源回报（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="本次 Agent 執行期間的最近採集錯誤">
+    <value>本次 Agent 运行期间的最近采集错误</value>
+  </data>
+  <data xml:space="preserve" name="尚無資料。">
+    <value>暂无数据。</value>
+  </data>
+  <data xml:space="preserve" name="尚無回報的採集錯誤。">
+    <value>尚无回报的采集错误。</value>
+  </data>
+  <data xml:space="preserve" name="Agent 狀態與設備 Ping 分開判斷；{0} 秒未回報顯示失聯。重新整理頁面可查看最新狀態。">
+    <value>Agent 状态与设备 Ping 分开判断；{0} 秒未回报显示失联。刷新页面可查看最新状态。</value>
+  </data>
+  <data xml:space="preserve" name="查看 Agent 版本">
+    <value>查看 Agent 版本</value>
+  </data>
+  <data xml:space="preserve" name="管理 Agent 身分">
+    <value>管理 Agent 身份</value>
+  </data>
+  <data xml:space="preserve" name="管理主機日誌來源">
+    <value>管理主机日志来源</value>
+  </data>
+  <data xml:space="preserve" name="管理完整性監控">
+    <value>管理完整性监控</value>
+  </data>
+  <data xml:space="preserve" name="Agent 設定同步">
+    <value>Agent 设置同步</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取設定狀態，請稍後重新整理。">
+    <value>无法读取设置状态，请稍后刷新。</value>
+  </data>
+  <data xml:space="preserve" name="尚無設定狀態。">
+    <value>暂无设置状态。</value>
+  </data>
+  <data xml:space="preserve" name="同步狀態">
+    <value>同步状态</value>
+  </data>
+  <data xml:space="preserve" name="期望心跳間隔">
+    <value>期望心跳间隔</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用心跳間隔">
+    <value>Agent 已应用心跳间隔</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用設定同步間隔">
+    <value>Agent 已应用设置同步间隔</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用資料傳送間隔">
+    <value>Agent 已应用数据传送间隔</value>
+  </data>
+  <data xml:space="preserve" name="最後設定回報（UTC）">
+    <value>最后设置回报（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="設定由 Agent 定期同步；離線時顯示最後回報的狀態，不代表設定已更新。">
+    <value>设置由 Agent 定期同步；离线时显示最后回报的状态，不代表设置已更新。</value>
+  </data>
+  <data xml:space="preserve" name="編輯此設備的 Agent 設定">
+    <value>编辑此设备的 Agent 设置</value>
+  </data>
+  <data xml:space="preserve" name="{0} 秒">
+    <value>{0} 秒</value>
+  </data>
+  <data xml:space="preserve" name="{0} 位元組">
+    <value>{0} 字节</value>
+  </data>
+  <data xml:space="preserve" name="未註冊或已撤銷">
+    <value>未注册或已撤销</value>
+  </data>
+  <data xml:space="preserve" name="等待首次回報">
+    <value>等待首次回报</value>
+  </data>
+  <data xml:space="preserve" name="已連線">
+    <value>已连接</value>
+  </data>
+  <data xml:space="preserve" name="已失聯">
+    <value>已失联</value>
+  </data>
+  <data xml:space="preserve" name="系統時間異常">
+    <value>系统时间异常</value>
+  </data>
+  <data xml:space="preserve" name="尚未註冊 Agent">
+    <value>尚未注册 Agent</value>
+  </data>
+  <data xml:space="preserve" name="等待首次心跳">
+    <value>等待首次心跳</value>
+  </data>
+  <data xml:space="preserve" name="等待設定回報">
+    <value>等待设置回报</value>
+  </data>
+  <data xml:space="preserve" name="待同步">
+    <value>待同步</value>
+  </data>
+  <data xml:space="preserve" name="已套用">
+    <value>已应用</value>
+  </data>
+  <data xml:space="preserve" name="同步失敗">
+    <value>同步失败</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已失聯">
+    <value>Agent 已失联</value>
+  </data>
+  <data xml:space="preserve" name="設定回報已過期">
+    <value>设置回报已过期</value>
+  </data>
+  <data xml:space="preserve" name="無法連線至平台，Agent 會保留上次設定並重試。">
+    <value>无法连接至平台，Agent 会保留上次设置并重试。</value>
+  </data>
+  <data xml:space="preserve" name="收到的設定無法套用，Agent 會保留上次設定。">
+    <value>收到的设置无法应用，Agent 会保留上次设置。</value>
+  </data>
+  <data xml:space="preserve" name="Agent 身分未獲授權，請檢查註冊狀態。">
+    <value>Agent 身份未获授权，请检查注册状态。</value>
+  </data>
+  <data xml:space="preserve" name="Agent 無法讀寫本機設定，請檢查 Agent 狀態。">
+    <value>Agent 无法读写本地设置，请检查 Agent 状态。</value>
+  </data>
+  <data xml:space="preserve" name="設定同步發生衝突，Agent 會再次嘗試。">
+    <value>设置同步发生冲突，Agent 会再次尝试。</value>
+  </data>
+  <data xml:space="preserve" name="Agent 回報設定同步異常。">
+    <value>Agent 回报设置同步异常。</value>
+  </data>
+  <data xml:space="preserve" name="資源指標">
+    <value>资源指标</value>
+  </data>
+  <data xml:space="preserve" name="日誌">
+    <value>日志</value>
+  </data>
+  <data xml:space="preserve" name="資產盤點">
+    <value>资产盘点</value>
+  </data>
+  <data xml:space="preserve" name="完整性監控">
+    <value>完整性监控</value>
+  </data>
+  <data xml:space="preserve" name="安全基線">
+    <value>安全基线</value>
+  </data>
+  <data xml:space="preserve" name="未知模組">
+    <value>未知模块</value>
+  </data>
 </root>
