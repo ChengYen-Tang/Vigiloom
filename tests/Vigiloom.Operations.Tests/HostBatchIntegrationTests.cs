@@ -87,6 +87,16 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 });
             });
             using var client = host.CreateClient();
+            using (var unauthorizedHeartbeat = await client.PostAsync("/api/v1/agent/heartbeat", null, token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, unauthorizedHeartbeat.StatusCode);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid");
+            var epoch = Guid.CreateVersion7();
+            using (var session = await client.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
+            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 1, null), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            Assert.AreEqual(epoch, (await client.GetFromJsonAsync<AgentQueueSession>("/api/v1/agent/queue-session", token))!.Epoch);
+            client.DefaultRequestHeaders.Authorization = null;
             var nowUtc = DateTimeOffset.UtcNow;
             var metric = new AgentMetricPoint(Guid.CreateVersion7(), nowUtc, AgentMetricKind.CpuTotalPercent, "cpu", null, 25);
             var metricBatch = new AgentMetricBatch(AgentMetricBatchCodec.SchemaVersion, Guid.CreateVersion7(), nowUtc, [metric]);

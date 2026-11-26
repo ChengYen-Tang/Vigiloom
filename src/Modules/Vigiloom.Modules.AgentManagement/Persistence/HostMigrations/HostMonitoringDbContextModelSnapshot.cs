@@ -505,6 +505,238 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.HostMigrations
                     b.ToTable("SettingAudits", "agent");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostAgentStatus", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("AppliedBatchIntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AppliedConfigurationRevision")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int?>("AppliedHeartbeatSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AppliedSettingsPollSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BaselineConfigurationJson")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTimeOffset?>("BaselineConfigurationReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ConfigurationAppliedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("ConfigurationFailure")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ConfigurationReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("DeviceGeneration")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("HeartbeatSafetyIntervalSeconds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(30);
+
+                    b.Property<Guid?>("IntegrityConfigurationEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IntegrityConfigurationJson")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<DateTimeOffset?>("IntegrityConfigurationReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("IntegrityConfigurationSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("InventoryConfigurationEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("InventoryConfigurationJson")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<DateTimeOffset?>("InventoryConfigurationReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("InventoryConfigurationSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("LastHeartbeatAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("LogStatusJson")
+                        .HasMaxLength(8192)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("LogStatusReportEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("LogStatusReportSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("LogStatusReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("MetricLossBatches")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool?>("MetricLossCompletenessUnknown")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("MetricLossLedgerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("MetricLossRecords")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("MetricLossReportEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("MetricLossReportSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("MetricLossReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("MetricLossStartedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("QuarantineBadRequest")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineConflict")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineExpired")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineInvalidLocal")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineOther")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("QuarantineReportEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("QuarantineReportSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineTooLarge")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QuarantineUnsupported")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("QueueCapacityAppliedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("QueueCapacityAppliedBatches")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("QueueCapacityAppliedBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("QueueCapacityAppliedRevision")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int?>("QueueCapacityBatches")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("QueueCapacityBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("QueueCapacityFailure")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("QueueCapacityReportEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("QueueCapacityReportSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("QueueCapacityReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("QueueQuarantinedBatches")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("QueueReportEpoch")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("QueueReportSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("QueueReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("QueueTotalBatches")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("QueueTotalBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<double?>("RuntimeCpuPercent")
+                        .HasColumnType("float");
+
+                    b.Property<string>("RuntimeIdentifier")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("RuntimeModuleFailuresJson")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<DateTimeOffset?>("RuntimeReportedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RuntimeVersion")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<long?>("RuntimeWorkingSetBytes")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("DeviceId");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("HostAgentStatuses", "agent");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostInboxState", b =>
                 {
                     b.Property<Guid>("Id")

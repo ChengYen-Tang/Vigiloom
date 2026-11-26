@@ -37,6 +37,7 @@ builder.Services.AddHttpClient<IHostWorkRetentionDays, OperationsWorkRetentionDa
     client.Timeout = TimeSpan.FromSeconds(5);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<HostObservationReceiver>();
+builder.Services.AddScoped<HostHeartbeat>();
 builder.Services.AddScoped<HostInboxCleanup>();
 builder.Services.AddScoped<HostLogIdentityCleanup>();
 builder.Services.AddScoped<HostWorkRetention>();
@@ -72,9 +73,25 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
 }
 var app = builder.Build();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/channel") ||
-    context.Request.Path.StartsWithSegments("/api/v1/agent/batches"), agent => agent.UseMiddleware<AgentAccess>());
+    context.Request.Path.StartsWithSegments("/api/v1/agent/batches") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/heartbeat") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session"), agent => agent.UseMiddleware<AgentAccess>());
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
 app.MapAgentBatchEndpoints();
+app.MapPost("/api/v1/agent/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes));
+app.MapGet("/api/v1/agent/queue-session", async (HttpContext context, HostHeartbeat service, CancellationToken token) =>
+{
+    var session = await service.GetSessionAsync((RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!, token);
+    return session is null ? Results.Unauthorized() : Results.Ok(session);
+});
+app.MapPost("/api/v1/agent/queue-session", async (AgentQueueSessionRequest request, HttpContext context, HostHeartbeat service, CancellationToken token) =>
+    await service.BeginSessionAsync((RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!, request, token) switch
+    {
+        AgentIdentityStatus.Success => Results.NoContent(),
+        AgentIdentityStatus.Conflict => Results.Conflict(),
+        _ => Results.Unauthorized()
+    }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(1024));
 app.MapGet("/internal/v1/security-batches/{agentId:guid}/{batchId:guid}", async (Guid agentId, Guid batchId,
     IDbContextFactory<HostMonitoringDbContext> contexts, CancellationToken token) =>
 {

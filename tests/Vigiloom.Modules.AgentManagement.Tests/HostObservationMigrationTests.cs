@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Domain;
+using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -14,6 +16,31 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 [TestCategory("Database")]
 public sealed class HostObservationMigrationTests(TestContext context)
 {
+    [TestMethod]
+    public Task RecordsHeartbeatSessionsInHostDatabase() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
+        {
+            await HostMonitoringDatabaseCommand.RunAsync(target.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<HostMonitoringDbContext>().UseSqlServer(target.ConnectionString,
+                sql => sql.MigrationsHistoryTable(HostMonitoringDbContext.MigrationHistory, "agent")).Options;
+            var factory = new PooledDbContextFactory<HostMonitoringDbContext>(options);
+            var heartbeat = new HostHeartbeat(factory, TimeProvider.System);
+            var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var epoch = Guid.CreateVersion7();
+            Assert.IsNull((await heartbeat.GetSessionAsync(identity, token))!.Epoch);
+            Assert.AreEqual(AgentIdentityStatus.Success, await heartbeat.BeginSessionAsync(identity, new(null, epoch), token));
+            Assert.AreEqual(AgentIdentityStatus.Success, await heartbeat.BeginSessionAsync(identity, new(null, epoch), token));
+            Assert.AreEqual(AgentIdentityStatus.Success, await heartbeat.RecordAsync(identity, new AgentHeartbeatReport(1, epoch, 2, null), token));
+            Assert.AreEqual(AgentIdentityStatus.Success, await heartbeat.RecordAsync(identity, new AgentHeartbeatReport(1, epoch, 1, null), token));
+            Assert.AreEqual(AgentIdentityStatus.Conflict, await heartbeat.BeginSessionAsync(identity, new(null, Guid.CreateVersion7()), token));
+            await using var db = await factory.CreateDbContextAsync(token);
+            var saved = await db.AgentStatuses.SingleAsync(token);
+            Assert.AreEqual(identity.DeviceId, saved.DeviceId);
+            Assert.AreEqual(epoch, saved.QueueReportEpoch);
+            Assert.AreEqual(2L, saved.QueueReportSequence);
+            Assert.IsNotNull(saved.LastHeartbeatAt);
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task InitializesFreshInboxPolicyOnce() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
@@ -50,6 +77,10 @@ public sealed class HostObservationMigrationTests(TestContext context)
                 await resources.SaveChangesAsync(token);
             }
             var agent = new Agent(device.Id, 1, new byte[32], now);
+            var epoch = Guid.CreateVersion7();
+            agent.RecordHeartbeat(now);
+            agent.BeginQueueSession(epoch);
+            agent.RecordQueueStatus(2, null, null, now);
             var batchId = Guid.CreateVersion7();
             var messageId = Guid.CreateVersion7();
             var settings = new AgentSetting { DeviceId = device.Id, HeartbeatSeconds = 30, UpdatedBy = Guid.CreateVersion7(), UpdatedAt = now };
@@ -91,6 +122,11 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.AreEqual(agent.Id, inbox.Id);
             Assert.AreEqual(device.Id, inbox.DeviceId);
             Assert.AreEqual(1L, inbox.DeviceGeneration);
+            var status = await copied.AgentStatuses.SingleAsync(token);
+            Assert.AreEqual(agent.Id, status.Id);
+            Assert.AreEqual(epoch, status.QueueReportEpoch);
+            Assert.AreEqual(2L, status.QueueReportSequence);
+            Assert.AreEqual(now, status.LastHeartbeatAt);
             Assert.AreEqual(1, await copied.ReplayPolicies.CountAsync(token));
             Assert.IsTrue(await copied.ReceivedBatches.AnyAsync(x => x.AgentId == agent.Id && x.BatchId == batchId, token));
             Assert.IsFalse(await copied.ReceivedBatches.AnyAsync(x => EF.Property<bool>(x, "PendingDelivery"), token));
