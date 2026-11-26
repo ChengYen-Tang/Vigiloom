@@ -13,6 +13,8 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using System.Threading.RateLimiting;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.LogAdmission;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Infrastructure.Authentication;
@@ -33,6 +35,9 @@ builder.Services.AddVigiloomIdentityCookieClient();
 builder.Services.AddVigiloomIdentityCredentialClient();
 builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(services => services.GetRequiredService<IConfiguration>().GetConnectionString("Observability")
     ?? throw new InvalidOperationException("ConnectionStrings:Observability is required."), "service", pooled: true);
+builder.Services.AddModuleSqlServer<LogAdmissionDbContext>(services => services.GetRequiredService<IConfiguration>().GetConnectionString("Observability")
+    ?? throw new InvalidOperationException("ConnectionStrings:Observability is required."), "logquota");
+builder.Services.AddScoped<TracePolicyAdministration>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<SourceCredentials>();
 builder.Services.AddScoped<SourceAdministration>();
@@ -212,6 +217,7 @@ internalApi.MapGet("/reception/rejections", async (ReceptionRejectionReader read
 app.MapCollectorEndpoints();
 app.MapHealthAdministration();
 app.MapInstanceAdministration();
+app.MapTraceQuota();
 app.Run();
 
 public partial class Program;

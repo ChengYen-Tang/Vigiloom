@@ -20,6 +20,8 @@ using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Infrastructure.LogAdmission;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
 
 namespace Vigiloom.Modules.ServiceObservability.Tests.Health;
 
@@ -37,6 +39,16 @@ public sealed class HealthRunnerTests(TestContext context)
                 var sourceOptions = Options(source.ConnectionString);
                 var targetOptions = Options(target.ConnectionString);
                 var id = await SeedAsync(sourceOptions, 12345, token);
+                var sourceQuotaOptions = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(source.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
+                var targetQuotaOptions = new DbContextOptionsBuilder<LogAdmissionDbContext>().UseSqlServer(target.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "logquota")).Options;
+                await using (var quota = new LogAdmissionDbContext(sourceQuotaOptions)) await quota.Database.MigrateAsync(token);
+                await using (var quota = new LogAdmissionDbContext(targetQuotaOptions)) await quota.Database.MigrateAsync(token);
+                var quotaPolicy = new TracePolicyAdministration(new PooledDbContextFactory<LogAdmissionDbContext>(sourceQuotaOptions));
+                var savedQuota = await quotaPolicy.UpdateAsync(new LogQuotaValues(25, 50, 100, 200), "", Guid.CreateVersion7(),
+                    (_, _, _, _) => Task.CompletedTask, token);
+                Assert.IsNotNull(savedQuota);
                 Guid serviceId;
                 await using (var targetDb = new ServiceObservabilityDbContext(targetOptions)) await targetDb.Database.MigrateAsync(token);
                 await using (var db = new ServiceObservabilityDbContext(sourceOptions))
@@ -59,6 +71,9 @@ public sealed class HealthRunnerTests(TestContext context)
                     await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE service.HealthSchedules SET Generation = 42, LeaseUntil = SYSDATETIMEOFFSET() WHERE TargetId = {id}", token);
                 }
                 await ObservabilityDataMigration.CopyAsync(source.ConnectionString, target.ConnectionString, token);
+                var copiedQuota = await new TracePolicyAdministration(new PooledDbContextFactory<LogAdmissionDbContext>(targetQuotaOptions)).GetAsync(token);
+                Assert.AreEqual(25, copiedQuota.Values.SourceRate);
+                Assert.AreEqual(200, copiedQuota.Values.GlobalBurst);
                 await using var verify = new ServiceObservabilityDbContext(targetOptions);
                 var result = await verify.HealthSchedules.SingleAsync(token);
                 CollectionAssert.AreEqual((await verify.Sources.SingleAsync(token)).Version, result.SourceVersion);

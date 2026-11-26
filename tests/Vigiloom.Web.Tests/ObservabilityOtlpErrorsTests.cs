@@ -19,6 +19,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Vigiloom.Infrastructure.LogAdmission;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
 
@@ -125,6 +128,14 @@ public sealed class ObservabilityOtlpErrorsTests(TestContext context)
             using var client = host.CreateClient();
             var contexts = host.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>();
             await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+            var quotaContexts = host.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>();
+            await using (var quotaDb = await quotaContexts.CreateDbContextAsync(token)) await quotaDb.Database.MigrateAsync(token);
+            var traceQuota = await client.GetFromJsonAsync<Vigiloom.Contracts.Operations.LogQuotaSettings>("/internal/v1/trace-quota", token);
+            Assert.IsNotNull(traceQuota);
+            using var updateTrace = await client.PutAsJsonAsync("/internal/v1/trace-quota", new UpdateTraceQuotaCommand(
+                traceQuota with { SourceRate = 25, SourceBurst = 50, GlobalRate = 100, GlobalBurst = 200 }, Guid.CreateVersion7()), token);
+            updateTrace.EnsureSuccessStatusCode();
+            Assert.AreEqual(25, (await client.GetFromJsonAsync<Vigiloom.Contracts.Operations.LogQuotaSettings>("/internal/v1/trace-quota", token))!.SourceRate);
             var policy = await client.GetFromJsonAsync<TelemetryRetentionSnapshot>("/internal/v1/telemetry-retention", token);
             Assert.IsNotNull(policy);
             var actor = Guid.CreateVersion7();
@@ -160,6 +171,14 @@ public sealed class ObservabilityOtlpErrorsTests(TestContext context)
             {
                 db.Services.Add(monitor);
                 await db.SaveChangesAsync(token);
+            }
+            await using (var db = await contexts.CreateDbContextAsync(token))
+            {
+                await using var tx = await db.Database.BeginTransactionAsync(token);
+                var admitted = await TraceAdmission.AdmitAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
+                    [new TraceSource(source.Id, monitor.Id, 1)], token);
+                Assert.AreEqual(LogAdmissionStatus.Accepted, admitted.Status);
+                await tx.CommitAsync(token);
             }
             var networks = await client.GetFromJsonAsync<HealthNetworkPolicySnapshot>("/internal/v1/health-admin/networks", token);
             Assert.IsNotNull(networks);

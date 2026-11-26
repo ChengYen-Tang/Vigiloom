@@ -2,6 +2,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
@@ -20,9 +21,12 @@ internal static class ObservabilityDatabaseCommand
         await using (var connection = new SqlConnection(target)) await connection.OpenAsync(token);
         var services = new ServiceCollection();
         services.AddModuleSqlServer<ServiceObservabilityDbContext>(target, "service");
+        services.AddModuleSqlServer<LogAdmissionDbContext>(target, "logquota");
         services.AddModuleSqlServer<SchedulingDbContext>(target, "scheduling");
         using var provider = services.BuildServiceProvider();
         await using (var db = await provider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+            await db.Database.MigrateAsync(token);
+        await using (var db = await provider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token))
             await db.Database.MigrateAsync(token);
         await using (var db = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token))
             await db.Database.MigrateAsync(token);
