@@ -7,39 +7,40 @@
 @inject IAgentPackageQuery Packages
 @inject GitHubAgentReleases Releases
 @inject ILogger<AgentPackages> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ServiceAdminText> L
 
-<PageTitle>Agent 套件管理 - Vigiloom</PageTitle>
+<PageTitle>@L["Agent 套件管理"] - Vigiloom</PageTitle>
 <main class="device-page package-page">
-    <header class="device-heading"><div><h1>Agent 套件管理</h1><p>從 GitHub 下載需要的版本，供設備更新或回滾。</p></div></header>
+    <header class="device-heading"><div><h1>@L["Agent 套件管理"]</h1><p>@L["從 GitHub 下載需要的版本，供設備更新或回滾。"]</p></div></header>
     <section class="device-panel" aria-labelledby="release-title">
-        <h2 id="release-title">GitHub 發布版本</h2>
-        <a href="?releases=1">同步 GitHub 發布版本</a>
+        <h2 id="release-title">@L["GitHub 發布版本"]</h2>
+        <a href="?releases=1">@L["同步 GitHub 發布版本"]</a>
         @if (downloadMessage is not null) { <p class="package-status" role="status">@downloadMessage</p> }
-        @if (releaseError) { <p role="alert">無法取得 GitHub 發布版本，請稍後重試；已下載的套件仍可使用。</p> }
+        @if (releaseError) { <p role="alert">@L["無法取得 GitHub 發布版本，請稍後重試；已下載的套件仍可使用。"]</p> }
         else if (releases is not null)
         {
-            @if (releases.Items.Count == 0) { <p>此頁沒有 Agent 發布版本。</p> }
+            @if (releases.Items.Count == 0) { <p>@L["此頁沒有 Agent 發布版本。"]</p> }
             else
             {
-                <div class="device-table-wrap" role="region" aria-label="GitHub Agent 發布版本" tabindex="0"><table>
-                    <thead><tr><th>版本</th><th>類型</th><th>平台與下載</th></tr></thead>
+                <div class="device-table-wrap" role="region" aria-label="@L["GitHub Agent 發布版本"]" tabindex="0"><table>
+                    <thead><tr><th>@L["版本"]</th><th>@L["類型"]</th><th>@L["平台與下載"]</th></tr></thead>
                     <tbody>@foreach (var release in releases.Items)
                     {
-                        <tr @key="release.Version"><td>@release.Version</td><td>@(release.Preview ? "Preview" : "正式版")</td><td>
-                            @if (release.Assets.Count == 0) { <span>此版本沒有可下載的更新套件。</span> }
+                        <tr @key="release.Version"><td>@release.Version</td><td>@(release.Preview ? "Preview" : L["正式版"].Value)</td><td>
+                            @if (release.Assets.Count == 0) { <span>@L["此版本沒有可下載的更新套件。"]</span> }
                             else
                             {
                                 @foreach (var asset in release.Assets)
                                 {
                                     var cached = releasePackages.Any(item => item.Version == release.Version && item.RuntimeIdentifier == asset.RuntimeIdentifier && item.Cached);
-                                    <div>@asset.RuntimeIdentifier · @(cached ? "已下載" : "未下載")
+                                    <div>@asset.RuntimeIdentifier · @(cached ? L["已下載"].Value : L["未下載"].Value)
                                         @if (!cached)
                                         {
-                                            <form method="post" action="/settings/agent-packages/download" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='下載中…'">
+                                            <form method="post" action="/settings/agent-packages/download" data-pending="@L["下載中…"]" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent=this.dataset.pending">
                                                 <AntiforgeryToken />
                                                 <input type="hidden" name="version" value="@release.Version" />
                                                 <input type="hidden" name="runtimeIdentifier" value="@asset.RuntimeIdentifier" />
-                                                <button type="submit" aria-label="@($"下載 {release.Version} {asset.RuntimeIdentifier}")">下載</button>
+                                                <button type="submit" aria-label="@L["下載 {0} {1}", release.Version, asset.RuntimeIdentifier]">@L["下載"]</button>
                                             </form>
                                         }
                                     </div>
@@ -49,28 +50,28 @@
                     }</tbody>
                 </table></div>
             }
-            @if (releases.Page > 1) { <a href="@($"?releases={releases.Page - 1}")">上一頁</a> }
-            @if (releases.HasMore) { <a href="@($"?releases={releases.Page + 1}")">下一頁</a> }
+            @if (releases.Page > 1) { <a href="@($"?releases={releases.Page - 1}")">@L["上一頁"]</a> }
+            @if (releases.HasMore) { <a href="@($"?releases={releases.Page + 1}")">@L["下一頁"]</a> }
         }
     </section>
     <section class="device-panel" aria-labelledby="cached-title">
-        <h2 id="cached-title">已下載版本</h2>
+        <h2 id="cached-title">@L["已下載版本"]</h2>
         @if (removeMessage is not null) { <p class="package-status" role="status">@removeMessage</p> }
-        @if (packageError) { <p role="alert">無法讀取套件清單，請稍後重試。</p> }
+        @if (packageError) { <p role="alert">@L["無法讀取套件清單，請稍後重試。"]</p> }
         else if (page?.Items.Count > 0)
         {
-            <div class="device-table-wrap" role="region" aria-label="已下載的 Agent 套件" tabindex="0"><table>
-                <thead><tr><th>版本</th><th>平台</th><th>大小</th><th>狀態</th><th>操作</th></tr></thead>
+            <div class="device-table-wrap" role="region" aria-label="@L["已下載的 Agent 套件"]" tabindex="0"><table>
+                <thead><tr><th>@L["版本"]</th><th>@L["平台"]</th><th>@L["大小"]</th><th>@L["狀態"]</th><th>@L["操作"]</th></tr></thead>
                 <tbody>@foreach (var item in page.Items)
                 {
-                    <tr @key="item.Id"><td>@item.Version</td><td>@item.RuntimeIdentifier</td><td>@((item.Size / 1048576d).ToString("N1")) MiB</td><td>@(item.Cached ? "已下載" : "未下載")</td><td>
-                        @if (item.Cached) { <form method="post" action="@($"/settings/agent-packages/{item.Id:D}/remove")"><AntiforgeryToken /><button type="submit" aria-label="@($"刪除 {item.Version} {item.RuntimeIdentifier}")">刪除</button></form> }
+                    <tr @key="item.Id"><td>@item.Version</td><td>@item.RuntimeIdentifier</td><td>@((item.Size / 1048576d).ToString("N1")) MiB</td><td>@(item.Cached ? L["已下載"].Value : L["未下載"].Value)</td><td>
+                        @if (item.Cached) { <form method="post" action="@($"/settings/agent-packages/{item.Id:D}/remove")"><AntiforgeryToken /><button type="submit" aria-label="@L["刪除 {0} {1}", item.Version, item.RuntimeIdentifier]">@L["刪除"]</button></form> }
                     </td></tr>
                 }</tbody>
             </table></div>
-            <nav class="device-pagination" aria-label="套件清單分頁">@if (page.Page > 1) { <a href="@($"?page={page.Page - 1}")">上一頁</a> }<span>第 @(page.Page) 頁</span>@if (page.HasMore) { <a href="@($"?page={page.Page + 1}")">下一頁</a> }</nav>
+            <nav class="device-pagination" aria-label="@L["套件清單分頁"]">@if (page.Page > 1) { <a href="@($"?page={page.Page - 1}")">@L["上一頁"]</a> }<span>@L["第 {0} 頁", page.Page]</span>@if (page.HasMore) { <a href="@($"?page={page.Page + 1}")">@L["下一頁"]</a> }</nav>
         }
-        else { <p>目前沒有已下載的版本。</p> }
+        else { <p>@L["目前沒有已下載的版本。"]</p> }
     </section>
 </main>
 
@@ -85,8 +86,8 @@
     private IReadOnlyList<AgentPackageView> releasePackages = [];
     private bool releaseError;
     private bool packageError;
-    private string? downloadMessage => DownloadResult switch { "saved" => "套件已下載。", "unavailable" => "找不到指定的套件。", "conflict" => "版本內容已變更，或舊套件資訊遺失但仍被指派。請確認版本，必要時先清除指派。", "error" => "下載或驗證失敗，請稍後重試。", _ => null };
-    private string? removeMessage => RemoveResult switch { "removed" => "已刪除套件。", "in-use" => "此版本仍在使用或已被指派，無法刪除。", "error" => "無法刪除套件，請稍後重試。", _ => null };
+    private string? downloadMessage => DownloadResult switch { "saved" => L["套件已下載。"].Value, "unavailable" => L["找不到指定的套件。"].Value, "conflict" => L["版本內容已變更，或舊套件資訊遺失但仍被指派。請確認版本，必要時先清除指派。"].Value, "error" => L["下載或驗證失敗，請稍後重試。"].Value, _ => null };
+    private string? removeMessage => RemoveResult switch { "removed" => L["已刪除套件。"].Value, "in-use" => L["此版本仍在使用或已被指派，無法刪除。"].Value, "error" => L["無法刪除套件，請稍後重試。"].Value, _ => null };
 
     protected override async Task OnInitializedAsync()
     {

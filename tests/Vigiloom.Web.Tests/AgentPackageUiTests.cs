@@ -45,6 +45,22 @@ public sealed class AgentPackageUiTests(TestContext context)
         }
         using var client = PingTestSite.Client(factory);
         await PingTestSite.LoginAsync(client, "admin", token);
+        client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var english = await client.GetAsync("/settings/agent-packages?releases=1", token))
+        {
+            var text = (await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+            Assert.Contains("Agent package management", text);
+            Assert.Contains("win-x64", text);
+            Assert.Contains("Downloaded", text);
+        }
+        client.DefaultRequestHeaders.AcceptLanguage.Clear();
+        client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplified = await client.GetAsync("/settings/agent-packages?releases=1", token))
+        {
+            var text = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+            Assert.Contains("Agent 软件包管理", text);
+        }
+        client.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var response = await client.GetAsync("/settings/agent-packages?releases=1", token);
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         var html = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);

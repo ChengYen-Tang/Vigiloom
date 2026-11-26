@@ -701,4 +701,36 @@
   <data name="程序工作集記憶體" xml:space="preserve"><value>进程工作集内存</value></data>
   <data name="未知指標" xml:space="preserve"><value>未知指标</value></data>
   <data name="負載" xml:space="preserve"><value>负载</value></data>
+  <data name="Agent 套件管理" xml:space="preserve"><value>Agent 软件包管理</value></data>
+  <data name="從 GitHub 下載需要的版本，供設備更新或回滾。" xml:space="preserve"><value>从 GitHub 下载所需版本，供设备更新或回滚。</value></data>
+  <data name="GitHub 發布版本" xml:space="preserve"><value>GitHub 发布版本</value></data>
+  <data name="同步 GitHub 發布版本" xml:space="preserve"><value>同步 GitHub 发布版本</value></data>
+  <data name="無法取得 GitHub 發布版本，請稍後重試；已下載的套件仍可使用。" xml:space="preserve"><value>无法获取 GitHub 发布版本，请稍后重试；已下载的软件包仍可使用。</value></data>
+  <data name="此頁沒有 Agent 發布版本。" xml:space="preserve"><value>此页没有 Agent 发布版本。</value></data>
+  <data name="GitHub Agent 發布版本" xml:space="preserve"><value>GitHub Agent 发布版本</value></data>
+  <data name="版本" xml:space="preserve"><value>版本</value></data>
+  <data name="平台與下載" xml:space="preserve"><value>平台与下载</value></data>
+  <data name="正式版" xml:space="preserve"><value>正式版</value></data>
+  <data name="此版本沒有可下載的更新套件。" xml:space="preserve"><value>此版本没有可下载的更新包。</value></data>
+  <data name="已下載" xml:space="preserve"><value>已下载</value></data>
+  <data name="未下載" xml:space="preserve"><value>未下载</value></data>
+  <data name="下載中…" xml:space="preserve"><value>下载中…</value></data>
+  <data name="下載 {0} {1}" xml:space="preserve"><value>下载 {0} {1}</value></data>
+  <data name="下載" xml:space="preserve"><value>下载</value></data>
+  <data name="已下載版本" xml:space="preserve"><value>已下载版本</value></data>
+  <data name="無法讀取套件清單，請稍後重試。" xml:space="preserve"><value>无法读取软件包列表，请稍后重试。</value></data>
+  <data name="已下載的 Agent 套件" xml:space="preserve"><value>已下载的 Agent 软件包</value></data>
+  <data name="平台" xml:space="preserve"><value>平台</value></data>
+  <data name="大小" xml:space="preserve"><value>大小</value></data>
+  <data name="刪除 {0} {1}" xml:space="preserve"><value>删除 {0} {1}</value></data>
+  <data name="刪除" xml:space="preserve"><value>删除</value></data>
+  <data name="套件清單分頁" xml:space="preserve"><value>软件包列表分页</value></data>
+  <data name="目前沒有已下載的版本。" xml:space="preserve"><value>目前没有已下载的版本。</value></data>
+  <data name="套件已下載。" xml:space="preserve"><value>软件包已下载。</value></data>
+  <data name="找不到指定的套件。" xml:space="preserve"><value>找不到指定的软件包。</value></data>
+  <data name="版本內容已變更，或舊套件資訊遺失但仍被指派。請確認版本，必要時先清除指派。" xml:space="preserve"><value>版本内容已更改，或旧软件包信息丢失但仍被指派。请确认版本，必要时先清除指派。</value></data>
+  <data name="下載或驗證失敗，請稍後重試。" xml:space="preserve"><value>下载或验证失败，请稍后重试。</value></data>
+  <data name="已刪除套件。" xml:space="preserve"><value>已删除软件包。</value></data>
+  <data name="此版本仍在使用或已被指派，無法刪除。" xml:space="preserve"><value>此版本仍在使用或已被指派，无法删除。</value></data>
+  <data name="無法刪除套件，請稍後重試。" xml:space="preserve"><value>无法删除软件包，请稍后重试。</value></data>
 </root>
