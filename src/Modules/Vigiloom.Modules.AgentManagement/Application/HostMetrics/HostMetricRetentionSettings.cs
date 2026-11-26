@@ -12,8 +12,8 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Application.HostMetrics;
 
-public sealed class HostMetricRetentionSettings(IDbContextFactory<AgentManagementDbContext> contexts,
-    IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection)
+public class HostMetricRetentionSettingsBase<TContext>(IDbContextFactory<TContext> contexts,
+    IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection) : IHostMetricRetentionSettings where TContext : DbContext
 {
     private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.HostMetricRetention.Preview.v1");
 
@@ -21,7 +21,7 @@ public sealed class HostMetricRetentionSettings(IDbContextFactory<AgentManagemen
     {
         await EnsureAsync(contexts, token);
         await using var db = await contexts.CreateDbContextAsync(token);
-        return Snapshot(await db.HostMetricRetentionSettings.AsNoTracking().SingleAsync(x => x.Slot == 1, token));
+        return Snapshot(await db.Set<HostMetricRetentionSetting>().AsNoTracking().SingleAsync(x => x.Slot == 1, token));
     }
 
     public async Task<HostMetricRetentionPreview?> PreviewAsync(HostMetricRetentionPreviewRequest input, Guid actor, CancellationToken token)
@@ -66,7 +66,7 @@ public sealed class HostMetricRetentionSettings(IDbContextFactory<AgentManagemen
         return Snapshot(policy);
     }
 
-    internal static async Task EnsureAsync(IDbContextFactory<AgentManagementDbContext> contexts, CancellationToken token)
+    internal static async Task EnsureAsync(IDbContextFactory<TContext> contexts, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         await EnsureAsync(db, token);
@@ -93,11 +93,19 @@ public sealed class HostMetricRetentionSettings(IDbContextFactory<AgentManagemen
         catch (Exception ex) when (ex is CryptographicException or JsonException) { return false; }
     }
 
-    private static Task<HostMetricRetentionSetting> LockAsync(AgentManagementDbContext db, CancellationToken token) =>
-        db.HostMetricRetentionSettings.FromSqlRaw("SELECT * FROM [agent].[HostMetricRetentionSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [Slot] = 1").SingleAsync(token);
-    private static Task<DateTimeOffset> NowAsync(AgentManagementDbContext db, CancellationToken token) =>
+    private static Task<HostMetricRetentionSetting> LockAsync(DbContext db, CancellationToken token) =>
+        db.Set<HostMetricRetentionSetting>().FromSqlRaw("SELECT * FROM [agent].[HostMetricRetentionSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [Slot] = 1").SingleAsync(token);
+    private static Task<DateTimeOffset> NowAsync(DbContext db, CancellationToken token) =>
         db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
     private static HostMetricRetentionSnapshot Snapshot(HostMetricRetentionSetting setting) =>
         new(setting.RawDays, setting.RollupDays, Convert.ToBase64String(setting.Version));
     private sealed record PreviewProof(Guid Actor, int RawDays, int RollupDays, string Version, DateTimeOffset At);
 }
+
+public sealed class HostMetricRetentionSettings(IDbContextFactory<AgentManagementDbContext> contexts,
+    IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection)
+    : HostMetricRetentionSettingsBase<AgentManagementDbContext>(contexts, audit, protection);
+
+public sealed class HostOwnedMetricRetentionSettings(IDbContextFactory<HostMonitoringDbContext> contexts,
+    IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection)
+    : HostMetricRetentionSettingsBase<HostMonitoringDbContext>(contexts, audit, protection);

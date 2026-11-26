@@ -11,3 +11,12 @@ public sealed record HostMetricRetentionSnapshot(int RawDays, int RollupDays, st
 public sealed record HostMetricRetentionPreviewRequest(int RawDays, int RollupDays, string Version);
 public sealed record HostMetricRetentionPreview(int RawDays, int RollupDays, DateTimeOffset PreviewedAt, long Samples, long Rollups, string Version, string ConfirmationToken);
 public sealed record HostMetricRetentionInput(int RawDays, int RollupDays, string Version, string? ConfirmationToken);
+public sealed record HostMetricRetentionPreviewCommand(HostMetricRetentionPreviewRequest Input, Guid Actor);
+public sealed record HostMetricRetentionCommand(HostMetricRetentionInput Input, Guid Actor);
+
+public interface IHostMetricRetentionSettings
+{
+    Task<HostMetricRetentionSnapshot> GetAsync(CancellationToken token);
+    Task<HostMetricRetentionPreview?> PreviewAsync(HostMetricRetentionPreviewRequest input, Guid actor, CancellationToken token);
+    Task<HostMetricRetentionSnapshot?> UpdateAsync(HostMetricRetentionInput input, Guid actor, CancellationToken token);
+}
