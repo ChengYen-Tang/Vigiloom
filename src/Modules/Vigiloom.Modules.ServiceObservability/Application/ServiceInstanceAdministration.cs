@@ -12,7 +12,7 @@ namespace Vigiloom.Modules.ServiceObservability.Application;
 public enum InstanceChangeStatus { Updated, NotFound, Conflict, Busy }
 
 public sealed class ServiceInstanceAdministration(IDbContextFactory<ServiceObservabilityDbContext> contexts,
-    IOperationAuditWriter<OperationAudit> audit)
+    IOperationAuditWriter<OperationAudit> audit, IEnumerable<IHealthTransitionSink>? transitions = null)
 {
     public async Task<IReadOnlyList<ManagedServiceSummary>> ListServicesAsync(int page, CancellationToken token)
     {
@@ -83,7 +83,7 @@ public sealed class ServiceInstanceAdministration(IDbContextFactory<ServiceObser
         }
         catch (SqlException ex) when (ex.Number is 2601 or 2627) { return InstanceChangeStatus.Conflict; }
         if (affected == 0) return InstanceChangeStatus.Conflict;
-        await HealthInvalidation.InstanceAsync(db, serviceId.Value, instanceId, now, token);
+        await HealthInvalidation.InstanceAsync(db, serviceId.Value, instanceId, now, token, transitions);
         await db.SaveChangesAsync(token);
         await audit.AppendAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
             new OperationAudit(actor, instanceId, now, new ServiceInstanceChanged(retired ? ServiceInstanceAction.Retired : ServiceInstanceAction.Restored, serviceId.Value)), token);
