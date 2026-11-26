@@ -416,6 +416,13 @@ builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostLogHistory>(services =>
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostLogReader, HostLogReader>();
 builder.Services.AddScoped<AgentReplayPolicyService>();
 builder.Services.AddScoped<AgentInboxSettings>();
+builder.Services.AddHttpClient<Vigiloom.Web.HostMonitoring.RemoteInboxSettings>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<IAgentInboxSettings>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<AgentInboxSettings>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteInboxSettings>());
+builder.Services.AddScoped<IAgentReplayPolicy>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<AgentReplayPolicyService>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteInboxSettings>());
 builder.Services.AddScoped<AgentQueueCapacityMonitoring>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentQueueCapacityStatusReader>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<AgentQueueCapacityMonitoring>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>());

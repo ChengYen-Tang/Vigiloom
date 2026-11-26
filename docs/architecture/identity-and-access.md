@@ -24,6 +24,8 @@ Identity cookies, reset codes, the optional Agent package source credential, and
 
 To encrypt keys, supply a PKCS#12 certificate with a private key through `Vigiloom:DataProtection:CertificatePath` and provide its password separately through a secret configuration source, for example `Vigiloom__DataProtection__CertificatePassword`. Keep the certificate, password and key ring protected and backed up; use deployment-managed encryption where appropriate. Certificate rotation must retain old private keys until all keys encrypted with them have expired and be verified before changing production configuration. Never commit these secrets. If the default platform key repository is used, verify that it is durable for the selected host and deployment topology. Loss or mismatch of the key ring invalidates existing sessions and outstanding reset codes.
 
+Host Monitoring instances must also share a persistent Data Protection key ring and application name so an inbox settings preview created by one instance can be confirmed on another. If the key ring is certificate-protected, each instance needs the corresponding decryption certificate.
+
 ## Local administrator recovery
 
 If administrators cannot sign in, an operator with local administrator privileges can run the Migrator's recovery command on Windows in an elevated terminal or on Linux as root. The command requires an interactive terminal and refuses redirected output. Configure `VIGILOOM_MIGRATION_SQL_CONNECTION` for the existing Vigiloom database and the same `Vigiloom__DataProtection__ApplicationName`, key-ring path and certificate settings used by Web; use secret environment/configuration facilities instead of putting credentials in command arguments.

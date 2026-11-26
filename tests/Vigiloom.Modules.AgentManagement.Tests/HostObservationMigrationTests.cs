@@ -26,6 +26,31 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 public sealed class HostObservationMigrationTests(TestContext context)
 {
     [TestMethod]
+    public Task HostInboxPolicyUsesHostDataAndTransactionalAudit() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
+        {
+            await HostMonitoringDatabaseCommand.RunAsync(target.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<HostMonitoringDbContext>().UseSqlServer(target.ConnectionString,
+                sql => sql.MigrationsHistoryTable(HostMonitoringDbContext.MigrationHistory, "agent")).Options;
+            var factory = new PooledDbContextFactory<HostMonitoringDbContext>(options);
+            var audit = new TemporalAuditWriter(new OutboxWriter([new TestOutboxHandler()]), new ConfigurationBuilder().Build());
+            var settings = new HostInboxSettings(factory, audit, new EphemeralDataProtectionProvider());
+            var actor = Guid.CreateVersion7();
+            var before = await settings.GetAsync(token);
+            Assert.IsTrue(before.CleanupReady);
+            var preview = await settings.PreviewAsync(43200, before.RetentionDays, before.Version, actor, token);
+            Assert.IsNotNull(preview);
+            Assert.IsTrue(await settings.UpdateAsync(43200, before.RetentionDays, before.Version, preview.ConfirmationToken, actor, token));
+            var after = await settings.GetAsync(token);
+            Assert.AreEqual(43200, after.ReplaySeconds);
+            await using var db = await factory.CreateDbContextAsync(token);
+            Assert.AreEqual(1, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
+            await db.Database.ExecuteSqlRawAsync("DROP TABLE scheduling.Outbox", token);
+            await Assert.ThrowsAsync<SqlException>(() => settings.UpdateAsync(86400, after.RetentionDays, after.Version, null, actor, token));
+            Assert.AreEqual(after.ReplaySeconds, (await settings.GetAsync(token)).ReplaySeconds);
+        }, context.CancellationToken);
+
+    [TestMethod]
     public Task HostRetentionChangesPersistWithAuditDelivery() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
         {
