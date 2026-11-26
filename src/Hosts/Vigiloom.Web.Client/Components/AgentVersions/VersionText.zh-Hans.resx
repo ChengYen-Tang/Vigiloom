@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="正在讀取 Agent 版本…" xml:space="preserve"><value>正在读取 Agent 版本…</value></data>
+  <data name="重新載入" xml:space="preserve"><value>重新加载</value></data>
+  <data name="此 Agent 已無法管理，請重新整理設備頁面。" xml:space="preserve"><value>此 Agent 已无法管理，请刷新设备页面。</value></data>
+  <data name="Agent 版本資訊" xml:space="preserve"><value>Agent 版本信息</value></data>
+  <data name="指定版本" xml:space="preserve"><value>指定版本</value></data>
+  <data name="尚未指派" xml:space="preserve"><value>尚未指派</value></data>
+  <data name="指派時間（UTC）：" xml:space="preserve"><value>指派时间（UTC）：</value></data>
+  <data name="心跳回報的 Agent 版本" xml:space="preserve"><value>心跳报告的 Agent 版本</value></data>
+  <data name="尚無回報" xml:space="preserve"><value>尚无报告</value></data>
+  <data name="回報時間（UTC）：" xml:space="preserve"><value>报告时间（UTC）：</value></data>
+  <data name="上次盤點的 Agent 版本" xml:space="preserve"><value>上次盘点的 Agent 版本</value></data>
+  <data name="無法讀取" xml:space="preserve"><value>无法读取</value></data>
+  <data name="尚無盤點資料" xml:space="preserve"><value>尚无盘点数据</value></data>
+  <data name="盤點時間（UTC）：" xml:space="preserve"><value>盘点时间（UTC）：</value></data>
+  <data name="最近回報的更新階段" xml:space="preserve"><value>最近报告的更新阶段</value></data>
+  <data name="原因：" xml:space="preserve"><value>原因：</value></data>
+  <data name="發生時間（UTC）：" xml:space="preserve"><value>发生时间（UTC）：</value></data>
+  <data name="接收時間（UTC）：" xml:space="preserve"><value>接收时间（UTC）：</value></data>
+  <data name="已指定的套件目前不可用，請重新選擇或取消指派。" xml:space="preserve"><value>已指定的包目前不可用，请重新选择或取消指派。</value></data>
+  <data name="Agent 目前尚未連線。若 Updater 已完成授權且正常運作，仍可接收版本指派；否則請確認設備及 Updater 狀態。重新整理頁面可查看 Agent 連線狀態。" xml:space="preserve"><value>Agent 目前尚未连接。如果 Updater 已获授权且正常运行，仍可接收版本指派；否则请检查设备及 Updater。刷新页面可查看连接状态。</value></data>
+  <data name="指定代表設定目標版本，並不代表設備已安裝。" xml:space="preserve"><value>指派表示设置目标版本，并不代表设备已安装。</value></data>
+  <data name="指派 Agent 套件" xml:space="preserve"><value>指派 Agent 包</value></data>
+  <data name="選擇與設備作業系統及架構相符的套件。" xml:space="preserve"><value>选择与设备操作系统及架构匹配的包。</value></data>
+  <data name="如需回滾，請選擇相容的舊版 Agent 並指派；Updater 不會跟著降級。" xml:space="preserve"><value>如需回滚，请指派兼容的旧版 Agent。Updater 不会跟着降级。</value></data>
+  <data name="選擇已下載的套件" xml:space="preserve"><value>选择已下载的包</value></data>
+  <data name="左右滑動查看套件資訊" xml:space="preserve"><value>左右滑动查看包信息</value></data>
+  <data name="選擇" xml:space="preserve"><value>选择</value></data>
+  <data name="版本" xml:space="preserve"><value>版本</value></data>
+  <data name="平台" xml:space="preserve"><value>平台</value></data>
+  <data name="狀態" xml:space="preserve"><value>状态</value></data>
+  <data name="未下載" xml:space="preserve"><value>未下载</value></data>
+  <data name="可指派" xml:space="preserve"><value>可指派</value></data>
+  <data name="目前沒有套件，請先至套件管理下載版本。" xml:space="preserve"><value>目前没有包，请先到包管理下载版本。</value></data>
+  <data name="上一頁" xml:space="preserve"><value>上一页</value></data>
+  <data name="下一頁" xml:space="preserve"><value>下一页</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>第 {0} 页</value></data>
+  <data name="處理中…" xml:space="preserve"><value>处理中…</value></data>
+  <data name="指派版本" xml:space="preserve"><value>指派版本</value></data>
+  <data name="取消指派" xml:space="preserve"><value>取消指派</value></data>
+  <data name="管理套件" xml:space="preserve"><value>管理包</value></data>
+  <data name="只有管理員可以變更版本指派。" xml:space="preserve"><value>只有管理员可以更改版本指派。</value></data>
+  <data name="已通過本機健康檢查" xml:space="preserve"><value>已通过本机健康检查</value></data>
+  <data name="已回復，可重試" xml:space="preserve"><value>已恢复，可重试</value></data>
+  <data name="已回復" xml:space="preserve"><value>已恢复</value></data>
+  <data name="回復失敗" xml:space="preserve"><value>恢复失败</value></data>
+  <data name="準備曾失敗，將自動重試；本次未停止 Agent" xml:space="preserve"><value>准备失败，将自动重试；本次未停止 Agent</value></data>
+  <data name="更新失敗，等待管理員處理" xml:space="preserve"><value>更新失败，等待管理员处理</value></data>
+  <data name="套件已準備" xml:space="preserve"><value>包已准备</value></data>
+  <data name="停止 Agent" xml:space="preserve"><value>停止 Agent</value></data>
+  <data name="切換版本" xml:space="preserve"><value>切换版本</value></data>
+  <data name="啟動 Agent" xml:space="preserve"><value>启动 Agent</value></data>
+  <data name="確認健康狀態" xml:space="preserve"><value>确认健康状态</value></data>
+  <data name="回復版本" xml:space="preserve"><value>恢复版本</value></data>
+  <data name="狀態未知" xml:space="preserve"><value>状态未知</value></data>
+  <data name="更新流程中斷" xml:space="preserve"><value>更新流程中断</value></data>
+  <data name="無法確認更新授權" xml:space="preserve"><value>无法确认更新授权</value></data>
+  <data name="更新或回復發生錯誤" xml:space="preserve"><value>更新或恢复发生错误</value></data>
+  <data name="未知" xml:space="preserve"><value>未知</value></data>
+  <data name="無法讀取 Agent 版本，請重新載入。" xml:space="preserve"><value>无法读取 Agent 版本，请重新加载。</value></data>
+  <data name="無法讀取套件清單，請稍後重試。" xml:space="preserve"><value>无法读取包列表，请稍后重试。</value></data>
+  <data name="已取消指派。" xml:space="preserve"><value>已取消指派。</value></data>
+  <data name="已儲存版本指派；設備是否安裝仍以實際回報為準。" xml:space="preserve"><value>已保存版本指派；是否安装仍以设备报告为准。</value></data>
+  <data name="指派已變更或套件不可用，請重新載入。" xml:space="preserve"><value>指派已更改或包不可用，请重新加载。</value></data>
+  <data name="無法儲存指派，請稍後重試。" xml:space="preserve"><value>无法保存指派，请稍后重试。</value></data>
+  <data name="Agent 版本 - Vigiloom" xml:space="preserve"><value>Agent 版本 - Vigiloom</value></data>
+  <data name="← 返回設備詳情" xml:space="preserve"><value>← 返回设备详情</value></data>
+  <data name="Agent 版本" xml:space="preserve"><value>Agent 版本</value></data>
+  <data name="查看並管理此設備的 Agent 版本。" xml:space="preserve"><value>查看并管理此设备的 Agent 版本。</value></data>
+  <data name="無法讀取設備，請稍後重新整理。" xml:space="preserve"><value>无法读取设备，请稍后刷新。</value></data>
+  <data name="找不到設備。" xml:space="preserve"><value>找不到设备。</value></data>
+  <data name="此設備目前沒有已註冊的 Agent。" xml:space="preserve"><value>此设备目前没有已注册的 Agent。</value></data>
+</root>

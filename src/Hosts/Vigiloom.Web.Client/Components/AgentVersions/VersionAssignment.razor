@@ -2,71 +2,72 @@
 @using Vigiloom.Contracts.Agent
 @using Vigiloom.Contracts.Agent.Inventory
 @using Vigiloom.Contracts.Devices
+@inject Microsoft.Extensions.Localization.IStringLocalizer<VersionText> L
 @implements IAsyncDisposable
 @inject IAgentVersionClient Client
 @inject IHostMonitoringClient Monitoring
 @inject ILogger<VersionAssignment> Logger
 
 <div class="version-assignment" data-runtime="@RendererInfo.Name" data-interactive="@(RendererInfo.IsInteractive ? "true" : "false")">
-    @if (loading) { <p role="status">正在讀取 Agent 版本…</p> }
-    else if (error is not null) { <section class="version-panel"><p role="alert">@error</p><button @onclick="ReloadAsync">重新載入</button></section> }
-    else if (current is null) { <section class="version-panel"><p role="alert">此 Agent 已無法管理，請重新整理設備頁面。</p></section> }
+    @if (loading) { <p role="status">@L["正在讀取 Agent 版本…"]</p> }
+    else if (error is not null) { <section class="version-panel"><p role="alert">@error</p><button @onclick="ReloadAsync">@L["重新載入"]</button></section> }
+    else if (current is null) { <section class="version-panel"><p role="alert">@L["此 Agent 已無法管理，請重新整理設備頁面。"]</p></section> }
     else
     {
         <section class="version-panel">
-            <h2>Agent 版本資訊</h2>
+            <h2>@L["Agent 版本資訊"]</h2>
             <dl class="version-summary">
-                <div><dt>指定版本</dt><dd>@(current?.PackageVersion ?? "尚未指派")</dd><dd class="version-time">指派時間（UTC）：@(current?.PackageId is null ? "—" : current.AssignedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss"))</dd></div>
-                <div><dt>心跳回報的 Agent 版本</dt><dd>@(current?.ReportedVersion is null ? "尚無回報" : $"{current.ReportedVersion} ({current.ReportedRuntimeIdentifier})")</dd><dd class="version-time">回報時間（UTC）：@(current?.ReportedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd></div>
-                <div><dt>上次盤點的 Agent 版本</dt><dd>@(inventoryError ? "無法讀取" : observedVersion ?? "尚無盤點資料")</dd><dd class="version-time">盤點時間（UTC）：@(observedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd></div>
-                <div><dt>最近回報的更新階段</dt><dd>@ResultText(current?.LatestResult)</dd>
+                <div><dt>@L["指定版本"]</dt><dd>@(current?.PackageVersion ?? L["尚未指派"].Value)</dd><dd class="version-time">@L["指派時間（UTC）："]@(current?.PackageId is null ? "—" : current.AssignedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss"))</dd></div>
+                <div><dt>@L["心跳回報的 Agent 版本"]</dt><dd>@(current?.ReportedVersion is null ? L["尚無回報"].Value : $"{current.ReportedVersion} ({current.ReportedRuntimeIdentifier})")</dd><dd class="version-time">@L["回報時間（UTC）："]@(current?.ReportedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd></div>
+                <div><dt>@L["上次盤點的 Agent 版本"]</dt><dd>@(inventoryError ? L["無法讀取"].Value : observedVersion ?? L["尚無盤點資料"].Value)</dd><dd class="version-time">@L["盤點時間（UTC）："]@(observedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd></div>
+                <div><dt>@L["最近回報的更新階段"]</dt><dd>@ResultText(current?.LatestResult)</dd>
                     @if (current?.LatestResult is { } result)
                     {
-                        @if (result.Result is AgentUpdateResultKind.RolledBack or AgentUpdateResultKind.RollbackFailed or AgentUpdateResultKind.Failed) { <dd>原因：@FailureText(result.Failure)</dd> }
-                        <dd class="version-time">發生時間（UTC）：@result.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd>
+                        @if (result.Result is AgentUpdateResultKind.RolledBack or AgentUpdateResultKind.RollbackFailed or AgentUpdateResultKind.Failed) { <dd>@L["原因："]@FailureText(result.Failure)</dd> }
+                        <dd class="version-time">@L["發生時間（UTC）："]@result.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd>
                     }
-                    <dd class="version-time">接收時間（UTC）：@(current?.LatestResult?.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd>
+                    <dd class="version-time">@L["接收時間（UTC）："]@(current?.LatestResult?.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</dd>
                 </div>
             </dl>
-            @if (current is { PackageId: not null, Available: false }) { <p role="alert" class="version-warning">已指定的套件目前不可用，請重新選擇或取消指派。</p> }
+            @if (current is { PackageId: not null, Available: false }) { <p role="alert" class="version-warning">@L["已指定的套件目前不可用，請重新選擇或取消指派。"]</p> }
             @if (current is { PackageId: not null } && ConnectionState is AgentConnectionState.Offline or AgentConnectionState.AwaitingFirstHeartbeat)
             {
-                <p class="version-note">Agent 目前尚未連線。若 Updater 已完成授權且正常運作，仍可接收版本指派；否則請確認設備及 Updater 狀態。重新整理頁面可查看 Agent 連線狀態。</p>
+                <p class="version-note">@L["Agent 目前尚未連線。若 Updater 已完成授權且正常運作，仍可接收版本指派；否則請確認設備及 Updater 狀態。重新整理頁面可查看 Agent 連線狀態。"]</p>
             }
-            <p class="version-note">指定代表設定目標版本，並不代表設備已安裝。</p>
+            <p class="version-note">@L["指定代表設定目標版本，並不代表設備已安裝。"]</p>
         </section>
         <AuthorizeView Roles="Administrator">
             <Authorized>
                 <section class="version-panel">
-                    <h2>指派 Agent 套件</h2>
-                    <p>選擇與設備作業系統及架構相符的套件。</p>
-                    <p class="version-note">如需回滾，請選擇相容的舊版 Agent 並指派；Updater 不會跟著降級。</p>
+                    <h2>@L["指派 Agent 套件"]</h2>
+                    <p>@L["選擇與設備作業系統及架構相符的套件。"]</p>
+                    <p class="version-note">@L["如需回滾，請選擇相容的舊版 Agent 並指派；Updater 不會跟著降級。"]</p>
                     <fieldset disabled="@(saving || paging || !RendererInfo.IsInteractive)">
-                        <legend>選擇已下載的套件</legend>
-                        <p class="version-scroll-hint">左右滑動查看套件資訊</p>
-                        <div class="version-table-wrap"><table><thead><tr><th>選擇</th><th>版本</th><th>平台</th><th>狀態</th></tr></thead><tbody>
+                        <legend>@L["選擇已下載的套件"]</legend>
+                        <p class="version-scroll-hint">@L["左右滑動查看套件資訊"]</p>
+                        <div class="version-table-wrap"><table><thead><tr><th>@L["選擇"]</th><th>@L["版本"]</th><th>@L["平台"]</th><th>@L["狀態"]</th></tr></thead><tbody>
                             @foreach (var package in packages.Items)
                             {
                                 <tr @key="package.Id"><td><input type="radio" name="agent-version-package" value="@package.Id" checked="@(selected == package.Id.ToString())" @onchange="() => selected = package.Id.ToString()" disabled="@(!Available(package))" aria-label="@($"{package.Version} {package.RuntimeIdentifier}")" /></td>
-                                    <td>@package.Version</td><td>@package.RuntimeIdentifier</td><td>@(!package.Cached ? "未下載" : "可指派")</td></tr>
+                                    <td>@package.Version</td><td>@package.RuntimeIdentifier</td><td>@(!package.Cached ? L["未下載"].Value : L["可指派"].Value)</td></tr>
                             }
                         </tbody></table></div>
                     </fieldset>
-                    @if (packages.Items.Count == 0) { <p>目前沒有套件，請先至套件管理下載版本。</p> }
+                    @if (packages.Items.Count == 0) { <p>@L["目前沒有套件，請先至套件管理下載版本。"]</p> }
                     @if (packages.Page > 1 || packages.HasMore) { <div class="version-pagination">
-                        <button type="button" @onclick="PreviousAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || packages.Page <= 1)">上一頁</button>
-                        <span>第 @packages.Page 頁</span>
-                        <button type="button" @onclick="NextAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || !packages.HasMore)">下一頁</button>
+                        <button type="button" @onclick="PreviousAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || packages.Page <= 1)">@L["上一頁"]</button>
+                        <span>@L["第 {0} 頁", packages.Page]</span>
+                        <button type="button" @onclick="NextAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || !packages.HasMore)">@L["下一頁"]</button>
                     </div> }
                     @if (message is not null) { <p role="@(success ? "status" : "alert")">@message</p> }
                     <div class="version-actions">
-                        <button type="button" @onclick="AssignAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || string.IsNullOrEmpty(selected))">@(saving ? "處理中…" : "指派版本")</button>
-                        <button type="button" @onclick="CancelAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || current?.PackageId is null)">取消指派</button>
-                        <a href="/settings/agent-packages">管理套件</a>
+                        <button type="button" @onclick="AssignAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || string.IsNullOrEmpty(selected))">@(saving ? L["處理中…"].Value : L["指派版本"].Value)</button>
+                        <button type="button" @onclick="CancelAsync" disabled="@(saving || paging || !RendererInfo.IsInteractive || current?.PackageId is null)">@L["取消指派"]</button>
+                        <a href="/settings/agent-packages">@L["管理套件"]</a>
                     </div>
                 </section>
             </Authorized>
-            <NotAuthorized><p>只有管理員可以變更版本指派。</p></NotAuthorized>
+            <NotAuthorized><p>@L["只有管理員可以變更版本指派。"]</p></NotAuthorized>
         </AuthorizeView>
     }
 </div>
@@ -88,28 +89,28 @@
     private bool saving;
     private bool paging;
     private bool success;
-    private static string ResultText(AgentUpdateResultView? result) => result is null ? "尚無回報" : $"{result.PackageVersion}：{result.Result switch
+    private string ResultText(AgentUpdateResultView? result) => result is null ? L["尚無回報"].Value : $"{result.PackageVersion}：{result.Result switch
     {
-        AgentUpdateResultKind.Succeeded => "已通過本機健康檢查",
-        AgentUpdateResultKind.RolledBack when result.RetryAllowed => "已回復，可重試",
-        AgentUpdateResultKind.RolledBack => "已回復",
-        AgentUpdateResultKind.RollbackFailed => "回復失敗",
-        AgentUpdateResultKind.Failed when result.RetryAllowed => "準備曾失敗，將自動重試；本次未停止 Agent",
-        AgentUpdateResultKind.Failed => "更新失敗，等待管理員處理",
-        AgentUpdateResultKind.Prepared => "套件已準備",
-        AgentUpdateResultKind.Stopping => "停止 Agent",
-        AgentUpdateResultKind.Switching => "切換版本",
-        AgentUpdateResultKind.Starting => "啟動 Agent",
-        AgentUpdateResultKind.Verifying => "確認健康狀態",
-        AgentUpdateResultKind.RollingBack => "回復版本",
-        _ => "狀態未知"
+        AgentUpdateResultKind.Succeeded => L["已通過本機健康檢查"].Value,
+        AgentUpdateResultKind.RolledBack when result.RetryAllowed => L["已回復，可重試"].Value,
+        AgentUpdateResultKind.RolledBack => L["已回復"].Value,
+        AgentUpdateResultKind.RollbackFailed => L["回復失敗"].Value,
+        AgentUpdateResultKind.Failed when result.RetryAllowed => L["準備曾失敗，將自動重試；本次未停止 Agent"].Value,
+        AgentUpdateResultKind.Failed => L["更新失敗，等待管理員處理"].Value,
+        AgentUpdateResultKind.Prepared => L["套件已準備"].Value,
+        AgentUpdateResultKind.Stopping => L["停止 Agent"].Value,
+        AgentUpdateResultKind.Switching => L["切換版本"].Value,
+        AgentUpdateResultKind.Starting => L["啟動 Agent"].Value,
+        AgentUpdateResultKind.Verifying => L["確認健康狀態"].Value,
+        AgentUpdateResultKind.RollingBack => L["回復版本"].Value,
+        _ => L["狀態未知"].Value
     }}";
-    private static string FailureText(AgentUpdateFailure? failure) => failure switch
+    private string FailureText(AgentUpdateFailure? failure) => failure switch
     {
-        AgentUpdateFailure.Interrupted => "更新流程中斷",
-        AgentUpdateFailure.AuthorizationUnavailable => "無法確認更新授權",
-        AgentUpdateFailure.Other => "更新或回復發生錯誤",
-        _ => "未知"
+        AgentUpdateFailure.Interrupted => L["更新流程中斷"].Value,
+        AgentUpdateFailure.AuthorizationUnavailable => L["無法確認更新授權"].Value,
+        AgentUpdateFailure.Other => L["更新或回復發生錯誤"].Value,
+        _ => L["未知"].Value
     };
     private bool Available(AgentPackageView package) => package.Cached;
 
@@ -120,7 +121,7 @@
         loading = true; error = null;
         try { current = await Client.GetAsync(AgentId, lifetime.Token); packages = await Client.PackagesAsync(1, lifetime.Token); selected = ""; await LoadObservedAsync(); }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load Agent version assignment"); error = "無法讀取 Agent 版本，請重新載入。"; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load Agent version assignment"); error = L["無法讀取 Agent 版本，請重新載入。"].Value; }
         finally { loading = false; }
     }
 
@@ -149,7 +150,7 @@
         paging = true;
         try { packages = await Client.PackagesAsync(page, lifetime.Token); selected = ""; }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load Agent package page"); message = "無法讀取套件清單，請稍後重試。"; success = false; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load Agent package page"); message = L["無法讀取套件清單，請稍後重試。"].Value; success = false; }
         finally { paging = false; }
     }
     private Task PreviousAsync() => PageAsync(packages.Page - 1);
@@ -164,12 +165,12 @@
         {
             var result = await Client.SetAsync(AgentId, new(packageId, current?.Revision ?? ""), lifetime.Token);
             success = result == VersionAssignmentResult.Saved;
-            if (success) { await ReloadAsync(); message = packageId is null ? "已取消指派。" : "已儲存版本指派；設備是否安裝仍以實際回報為準。"; }
+            if (success) { await ReloadAsync(); message = packageId is null ? L["已取消指派。"].Value : L["已儲存版本指派；設備是否安裝仍以實際回報為準。"].Value; }
             else if (result == VersionAssignmentResult.NotFound) current = null;
-            else message = "指派已變更或套件不可用，請重新載入。";
+            else message = L["指派已變更或套件不可用，請重新載入。"].Value;
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch (Exception ex) { Logger.LogWarning(ex, "Unable to change Agent version assignment"); success = false; message = "無法儲存指派，請稍後重試。"; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to change Agent version assignment"); success = false; message = L["無法儲存指派，請稍後重試。"].Value; }
         finally { saving = false; }
     }
 
