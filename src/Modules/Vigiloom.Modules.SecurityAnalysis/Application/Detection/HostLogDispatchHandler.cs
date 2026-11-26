@@ -99,7 +99,8 @@ internal sealed class HostLogDispatchHandler(IDbContextFactory<SecurityAnalysisD
         }
         await FlushAsync();
         foreach (var rule in selection.Rules.Correlations)
-            await new CorrelationDispatch(logs, notifications).HandleAsync(db, rule, versions[rule.Source.Path].Rule, dispatch, events, now, cancellationToken);
+            await new CorrelationDispatch(logs, notifications, timeline).HandleAsync(db, rule, versions[rule.Source.Path].Rule,
+                selection.Rules.Snapshot.RevisionId, dispatch, events, now, cancellationToken);
 
         async Task FlushIfFullAsync()
         {
