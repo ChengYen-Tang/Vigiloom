@@ -13,6 +13,16 @@ namespace Vigiloom.Modules.Resources.Application.AgentIdentity;
 /// <summary>Owns device-bound Agent registration and credentials.</summary>
 public sealed class AgentRegistration(IDbContextFactory<ResourcesDbContext> contexts, TimeProvider clock, ResourceWork outbox)
 {
+    public async Task<Guid[]> ActiveAsync(IReadOnlyList<Guid> agentIds, CancellationToken token)
+    {
+        await using var db = await contexts.CreateDbContextAsync(token);
+        return await (from agent in db.Agents.AsNoTracking()
+            join device in db.Devices.AsNoTracking() on agent.DeviceId equals device.Id
+            where agentIds.Contains(agent.Id) && agent.RevokedAt == null && agent.DeviceGeneration == device.AgentAuthorizationGeneration &&
+                device.DeepMonitoring && device.IsEnabled && !device.IsArchived
+            select agent.Id).ToArrayAsync(token);
+    }
+
     public async Task<IReadOnlyList<DeviceAgentOverview>> OverviewAsync(IReadOnlyList<Guid> deviceIds, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);

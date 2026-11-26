@@ -125,6 +125,19 @@ app.MapPost("/api/v1/agent/update-results", AgentUpdateResultEndpoint.ReceiveAsy
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentUpdateResultEndpoint.MaximumBytes));
 app.MapGet("/internal/v1/agents/{id:guid}/update-status", async (Guid id, HostUpdateResults results, CancellationToken token) =>
     await results.GetAsync(id, token) is { } status ? Results.Ok(status) : Results.NotFound());
+app.MapPost("/internal/v1/agent-package-usage", async (AgentPackageUsageRequest request, IDbContextFactory<HostMonitoringDbContext> contexts,
+    IHttpClientFactory clients, CancellationToken token) =>
+{
+    await using var db = await contexts.CreateDbContextAsync(token);
+    var ids = await db.AgentStatuses.AsNoTracking().Where(x => x.RuntimeVersion == request.Version && x.RuntimeIdentifier == request.RuntimeIdentifier)
+        .Select(x => x.Id).ToArrayAsync(token);
+    if (ids.Length == 0) return Results.Ok(new AgentPackageUsageResponse(false));
+    using var response = await clients.CreateClient("resources").PostAsJsonAsync("internal/v1/agents/active", ids, token);
+    response.EnsureSuccessStatusCode();
+    var active = await response.Content.ReadFromJsonAsync<Guid[]>(cancellationToken: token)
+        ?? throw new InvalidOperationException("Resources returned an empty Agent list.");
+    return Results.Ok(new AgentPackageUsageResponse(active.Length != 0));
+});
 app.MapGet("/api/v1/agent/queue-session", async (HttpContext context, HostHeartbeat service, CancellationToken token) =>
 {
     var session = await service.GetSessionAsync((RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!, token);

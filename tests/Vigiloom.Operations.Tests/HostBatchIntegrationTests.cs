@@ -129,8 +129,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.AreEqual(128L * 1024 * 1024, capacity!.Capacity.PayloadBytes);
             var queue = new AgentQueueSnapshot(0, 0, 0, capacity.Capacity.PayloadBytes, capacity.Capacity.BatchCount);
             var capacityReport = new AgentQueueCapacityReport(capacity, DateTimeOffset.UtcNow, null);
-            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, queue, CapacityConfiguration: capacityReport), token))
+            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, queue, CapacityConfiguration: capacityReport, Runtime: new("1.2.3", "win-x64")), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            using (var usage = await client.PostAsJsonAsync("/internal/v1/agent-package-usage", new AgentPackageUsageRequest("1.2.3", "win-x64"), token))
+                Assert.IsTrue((await usage.Content.ReadFromJsonAsync<AgentPackageUsageResponse>(cancellationToken: token))!.InUse);
+            using (var usage = await client.PostAsJsonAsync("/internal/v1/agent-package-usage", new AgentPackageUsageRequest("9.9.9", "win-x64"), token))
+                Assert.IsFalse((await usage.Content.ReadFromJsonAsync<AgentPackageUsageResponse>(cancellationToken: token))!.InUse);
             var command = new AgentSettingsCommand(new AgentSettingsUpdate(new AgentSettingsOverrides(90, null, null), ""), Guid.CreateVersion7());
             using (var updated = await client.PostAsJsonAsync($"/internal/v1/agent-settings/devices/{identity.DeviceId:D}", command, token))
                 Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
@@ -226,6 +230,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/agents/active", StringComparison.Ordinal))
+                return new(HttpStatusCode.OK) { Content = JsonContent.Create(new[] { identity.AgentId }) };
             if (request.RequestUri!.AbsolutePath.EndsWith("/agent-overview", StringComparison.Ordinal))
                 return new(HttpStatusCode.OK) { Content = JsonContent.Create(new[] { new DeviceAgentOverview(
                     new DeviceAgentState(identity.DeviceId, identity.DeviceGeneration, true),

@@ -147,6 +147,7 @@ public sealed class HostObservationMigrationTests(TestContext context)
             var registrations = new Vigiloom.Modules.Resources.Application.AgentIdentity.AgentRegistration(resourceFactory, TimeProvider.System, null!);
             var overview = await registrations.OverviewAsync([device.Id], token);
             Assert.AreEqual(agent.Id, Assert.ContainsSingle(overview).Registration!.Id);
+            CollectionAssert.AreEqual(new[] { agent.Id }, await registrations.ActiveAsync([agent.Id, Guid.CreateVersion7()], token));
             var epoch = Guid.CreateVersion7();
             agent.RecordHeartbeat(now);
             agent.BeginQueueSession(epoch);
