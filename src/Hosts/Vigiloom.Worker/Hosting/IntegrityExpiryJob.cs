@@ -4,11 +4,12 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 
 namespace Vigiloom.Worker.Hosting;
 
-public sealed class IntegrityExpiryJob(IntegrityExpiry expiry, ILogger<IntegrityExpiryJob> logger)
+public sealed class IntegrityExpiryJob(IntegrityExpiry expiry, ILogger<IntegrityExpiryJob> logger, IConfiguration configuration)
 {
     [AutomaticRetry(Attempts = 3)]
     public async Task RunAsync(CancellationToken token)
     {
+        if (SecurityCutover.IsEnabled(configuration)) return;
         var count = await expiry.RunAsync(token);
         if (count > 0) logger.LogInformation("Closed or released {Count} integrity scans", count);
     }

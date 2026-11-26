@@ -4,12 +4,13 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
 
 namespace Vigiloom.Worker.Hosting;
 
-public sealed class BaselineRefreshJob(BaselineRefresh refresh, ILogger<BaselineRefreshJob> logger)
+public sealed class BaselineRefreshJob(BaselineRefresh refresh, ILogger<BaselineRefreshJob> logger, IConfiguration configuration)
 {
     [DisableConcurrentExecution(120)]
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(CancellationToken token)
     {
+        if (SecurityCutover.IsEnabled(configuration)) return;
         foreach (var key in BaselineRefresh.SourceKeys)
         {
             var result = await refresh.RunDueAsync(key, token);
