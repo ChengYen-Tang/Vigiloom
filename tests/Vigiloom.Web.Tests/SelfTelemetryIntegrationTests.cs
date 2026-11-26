@@ -31,6 +31,9 @@ using OpenTelemetry.Proto.Logs.V1;
 using OpenTelemetry.Proto.Trace.V1;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Modules.AlertingOperations.Application;
+using Vigiloom.Modules.AlertingOperations.Application.Timeline;
+using Vigiloom.Modules.AlertingOperations.Domain;
 using OpenTelemetry.Proto.Common.V1;
 using OpenTelemetry.Proto.Metrics.V1;
 using OpenTelemetry.Proto.Resource.V1;
@@ -42,6 +45,8 @@ using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Application;
+using Vigiloom.Modules.ServiceObservability.Application.Health;
+using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
 
@@ -117,7 +122,7 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
                 web.UseEnvironment("Production");
                 web.UseUrls("http://127.0.0.1:0");
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ConnectionStrings:Observability"] = observabilityDb.ConnectionString, ["Services:Resources:Url"] = resourceAddress, ["Services:Operations:Url"] = operationsAddress, ["Vigiloom:Gateway:TrustedProxies:0"] = "127.0.0.1" }));
+                { ["ConnectionStrings:Observability"] = observabilityDb.ConnectionString, ["Services:Resources:Url"] = resourceAddress, ["Services:Operations:Url"] = operationsAddress, ["Work:OperationsQueue"] = taskQueue + "-operations", ["Work:AuditQueue"] = taskQueue + "-operations", ["Vigiloom:Gateway:TrustedProxies:0"] = "127.0.0.1" }));
                 web.ConfigureTestServices(services =>
                 {
                     RemoveWorkers(services);
@@ -279,6 +284,51 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             statuses.EnsureSuccessStatusCode();
             var statusMap = await statuses.Content.ReadFromJsonAsync<Dictionary<Guid, Vigiloom.Modules.ServiceObservability.Application.Health.HealthStatusReader.OverviewStatus>>(cancellationToken: token);
             Assert.AreEqual(ServiceHealthState.Unknown, statusMap![serviceId].Status.State);
+            if (!string.IsNullOrWhiteSpace(temporalAddress))
+            {
+                var targetSchedule = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(operationsDb.ConnectionString,
+                    sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+                await using (var db = new SchedulingDbContext(targetSchedule)) await db.Database.MigrateAsync(token);
+                await using var scope = observation.Services.CreateAsyncScope();
+                var actor = Guid.CreateVersion7();
+                var policy = await scope.ServiceProvider.GetRequiredService<HealthNetworkPolicyAdministration>()
+                    .UpdateAsync(new(["127.0.0.0/8"], ""), actor, token);
+                Assert.IsNotNull(policy);
+                var target = await scope.ServiceProvider.GetRequiredService<HealthTargetAdministration>()
+                    .CreateAsync(new(serviceId, null, new("http://127.0.0.1:12345/health", 30, 5, 1, 1, true, "")), actor, token);
+                Assert.AreEqual(HealthTargetStatus.Saved, target.Status);
+                var store = new HealthStore(observationContexts, observation.Services.GetServices<IHealthTransitionSink>());
+                var lease = Assert.ContainsSingle(await store.ClaimAsync(1, token));
+                var work = await store.LoadAsync(lease, token);
+                var network = await store.NetworkAsync(token);
+                Assert.IsNotNull(work);
+                Assert.IsNotNull(network);
+                Assert.IsTrue(await store.CommitAsync(work, network, HealthObservationKind.Unhealthy, await store.NowAsync(token), token));
+
+                var ids = new List<Guid>();
+                await using (var connection = new SqlConnection(observabilityDb.ConnectionString))
+                {
+                    await connection.OpenAsync(token);
+                    await using var command = connection.CreateCommand();
+                    command.CommandText = "SELECT MessageId FROM scheduling.Outbox";
+                    await using var records = await command.ExecuteReaderAsync(token);
+                    while (await records.ReadAsync(token)) ids.Add(records.GetGuid(0));
+                }
+                foreach (var id in ids) dispatchedIds.Add(id);
+                temporal ??= await TemporalClient.ConnectAsync(new(temporalAddress));
+                var workClient = new ServiceWorkClient(temporal);
+                var handler = new OperationsHost::Vigiloom.Operations.Work.OperationsWorkHandler(
+                    operations.Services.GetRequiredService<IConfiguration>(), new NotificationWriter(), new OperationAuditWriter(), new TimelineWriter());
+                var dispatcher = new OutboxDispatcher(observabilityDb.ConnectionString, [new TemporalOutboxHandler(workClient)], NullLogger<OutboxDispatcher>.Instance);
+                using var worker = ServiceWorkWorker.Create(temporal, taskQueue + "-operations", handler);
+                await worker.ExecuteAsync(async () =>
+                {
+                    await dispatcher.DispatchAsync(token);
+                    foreach (var id in ids) await workClient.Get(id.ToString("D")).GetResultAsync().WaitAsync(TimeSpan.FromSeconds(30), token);
+                }, token);
+                await using var saved = await operationContexts.CreateDbContextAsync(token);
+                Assert.IsTrue(await saved.Set<ServiceHealthAlert>().AnyAsync(row => row.ServiceId == serviceId && row.RecoveredAt == null, token));
+            }
             async Task ProjectAsync(Guid id)
             {
                 await using var connection = new SqlConnection(resourcesDb.ConnectionString);
