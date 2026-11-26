@@ -15,6 +15,14 @@ internal sealed class JobOverview(SchedulingOverview local, IConfiguration confi
 
 internal sealed class RemoteJobOverview(HttpClient client)
 {
+    public async Task<bool> DatabaseHealthyAsync(CancellationToken token)
+    {
+        using var response = await client.GetAsync("health/ready", HttpCompletionOption.ResponseHeadersRead, token);
+        if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable) return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     public async Task<WorkOverview> GetAsync(CancellationToken token) =>
         await client.GetFromJsonAsync<WorkOverview>("internal/v1/diagnostics/jobs", token)
         ?? throw new InvalidOperationException("Operations service returned an empty job overview.");
