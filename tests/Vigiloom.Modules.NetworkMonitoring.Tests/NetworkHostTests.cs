@@ -21,6 +21,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Network;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Identity;
+using Vigiloom.Contracts.Publishing;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Authentication;
@@ -49,18 +50,37 @@ public sealed class NetworkHostTests(TestContext context)
         await using (var db = new SchedulingDbContext(schedulingOptions)) await db.Database.MigrateAsync(token);
         var id = Guid.CreateVersion7();
         var version = new byte[8];
+        var published = true;
+        var withdrawDuringRead = false;
+        var policyReads = 0;
+        var now = DateTimeOffset.UtcNow;
+        var bucket = TimeSpan.FromMinutes(5);
+        var allowedBucket = now.AddTicks(-(now.UtcTicks % bucket.Ticks)).AddMinutes(-10);
+        var publishedSince = allowedBucket.AddMinutes(-2);
         var resourceBuilder = WebApplication.CreateSlimBuilder();
         resourceBuilder.WebHost.UseUrls("http://127.0.0.1:0");
         await using var resources = resourceBuilder.Build();
         resources.MapGet("/internal/v1/device-management/{deviceId:guid}", (Guid deviceId) =>
             deviceId == id ? Results.Ok(new DeviceDetails(id, "Example", "example.org", [], false, true, false,
                 DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, Convert.ToBase64String(version))) : Results.NotFound());
+        resources.MapGet("/internal/v1/publications/devices/{deviceId:guid}", (Guid deviceId) =>
+        {
+            if (withdrawDuringRead && Interlocked.Increment(ref policyReads) == 2) published = false;
+            return deviceId == id && published ? Results.Ok(new PublishedDevicePolicy(id, "Public Example", "example.org", true, false, false,
+                publishedSince, 1, publishedSince, Convert.ToBase64String(version), "template")) : Results.NotFound();
+        });
         await resources.StartAsync(token);
         var resourceAddress = resources.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         await using (var db = new NetworkDbContext(networkOptions))
         {
             db.PingTargets.Add(new PingTargetState { DeviceId = id, Target = "example.org", DeviceVersion = version,
                 Enabled = true, Successes = 1, DueAt = DateTimeOffset.UtcNow.AddMinutes(-1) });
+            foreach (var start in new[] { allowedBucket.AddMinutes(-5), allowedBucket })
+            {
+                var rollup = new PingRollup(id, "example.org", "central", start);
+                rollup.Add(new PingSample(id, "example.org", null, "central", 1, start, start, PingOutcome.Success, 3));
+                db.PingRollups.Add(rollup);
+            }
             await db.SaveChangesAsync(token);
         }
         using var host = new WebApplicationFactory<NetworkHost::Program>().WithWebHostBuilder(builder =>
@@ -123,6 +143,32 @@ public sealed class NetworkHostTests(TestContext context)
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM scheduling.Outbox";
         Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
+        client.DefaultRequestHeaders.Authorization = null;
+        using (var response = await client.GetAsync($"/api/v1/public/devices/{id:D}/ping", token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.IsFalse((await response.Content.ReadAsStringAsync(token)).Contains("example.org", StringComparison.Ordinal));
+            var result = await response.Content.ReadFromJsonAsync<PublicDevice>(cancellationToken: token);
+            Assert.IsNotNull(result);
+            Assert.AreEqual("Public Example", result.Name);
+            Assert.IsNull(result.LatencyMilliseconds);
+            Assert.IsNull(result.ObservedAt);
+        }
+        var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddHours(-1).ToString("O"));
+        var to = Uri.EscapeDataString(DateTimeOffset.UtcNow.ToString("O"));
+        using (var response = await client.GetAsync($"/api/v1/public/devices/{id:D}/ping/history?from={from}&to={to}", token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            var history = await response.Content.ReadFromJsonAsync<PublicDeviceHistory>(cancellationToken: token);
+            Assert.IsNotNull(history);
+            Assert.AreEqual(allowedBucket, Assert.ContainsSingle(history.Points).From);
+        }
+        withdrawDuringRead = true;
+        policyReads = 0;
+        using (var response = await client.GetAsync($"/api/v1/public/devices/{id:D}/ping", token))
+            Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+        using (var response = await client.GetAsync($"/api/v1/public/devices/{id:D}/ping/history?from={from}&to={to}", token))
+            Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
     }, context.CancellationToken);
 
     private sealed class Source(Guid id, byte[] version) : IDevicePingSource

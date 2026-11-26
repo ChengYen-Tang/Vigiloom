@@ -43,6 +43,7 @@ public sealed class ProxyTests
             })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
         var id = Guid.CreateVersion7();
+        Assert.AreEqual("network", await client.GetStringAsync($"/api/v1/public/devices/{id:D}/ping", TestContext.CancellationToken));
         using (var response = await client.GetAsync($"/api/v1/devices/{id:D}/ping", TestContext.CancellationToken))
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_read");
