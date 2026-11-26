@@ -127,7 +127,7 @@ public static class WorkerHost
             builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233", builder.Configuration["Temporal:Namespace"] ?? "default");
             builder.Services.AddScoped<TemporalOutboxHandler>();
             builder.Services.AddScoped<Vigiloom.Contracts.Notifications.INotificationWriter>(services =>
-                new TemporalNotificationWriter(new OutboxWriter([services.GetRequiredService<TemporalOutboxHandler>()]), services.GetRequiredService<IConfiguration>()));
+                new TemporalNotificationWriter(new OutboxWriter([services.GetRequiredService<TemporalOutboxHandler>()], maxPayloadLength: null), services.GetRequiredService<IConfiguration>()));
         }
         builder.Services.AddSingleton<Vigiloom.Contracts.Resources.IServiceGroupSource, Vigiloom.Modules.Resources.Application.ServiceGroupSource>();
         builder.Services.AddSingleton<Vigiloom.Contracts.Services.IHealthTransitionSink, Vigiloom.Modules.AlertingOperations.Application.ServiceHealthAlertSink>();

@@ -98,7 +98,7 @@ public sealed class TemporalAuditIntegrationTests(TestContext context)
                 var device = Guid.CreateVersion7(); var service = Guid.CreateVersion7(); var targetId = Guid.CreateVersion7();
                 var ping = new PingTransition(device, "router.example", 5, audit.OccurredAt, Reachability.Reachable, Reachability.Unreachable, new("Router", []));
                 var health = new HealthTransition(targetId, service, null, 6, ServiceHealthState.Unhealthy, audit.OccurredAt, "Orders", "production");
-                var securityNotification = new NotificationRequest(Guid.CreateVersion7(), "sigma", audit.OccurredAt, "Security alert", "A matching event was detected.", device);
+                var securityNotification = new NotificationRequest(Guid.CreateVersion7(), "sigma", audit.OccurredAt, "Security alert", new string('測', 25000), device);
                 await using (var resources = new ResourcesDbContext(new DbContextOptionsBuilder<ResourcesDbContext>()
                     .UseSqlServer(source.ConnectionString).Options))
                 {
@@ -107,7 +107,8 @@ public sealed class TemporalAuditIntegrationTests(TestContext context)
                     var sink = new TemporalPingTransitionSink(scope.ServiceProvider.GetRequiredService<OutboxWriter>(), host.Services.GetRequiredService<IConfiguration>());
                     await sink.RecordAsync(ping, resources.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
                     var writerType = typeof(WorkerHostAssembly::Vigiloom.Worker.Hosting.WorkerHost).Assembly.GetType("Vigiloom.Worker.Hosting.TemporalNotificationWriter", throwOnError: true)!;
-                    var notificationWriter = (INotificationWriter)Activator.CreateInstance(writerType, scope.ServiceProvider.GetRequiredService<OutboxWriter>(), host.Services.GetRequiredService<IConfiguration>())!;
+                    var temporalHandler = scope.ServiceProvider.GetServices<IOutboxHandler>().Single(handler => handler.MessageType == TemporalOutboxHandler.Type);
+                    var notificationWriter = (INotificationWriter)Activator.CreateInstance(writerType, new OutboxWriter([temporalHandler], maxPayloadLength: null), host.Services.GetRequiredService<IConfiguration>())!;
                     await notificationWriter.WriteAsync(securityNotification, resources.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
                     deliveryIds.Add(await work.WriteAsync(resources, queue, new(HealthTransitionDelivery.Kind, JsonSerializer.Serialize(new HealthTransitionDelivery(health, 0, []))), token));
                     await transaction.CommitAsync(token);

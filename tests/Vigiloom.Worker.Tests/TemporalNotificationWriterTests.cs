@@ -34,8 +34,8 @@ public sealed class TemporalNotificationWriterTests(TestContext context)
             sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
         await using (var db = new SchedulingDbContext(options)) await db.Database.MigrateAsync(token);
         var type = typeof(WorkerHost).Assembly.GetType("Vigiloom.Worker.Hosting.TemporalNotificationWriter", throwOnError: true)!;
-        var writer = (INotificationWriter)Activator.CreateInstance(type, new OutboxWriter([new Handler()]), new ConfigurationBuilder().Build())!;
-        var notification = new NotificationRequest(Guid.CreateVersion7(), "sigma", DateTimeOffset.UtcNow, "Security alert", "A matching event was detected.");
+        var writer = (INotificationWriter)Activator.CreateInstance(type, new OutboxWriter([new Handler()], maxPayloadLength: null), new ConfigurationBuilder().Build())!;
+        var notification = new NotificationRequest(Guid.CreateVersion7(), "sigma", DateTimeOffset.UtcNow, "Security alert", new string('測', 25000));
         await using var connection = new SqlConnection(database.ConnectionString);
         await connection.OpenAsync(token);
         await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token))
