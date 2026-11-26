@@ -274,6 +274,8 @@ public sealed class HostDetailsBrowserTests
         await page.GetByRole(AriaRole.Button, new() { Name = "Performance", Exact = true }).ClickAsync();
         await page.GetByRole(AriaRole.Region, new() { Name = "Threshold evaluation" }).GetByText("Unknown: sample expired", new() { Exact = true }).WaitForAsync();
         await page.Locator("#metric-kind").GetByText("CPU usage", new() { Exact = true }).WaitForAsync(new() { State = WaitForSelectorState.Attached });
+        await page.GetByRole(AriaRole.Button, new() { Name = "Inventory", Exact = true }).ClickAsync();
+        await page.GetByText("No inventory data of this type.", new() { Exact = true }).WaitForAsync();
         await using var localizedContext = await browser.NewContextAsync();
         var localizedPage = await localizedContext.NewPageAsync();
         await localizedPage.GotoAsync($"{url}/account/login");
@@ -289,6 +291,8 @@ public sealed class HostDetailsBrowserTests
         await localizedPage.GetByRole(AriaRole.Region, new() { Name = "日志表格，可左右滚动" }).GetByText("event-25", new() { Exact = true }).WaitForAsync();
         await localizedPage.GetByRole(AriaRole.Button, new() { Name = "性能", Exact = true }).ClickAsync();
         await localizedPage.GetByRole(AriaRole.Region, new() { Name = "阈值评估结果" }).GetByText("未知：样本已过期", new() { Exact = true }).WaitForAsync();
+        await localizedPage.GetByRole(AriaRole.Button, new() { Name = "资产清单", Exact = true }).ClickAsync();
+        await localizedPage.GetByText("目前没有这类清单数据。", new() { Exact = true }).WaitForAsync();
         await localizedGate.ReleaseAsync();
     }, TestContext.CancellationToken);
 

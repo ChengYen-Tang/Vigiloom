@@ -1,11 +1,12 @@
+@inject Microsoft.Extensions.Localization.IStringLocalizer<HostText> L
 <div>
-    <button type="button" aria-expanded="@expanded" @onclick="() => expanded = !expanded">@(expanded ? "收合" : "查看")成員（@Members.Count）</button>
+    <button type="button" aria-expanded="@expanded" @onclick="() => expanded = !expanded">@(expanded ? L["收合成員（{0}）", Members.Count].Value : L["查看成員（{0}）", Members.Count].Value)</button>
     @if (expanded)
     {
         <ul>@foreach (var member in Members.Skip(page * PageSize).Take(PageSize)) { <li>@member</li> }</ul>
-        <button type="button" disabled="@(page == 0)" @onclick="() => page--">上一頁</button>
-        <span>第 @(page + 1) 頁</span>
-        <button type="button" disabled="@((page + 1) * PageSize >= Members.Count)" @onclick="() => page++">下一頁</button>
+        <button type="button" disabled="@(page == 0)" @onclick="() => page--">@L["上一頁"]</button>
+        <span>@L["第 {0} 頁", page + 1]</span>
+        <button type="button" disabled="@((page + 1) * PageSize >= Members.Count)" @onclick="() => page++">@L["下一頁"]</button>
     }
 </div>
 

@@ -297,17 +297,17 @@ public partial class HostDetails
         finally { if (ReferenceEquals(activeLoad, load)) { activeLoad = null; loading = false; } }
     }
     public async ValueTask DisposeAsync() { await lifetime.CancelAsync(); lifetime.Dispose(); }
-    private static string DisplayTime(DateTimeOffset? value) => value?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料";
+    private string DisplayTime(DateTimeOffset? value) => value?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚無資料"].Value;
     private static string AgeNotice(DateTimeOffset? value) => value is null ? "" : value > DateTimeOffset.UtcNow ? "（時間異常）" : DateTimeOffset.UtcNow - value > TimeSpan.FromHours(24) ? "（超過 24 小時）" : "";
     private static string OutcomeName(InventoryOutcome? value) => value switch { InventoryOutcome.Complete => "完整", InventoryOutcome.Partial => "部分", InventoryOutcome.PermissionDenied => "權限不足", InventoryOutcome.Unsupported => "不支援", InventoryOutcome.Error => "採集失敗", _ => "尚無回報" };
     private static string IntegrityOutcomeName(IntegrityScanOutcome? value) => value switch { IntegrityScanOutcome.Complete => "完整", IntegrityScanOutcome.Partial => "部分", IntegrityScanOutcome.PermissionDenied => "權限不足", IntegrityScanOutcome.Unsupported => "不支援", IntegrityScanOutcome.Error => "掃描失敗", _ => "尚無回報" };
     private static string InventoryStatusName(InventoryCompletion? value) => value switch { InventoryCompletion.Complete => "已接受完整資料", InventoryCompletion.Partial => "部分資料", InventoryCompletion.Expired => "接收逾期", InventoryCompletion.Rejected => "已拒收", _ => "尚未完成" };
     private static string IntegrityStatusName(IntegrityCompletion? value) => value switch { IntegrityCompletion.Complete => "已接受完整資料", IntegrityCompletion.Partial => "部分資料", IntegrityCompletion.Expired => "接收逾期", IntegrityCompletion.Rejected => "已拒收", _ => "尚未完成" };
     internal static string SourceName(InventorySource source) => source switch { InventorySource.WindowsSoftware32 => "Windows 軟體（32 位元登錄檢視）", InventorySource.WindowsSoftware64 => "Windows 軟體（64 位元登錄檢視）", InventorySource.LinuxDpkg => "Debian 軟體", InventorySource.LinuxRpm => "RPM 軟體", InventorySource.LinuxAccounts => "Linux 帳號", InventorySource.WindowsAccounts => "Windows 帳號", InventorySource.LinuxGroups => "Linux 群組", InventorySource.WindowsGroups => "Windows 群組", InventorySource.WindowsQuickFix => "Windows 修補程式", InventorySource.WindowsUpdate => "Windows Update 快取觀察", InventorySource.HostSystem => "系統資訊", InventorySource.HostNetwork => "網路介面", InventorySource.HostVolumes => "磁碟空間", InventorySource.HostProcesses => "程序", InventorySource.HostServices => "作業系統服務", InventorySource.HostListeners => "監聽連線", _ => source.ToString() };
-    internal static string EntryDetails(InventoryEntry entry, InventorySource source)
+    internal static string EntryDetails(InventoryEntry entry, InventorySource source, Microsoft.Extensions.Localization.IStringLocalizer<HostText> localizer)
     {
-        var fields = new List<string> { $"識別：{entry.Key}" };
-        void Add(string name, object? value) { if (value is not null && !string.IsNullOrWhiteSpace(value.ToString())) fields.Add($"{name}：{value}"); }
+        var fields = new List<string> { $"{localizer["識別"]}：{entry.Key}" };
+        void Add(string name, object? value) { if (value is not null && !string.IsNullOrWhiteSpace(value.ToString())) fields.Add($"{localizer[name]}：{value}"); }
         Add("版本", entry.Version); Add("作業系統", entry.OperatingSystem); Add("架構", entry.Architecture);
         Add("作業系統系列", entry.OperatingSystemFamily); Add("發行版", entry.DistributionId); Add("發行版版本", entry.DistributionVersion);
         Add("Windows 安裝類型", entry.WindowsInstallationType);
@@ -321,10 +321,10 @@ public partial class HostDetails
         if (source == InventorySource.WindowsUpdate)
         {
             Add("更新 ID", entry.UpdateId); Add("更新修訂", entry.UpdateRevision);
-            Add("已安裝", entry.UpdateInstalled is null ? null : entry.UpdateInstalled.Value ? "是" : "否");
-            Add("需要重新啟動", entry.UpdateRebootRequired is null ? null : entry.UpdateRebootRequired.Value ? "是" : "否");
-            if (entry.UpdateCves is { } cves) Add("CVE", $"{cves.Count} 筆{(cves.Count == 0 ? "" : "：" + string.Join("、", cves.Take(5)) + (cves.Count > 5 ? "…" : ""))}");
-            if (entry.UpdateKbs is { } kbs) Add("KB", $"{kbs.Count} 筆{(kbs.Count == 0 ? "" : "：" + string.Join("、", kbs.Take(5)) + (kbs.Count > 5 ? "…" : ""))}");
+            Add("已安裝", entry.UpdateInstalled is null ? null : entry.UpdateInstalled.Value ? localizer["是"].Value : localizer["否"].Value);
+            Add("需要重新啟動", entry.UpdateRebootRequired is null ? null : entry.UpdateRebootRequired.Value ? localizer["是"].Value : localizer["否"].Value);
+            if (entry.UpdateCves is { } cves) Add("CVE", localizer["{0} 筆{1}", cves.Count, cves.Count == 0 ? "" : "：" + string.Join("、", cves.Take(5)) + (cves.Count > 5 ? "…" : "")].Value);
+            if (entry.UpdateKbs is { } kbs) Add("KB", localizer["{0} 筆{1}", kbs.Count, kbs.Count == 0 ? "" : "：" + string.Join("、", kbs.Take(5)) + (kbs.Count > 5 ? "…" : "")].Value);
         }
         return string.Join(" · ", fields);
     }
