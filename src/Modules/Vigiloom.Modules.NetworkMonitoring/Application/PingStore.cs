@@ -16,7 +16,7 @@ namespace Vigiloom.Modules.NetworkMonitoring.Application;
 public sealed record PingLease(Guid DeviceId, string Target, byte[] DeviceVersion, long Generation);
 
 public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDevicePingSource devices, TimeProvider clock,
-    IEnumerable<IPingTransitionSink>? transitionSinks = null)
+    IEnumerable<IPingTransitionSink>? transitionSinks = null) : IPingStatusReader
 {
     public async Task ReconcileAsync(PingSettingsSnapshot settings, CancellationToken token)
     {
