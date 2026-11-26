@@ -157,6 +157,19 @@ public sealed class GroupManagementTests
             Assert.Contains("Ungrouped services", document.Body!.TextContent);
             Assert.Contains("No ungrouped services match your search.", document.Body.TextContent);
         }
+        using (var serviceGuide = await adminClient.GetAsync($"/services/connect?service={serviceId:D}", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await serviceGuide.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Application service onboarding guide", document.Body!.TextContent);
+            Assert.Contains("Configure independent health checks", document.Body.TextContent);
+            Assert.Contains("service.instance.id", document.Body.TextContent);
+        }
+        using (var servicePage = await adminClient.GetAsync($"/services/{serviceId:D}", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await servicePage.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Groups", document.QuerySelector("#service-groups-heading")!.TextContent);
+            Assert.IsNotNull(document.QuerySelector($"a[href='/groups/{group.Id:D}']"));
+        }
         using (var groupList = await adminClient.GetAsync("/groups", token))
         {
             var document = await new HtmlParser().ParseDocumentAsync(await groupList.Content.ReadAsStringAsync(token), token);

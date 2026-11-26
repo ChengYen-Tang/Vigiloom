@@ -8,23 +8,24 @@
 @inject IServiceMembership Memberships
 @inject Vigiloom.Web.ServiceDetails.ServiceQueries Services
 @inject ILogger<ServiceOverview> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<GroupText> L
 
-<PageTitle>應用服務 - Vigiloom</PageTitle>
+<PageTitle>@L["應用服務"] - Vigiloom</PageTitle>
 <main class="device-page">
-    <a href="/groups">查看所有群組</a>
-    <AuthorizeView Policy="Administrator"><Authorized><p><a href="@($"/settings/publication/services/{Id:D}")">公開設定</a></p></Authorized></AuthorizeView>
+    <a href="/groups">@L["查看所有群組"]</a>
+    <AuthorizeView Policy="Administrator"><Authorized><p><a href="@($"/settings/publication/services/{Id:D}")">@L["公開設定"]</a></p></Authorized></AuthorizeView>
     <Vigiloom.Web.Client.Components.Services.ServiceOverviewPanel ServiceId="Id" @rendermode="InteractiveAuto" />
-    @if (groupError) { <section class="device-panel"><h2>所屬群組</h2><p role="alert">無法載入所屬群組，請稍後再試。</p></section> }
+    @if (groupError) { <section class="device-panel"><h2>@L["所屬群組"]</h2><p role="alert">@L["無法載入所屬群組，請稍後再試。"]</p></section> }
     else if (groups is not null)
     {
         <section class="device-panel service-groups" aria-labelledby="service-groups-heading">
-            <h2 id="service-groups-heading">所屬群組</h2>
-            @if (groups.Items.Count == 0) { <p>@(CurrentPage == 1 ? "此服務尚未加入群組。" : "此頁沒有群組。")</p> }
+            <h2 id="service-groups-heading">@L["所屬群組"]</h2>
+            @if (groups.Items.Count == 0) { <p>@(CurrentPage == 1 ? L["此服務尚未加入群組。"].Value : L["此頁沒有群組。"].Value)</p> }
             else { <ul>@foreach (var group in groups.Items) { <li @key="group.Id"><a href="@($"/groups/{group.Id:D}")">@group.Name</a></li> }</ul> }
-            @if (CurrentPage > 1 || groups.HasMore) { <nav class="device-pagination" aria-label="所屬群組分頁">
-                @if (CurrentPage > 1) { <a href="@PageUrl(CurrentPage - 1)">上一頁</a> }
-                <span>第 @CurrentPage 頁</span>
-                @if (groups.HasMore) { <a href="@PageUrl(CurrentPage + 1)">下一頁</a> }
+            @if (CurrentPage > 1 || groups.HasMore) { <nav class="device-pagination" aria-label="@L["所屬群組分頁"]">
+                @if (CurrentPage > 1) { <a href="@PageUrl(CurrentPage - 1)">@L["上一頁"]</a> }
+                <span>@L["第 {0} 頁", CurrentPage]</span>
+                @if (groups.HasMore) { <a href="@PageUrl(CurrentPage + 1)">@L["下一頁"]</a> }
             </nav> }
         </section>
     }
