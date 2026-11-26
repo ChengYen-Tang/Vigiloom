@@ -6,8 +6,7 @@
 @using Vigiloom.Modules.ServiceObservability.Application.Telemetry
 @using System.Security.Claims
 @inject Vigiloom.Web.Services.IApplicationManagement Services
-@inject CollectorObservations Observations
-@inject CollectorAdministration Collectors
+@inject Vigiloom.Web.Services.CollectorManagement Collectors
 @inject ILogger<CollectorReports> Logger
 
 <PageTitle>Collector 回報 - Vigiloom</PageTitle>
@@ -144,7 +143,7 @@
         {
             services = await Services.ListServicesAsync(servicePage, HttpContext.RequestAborted);
             collectors = await Collectors.ListAsync(collectorPage, HttpContext.RequestAborted);
-            if (SelectedService is { } id) reports = await Observations.QueryAsync(id, instancePage, HttpContext.RequestAborted);
+            if (SelectedService is { } id) reports = await Collectors.ObservationsAsync(id, instancePage, HttpContext.RequestAborted);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         { Logger.LogWarning("Cannot load Collector reports: {ExceptionType}", ex.GetType().Name); loadError = true; }

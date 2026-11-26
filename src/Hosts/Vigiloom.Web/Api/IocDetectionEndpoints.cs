@@ -9,7 +9,7 @@ internal static class IocDetectionEndpoints
     public static void MapIocDetectionEndpoints(this WebApplication app)
     {
         app.MapGet("/api/v1/devices/{deviceId:guid}/ioc-detections", async (Guid deviceId, DateTimeOffset from,
-            DateTimeOffset until, int? page, IocDetectionHistory history, TelemetryRetentionSettings retention, HttpContext context, CancellationToken token) =>
+            DateTimeOffset until, int? page, IocDetectionHistory history, Vigiloom.Web.ServiceDetails.TelemetryRetentionAccess retention, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             try

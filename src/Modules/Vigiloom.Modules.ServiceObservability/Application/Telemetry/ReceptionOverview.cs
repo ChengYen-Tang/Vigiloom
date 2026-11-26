@@ -5,7 +5,12 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
 /// <summary>Queries the latest persisted signal per source without making a Collector health inference.</summary>
-public sealed class ReceptionOverview(IDbContextFactory<ServiceObservabilityDbContext> contexts)
+public interface IReceptionLogTimes
+{
+    Task<IReadOnlyDictionary<Guid, DateTimeOffset>> GetAsync(IReadOnlyList<Guid> serviceIds, CancellationToken token);
+}
+
+public sealed class ReceptionOverview(IDbContextFactory<ServiceObservabilityDbContext> contexts, IReceptionLogTimes? remoteLogs = null)
 {
     public async Task<IReadOnlyList<SourceReceptionSummary>> ListAsync(int page, CancellationToken token)
     {
@@ -18,15 +23,18 @@ public sealed class ReceptionOverview(IDbContextFactory<ServiceObservabilityDbCo
         var ids = sources.Select(x => x.Id).ToArray();
         var perService = db.Services.AsNoTracking().Where(service => ids.Contains(service.SourceId)).Select(service => new
         {
-            service.SourceId,
+            service.Id, service.SourceId,
             Log = db.LogRecords.Where(x => x.ServiceId == service.Id).OrderByDescending(x => x.ReceivedAt).Select(x => (DateTimeOffset?)x.ReceivedAt).FirstOrDefault(),
             Metric = db.MetricPoints.Where(x => x.ServiceId == service.Id).OrderByDescending(x => x.ReceivedAt).Select(x => (DateTimeOffset?)x.ReceivedAt).FirstOrDefault(),
             Trace = db.TraceSpans.Where(x => x.ServiceId == service.Id).OrderByDescending(x => x.ReceivedAt).Select(x => (DateTimeOffset?)x.ReceivedAt).FirstOrDefault()
         });
-        var received = await perService.GroupBy(x => x.SourceId).Select(g => new
+        var rows = await perService.ToArrayAsync(token);
+        var logTimes = remoteLogs is null ? null : await remoteLogs.GetAsync(rows.Select(row => row.Id).ToArray(), token);
+        var received = rows.GroupBy(row => row.SourceId).ToDictionary(group => group.Key, group => new
         {
-            SourceId = g.Key, Log = g.Max(x => x.Log), Metric = g.Max(x => x.Metric), Trace = g.Max(x => x.Trace)
-        }).ToDictionaryAsync(x => x.SourceId, token);
+            Log = logTimes is null ? group.Max(row => row.Log) : group.Max(row => logTimes.TryGetValue(row.Id, out var time) ? (DateTimeOffset?)time : null),
+            Metric = group.Max(row => row.Metric), Trace = group.Max(row => row.Trace)
+        });
         return sources.Select(x => new SourceReceptionSummary(x.Id, x.Name, x.RevokedAt,
             received.TryGetValue(x.Id, out var value) ? value.Log : null,
             value?.Metric, value?.Trace)).ToArray();

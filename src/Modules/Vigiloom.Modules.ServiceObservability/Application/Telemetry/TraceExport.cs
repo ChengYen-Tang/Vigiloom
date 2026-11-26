@@ -8,7 +8,7 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
 /// <summary>Commits all accepted trace groups in one transaction and admits quota once.</summary>
-internal sealed class TraceExport(IDbContextFactory<ServiceObservabilityDbContext> contexts, CandidateDiscovery candidates)
+internal sealed class TraceExport(IDbContextFactory<ServiceObservabilityDbContext> contexts, ICandidateObserver candidates)
 {
     private const int MaximumRequestBytes = 4 * 1024 * 1024;
     private const int MaximumGroups = 256;

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
@@ -20,9 +21,9 @@ public static class HealthPublicationCoordinator
 
     /// <summary>Invalidates current health evidence at the database-time publication boundary.</summary>
     /// <remarks>Call <see cref="LockServiceAsync"/> first in the same transaction and retain its source and service locks.</remarks>
-    public static Task InvalidateAsync(ServiceObservabilityDbContext db, Guid serviceId, DateTimeOffset at, CancellationToken token)
+    public static Task InvalidateAsync(ServiceObservabilityDbContext db, Guid serviceId, DateTimeOffset at, CancellationToken token, IEnumerable<IHealthTransitionSink>? sinks = null)
     {
         if (db.Database.CurrentTransaction is null) throw new InvalidOperationException("A publication transaction is required.");
-        return HealthInvalidation.ServiceAsync(db, serviceId, at, token);
+        return HealthInvalidation.ServiceAsync(db, serviceId, at, token, sinks);
     }
 }

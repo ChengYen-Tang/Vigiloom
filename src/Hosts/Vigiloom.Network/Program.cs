@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.Telemetry;
 using Hangfire;
 using Hangfire.SqlServer;
 using System.Threading.RateLimiting;
@@ -21,6 +22,7 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Network;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddVigiloomSelfTelemetry("Vigiloom.Network");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddOptions<IdentityOptions>();
 builder.Services.AddAntiforgery();

@@ -81,6 +81,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         healthSchedule.HasKey(x => x.RowId).IsClustered();
         healthSchedule.Property(x => x.RowId).UseIdentityColumn();
         healthSchedule.Property(x => x.Version).IsRowVersion();
+        healthSchedule.Property(x => x.LastTransitionGeneration).IsConcurrencyToken();
         healthSchedule.Property(x => x.SourceVersion).HasColumnType("binary(8)");
         healthSchedule.Property(x => x.ServiceVersion).HasColumnType("binary(8)");
         healthSchedule.Property(x => x.InstanceVersion).HasColumnType("binary(8)");
@@ -129,6 +130,7 @@ public sealed class ServiceObservabilityDbContext(DbContextOptions<ServiceObserv
         source.Property(x => x.RowId).UseIdentityColumn();
         source.HasIndex(x => x.RowId).IsUnique().IsClustered();
         source.Property(x => x.Name).HasMaxLength(128).IsRequired();
+        source.HasIndex(x => x.IsSelf).IsUnique().HasFilter("[IsSelf] = 1");
         source.Property(x => x.Verifier).HasColumnType("binary(32)").IsRequired();
         source.Property(x => x.Version).IsRowVersion();
 

@@ -5,10 +5,8 @@
 @using Vigiloom.Contracts.Services
 @using Vigiloom.Modules.ServiceObservability.Application
 @using Vigiloom.Modules.ServiceObservability.Application.Health
-@inject HealthTargetAdministration Targets
-@inject HealthNetworkPolicyAdministration Networks
-@inject HealthObservationReader Observations
-@inject ServiceInstanceAdministration Instances
+@inject Vigiloom.Web.Services.HealthAdmin Health
+@inject Vigiloom.Web.Services.InstanceManagement Instances
 @inject Vigiloom.Web.Services.IApplicationManagement Applications
 @inject ILogger<ServiceHealth> Logger
 

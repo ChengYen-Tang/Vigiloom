@@ -150,6 +150,16 @@ internal sealed class HealthStore(IDbContextFactory<ServiceObservabilityDbContex
         var updated = result.State;
         schedule.SetEvaluation((byte)updated.State, updated.EvidenceAt, (byte)updated.Streak,
             updated.StreakCount, updated.StreakAt, updated.LastObservationAt);
+        if (transitionSinks is not null)
+        {
+            var service = db.Services.Local.Single(x => x.Id == identity.ServiceId);
+            schedule.AdvanceGeneration();
+            var transition = new HealthTransition(targetId, identity.ServiceId, identity.InstanceId, schedule.Generation,
+                ServiceHealthState.Unknown, expired, service.DisplayName, service.Environment, schedule.LastTransitionGeneration);
+            foreach (var sink in transitionSinks)
+                await sink.RecordAsync(transition, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+            schedule.LastTransitionGeneration = schedule.Generation;
+        }
         await db.SaveChangesAsync(token);
         await transaction.CommitAsync(token);
     }
@@ -184,9 +194,10 @@ internal sealed class HealthStore(IDbContextFactory<ServiceObservabilityDbContex
         if (transitionSinks is not null && previousState != schedule.State)
         {
             var transition = new HealthTransition(work.Lease.TargetId, work.ServiceId, work.InstanceId, work.Lease.Generation,
-                (ServiceHealthState)schedule.State, observedAt, service.DisplayName, service.Environment);
+                (ServiceHealthState)schedule.State, observedAt, service.DisplayName, service.Environment, schedule.LastTransitionGeneration);
             foreach (var sink in transitionSinks)
                 await sink.RecordAsync(transition, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+            schedule.LastTransitionGeneration = work.Lease.Generation;
         }
         db.HealthObservations.Add(new HealthObservation(lease.TargetId, lease.Generation, network.Generation,
             work.SourceVersion, work.ServiceVersion, work.InstanceVersion, work.TargetVersion, network.Version, kind, observedAt, receivedAt));

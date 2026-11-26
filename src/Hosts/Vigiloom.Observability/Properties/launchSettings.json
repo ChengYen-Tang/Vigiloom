@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Vigiloom.Observability": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:5057",
+      "environmentVariables": { "ASPNETCORE_ENVIRONMENT": "Development" }
+    }
+  }
+}
