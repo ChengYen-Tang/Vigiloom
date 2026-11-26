@@ -162,6 +162,9 @@ app.MapPost("/internal/v1/application-logs", async (ApplicationLogSubmission inp
 app.MapPost("/internal/v1/application-logs/batch", async (ApplicationLogSubmission[] input, ApplicationLogIngestion ingestion, CancellationToken token) =>
     MapReceipt(await ingestion.ReceiveBatchAsync(input, token)))
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(8 * 1024 * 1024));
+app.MapPost("/internal/v1/application-logs/grouped", async (ApplicationLogBatch input, ApplicationLogIngestion ingestion, CancellationToken token) =>
+    MapReceipt(await ingestion.ReceiveGroupedAsync(input, token)))
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(8 * 1024 * 1024));
 app.MapGet("/internal/v1/application-logs/{serviceId:guid}", async (Guid serviceId, DateTimeOffset from, DateTimeOffset to,
     int? page, string? traceId, ApplicationLogHistory history, CancellationToken token) =>
 {
