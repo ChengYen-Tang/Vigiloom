@@ -265,9 +265,15 @@ builder.Services.AddScoped<ServiceInstanceAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthTargetAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthNetworkPolicyAdministration>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthObservationReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.HealthAdmin>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthStatusReader>();
 builder.Services.AddScoped<Vigiloom.Modules.ServiceObservability.Application.Health.HealthHistoryReader>();
 builder.Services.AddScoped<InstancePolicyAdministration>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.InstanceManagement>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<ServiceCollectionAdministration>();
 builder.Services.AddScoped<ApplicationStateProjection>();
 builder.Services.AddScoped<Vigiloom.Web.Services.LocalApplicationManagement>();
