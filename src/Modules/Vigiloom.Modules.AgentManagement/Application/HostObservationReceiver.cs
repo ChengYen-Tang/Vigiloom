@@ -6,6 +6,7 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Baseline;
+using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 
@@ -70,6 +71,14 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
             enqueuedAt = baseline.EnqueuedAt;
             securityItems = baseline.Items.Count;
             securityKind = "baseline";
+        }
+        else if (YaraResultBatchCodec.TryRead(payload.Span, out var yara))
+        {
+            if (security is null) return BatchReceiptStatus.CapacityExceeded;
+            batchId = yara!.BatchId;
+            enqueuedAt = yara.EnqueuedAt;
+            securityItems = 1;
+            securityKind = "yara";
         }
         else return BatchReceiptStatus.Invalid;
 
