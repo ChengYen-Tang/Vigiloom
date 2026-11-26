@@ -21,6 +21,7 @@ public sealed class HealthSchedule
     public Guid? LeaseOwner { get; private set; }
     public long Generation { get; private set; }
     public long LastTransitionGeneration { get; set; }
+    public void AdvanceGeneration() => Generation = checked(Generation + 1);
     public byte[] Version { get; private set; } = [];
     public byte State { get; private set; }
     public DateTimeOffset? EvidenceAt { get; private set; }
