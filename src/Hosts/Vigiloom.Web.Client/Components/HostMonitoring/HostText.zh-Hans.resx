@@ -123,4 +123,59 @@
   <data name="這段時間沒有已記錄的資料缺口。" xml:space="preserve"><value>这段时间没有已记录的数据缺口。</value></data>
   <data name="較新缺口" xml:space="preserve"><value>较新缺口</value></data>
   <data name="較早缺口" xml:space="preserve"><value>较早缺口</value></data>
+  <data name="依 Agent 註冊與來源分開顯示；未收到的資料不視為零。更新或離線期間可能暫停採集，圖表按時間區間彙整，短暫空窗可能不會顯示。" xml:space="preserve"><value>按 Agent 注册与来源分别显示；未收到的数据不视为零。更新或离线期间可能暂停采集，图表按时间区间汇总，短暂空窗可能不会显示。</value></data>
+  <data name="近期採集未完成的紀錄（各來源顯示最近一筆，最多 10 筆，非目前狀態）：" xml:space="preserve"><value>近期采集未完成的记录（每个来源显示最近一条，最多 10 条，非当前状态）：</value></data>
+  <data name="原始樣本保存 {0} 天，五分鐘彙總保存 {1} 天。" xml:space="preserve"><value>原始样本保留 {0} 天，五分钟汇总保留 {1} 天。</value></data>
+  <data name="來源與 Agent" xml:space="preserve"><value>来源与 Agent</value></data>
+  <data name="閾值評估結果" xml:space="preserve"><value>阈值评估结果</value></data>
+  <data name="大於等於" xml:space="preserve"><value>大于等于</value></data>
+  <data name="小於等於" xml:space="preserve"><value>小于等于</value></data>
+  <data name="閾值：{0} {1} {2} · 樣本有效時間：{3} 秒" xml:space="preserve"><value>阈值：{0} {1} {2} · 样本有效时间：{3} 秒</value></data>
+  <data name="最新樣本：{0} {1} · 量測時間：{2}（UTC）" xml:space="preserve"><value>最新样本：{0} {1} · 测量时间：{2}（UTC）</value></data>
+  <data name="評估時間：{0}（UTC）。此結果使用當時的設定與最新樣本，與下方歷史趨勢分開。" xml:space="preserve"><value>评估时间：{0}（UTC）。此结果使用当时的设置与最新样本，与下方历史趋势分开。</value></data>
+  <data name="更新評估" xml:space="preserve"><value>更新评估</value></data>
+  <data name="設定此來源的閾值" xml:space="preserve"><value>设置此来源的阈值</value></data>
+  <data name="部分時段的原始資料已到期，無法精確計算；圖表略過這些區間。" xml:space="preserve"><value>部分时段的原始数据已过期，无法精确计算；图表跳过这些区间。</value></data>
+  <data name="效能趨勢" xml:space="preserve"><value>性能趋势</value></data>
+  <data name="此時間範圍沒有可繪製的資料。" xml:space="preserve"><value>此时间范围没有可绘制的数据。</value></data>
+  <data name="還有其他資料來源，可切換下一頁查看。" xml:space="preserve"><value>还有其他数据来源，可切换下一页查看。</value></data>
+  <data name="這段時間沒有此指標。" xml:space="preserve"><value>这段时间没有此指标。</value></data>
+  <data name="上一頁來源" xml:space="preserve"><value>上一页来源</value></data>
+  <data name="下一頁來源" xml:space="preserve"><value>下一页来源</value></data>
+  <data name="平台不支援" xml:space="preserve"><value>平台不支持</value></data>
+  <data name="採集錯誤" xml:space="preserve"><value>采集错误</value></data>
+  <data name="資料未能取得，原因未知" xml:space="preserve"><value>数据未能获取，原因未知</value></data>
+  <data name="未設定閾值" xml:space="preserve"><value>未设置阈值</value></data>
+  <data name="閾值已停用" xml:space="preserve"><value>阈值已停用</value></data>
+  <data name="未達觸發條件" xml:space="preserve"><value>未达触发条件</value></data>
+  <data name="已達閾值" xml:space="preserve"><value>已达阈值</value></data>
+  <data name="未知：尚無樣本" xml:space="preserve"><value>未知：尚无样本</value></data>
+  <data name="未知：樣本已過期" xml:space="preserve"><value>未知：样本已过期</value></data>
+  <data name="未知：樣本時間晚於平台時間" xml:space="preserve"><value>未知：样本时间晚于平台时间</value></data>
+  <data name="未知：無法判定" xml:space="preserve"><value>未知：无法判定</value></data>
+  <data name="CPU 使用率" xml:space="preserve"><value>CPU 使用率</value></data>
+  <data name="CPU 核心使用率" xml:space="preserve"><value>CPU 核心使用率</value></data>
+  <data name="系統負載（1 分鐘）" xml:space="preserve"><value>系统负载（1 分钟）</value></data>
+  <data name="系統負載（5 分鐘）" xml:space="preserve"><value>系统负载（5 分钟）</value></data>
+  <data name="系統負載（15 分鐘）" xml:space="preserve"><value>系统负载（15 分钟）</value></data>
+  <data name="總記憶體" xml:space="preserve"><value>总内存</value></data>
+  <data name="可用記憶體" xml:space="preserve"><value>可用内存</value></data>
+  <data name="交換空間總量" xml:space="preserve"><value>交换空间总量</value></data>
+  <data name="可用交換空間" xml:space="preserve"><value>可用交换空间</value></data>
+  <data name="分頁檔總量" xml:space="preserve"><value>分页文件总量</value></data>
+  <data name="已用分頁檔" xml:space="preserve"><value>已用分页文件</value></data>
+  <data name="總磁碟空間" xml:space="preserve"><value>总磁盘空间</value></data>
+  <data name="可用磁碟空間" xml:space="preserve"><value>可用磁盘空间</value></data>
+  <data name="磁碟讀取" xml:space="preserve"><value>磁盘读取</value></data>
+  <data name="磁碟寫入" xml:space="preserve"><value>磁盘写入</value></data>
+  <data name="磁碟讀取延遲" xml:space="preserve"><value>磁盘读取延迟</value></data>
+  <data name="磁碟寫入延遲" xml:space="preserve"><value>磁盘写入延迟</value></data>
+  <data name="網路接收" xml:space="preserve"><value>网络接收</value></data>
+  <data name="網路傳送" xml:space="preserve"><value>网络发送</value></data>
+  <data name="網路接收錯誤" xml:space="preserve"><value>网络接收错误</value></data>
+  <data name="網路傳送錯誤" xml:space="preserve"><value>网络发送错误</value></data>
+  <data name="程序 CPU 使用率" xml:space="preserve"><value>进程 CPU 使用率</value></data>
+  <data name="程序工作集記憶體" xml:space="preserve"><value>进程工作集内存</value></data>
+  <data name="未知指標" xml:space="preserve"><value>未知指标</value></data>
+  <data name="負載" xml:space="preserve"><value>负载</value></data>
 </root>
