@@ -7,20 +7,38 @@ using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.AgentManagement.Domain;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Transactional policy mutation with actor-bound confirmation for shorter obligations.</summary>
+public interface IAgentInboxSettings
+{
+    Task<AgentInboxSettingsSnapshot> GetAsync(CancellationToken token);
+    Task<bool> ActivateCleanupAsync(string version, Guid actor, CancellationToken token);
+    Task<AgentInboxSettingsPreview?> PreviewAsync(int replaySeconds, int retentionDays, string version, Guid actor, CancellationToken token);
+    Task<bool> UpdateAsync(int replaySeconds, int retentionDays, string version, string? confirmationToken, Guid actor, CancellationToken token);
+}
+
 public sealed class AgentInboxSettings(IDbContextFactory<AgentManagementDbContext> contexts, IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection)
+    : AgentInboxSettingsCore<AgentManagementDbContext>(contexts, audit, protection);
+
+public sealed class HostInboxSettings(IDbContextFactory<HostMonitoringDbContext> contexts, IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection)
+    : AgentInboxSettingsCore<HostMonitoringDbContext>(contexts, audit, protection);
+
+public abstract class AgentInboxSettingsCore<TContext>(IDbContextFactory<TContext> contexts, IOperationAuditWriter<OperationAudit> audit, IDataProtectionProvider protection)
+    : IAgentInboxSettings where TContext : DbContext
 {
     private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.AgentInbox.Preview.v1");
 
     public async Task<AgentInboxSettingsSnapshot> GetAsync(CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
-        var policy = await db.ReplayPolicies.AsNoTracking().SingleAsync(token);
-        var deleted = await db.Agents.SumAsync(x => (long?)x.InboxDeletedTotal, token) ?? 0;
-        var last = await db.Agents.MaxAsync(x => x.InboxLastDeletedAt, token);
+        var policy = await db.Set<AgentReplayPolicy>().AsNoTracking().SingleAsync(token);
+        var deleted = db is HostMonitoringDbContext host ? await host.InboxStates.SumAsync(x => (long?)x.InboxDeletedTotal, token) ?? 0
+            : await db.Set<Agent>().SumAsync(x => (long?)x.InboxDeletedTotal, token) ?? 0;
+        var last = db is HostMonitoringDbContext hostDb ? await hostDb.InboxStates.MaxAsync(x => x.InboxLastDeletedAt, token)
+            : await db.Set<Agent>().MaxAsync(x => x.InboxLastDeletedAt, token);
         return new(policy.ReplayWindowSeconds, policy.ReceiptRetentionDays, policy.CleanupCutoverAt is not null,
             deleted, last, Convert.ToBase64String(policy.Version));
     }
@@ -35,7 +53,7 @@ public sealed class AgentInboxSettings(IDbContextFactory<AgentManagementDbContex
         if (expected.Length != 8) return false;
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
-        var policy = await db.ReplayPolicies.FromSqlRaw("SELECT * FROM [agent].[ReplayPolicies] WITH (XLOCK, HOLDLOCK) WHERE [Scope] = 1").SingleAsync(token);
+        var policy = await db.Set<AgentReplayPolicy>().FromSqlRaw("SELECT * FROM [agent].[ReplayPolicies] WITH (XLOCK, HOLDLOCK) WHERE [Scope] = 1").SingleAsync(token);
         if (!expected.AsSpan().SequenceEqual(policy.Version)) return false;
         var now = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         var previousVersion = Convert.ToBase64String(policy.Version);
@@ -52,11 +70,12 @@ public sealed class AgentInboxSettings(IDbContextFactory<AgentManagementDbContex
     {
         if (actor == Guid.Empty || !AgentInboxPolicyLimits.IsValid(replaySeconds, retentionDays)) throw new ArgumentException("Invalid inbox policy or administrator.");
         await using var db = await contexts.CreateDbContextAsync(token);
-        var policy = await db.ReplayPolicies.AsNoTracking().SingleAsync(token);
+        var policy = await db.Set<AgentReplayPolicy>().AsNoTracking().SingleAsync(token);
         if (!string.Equals(version, Convert.ToBase64String(policy.Version), StringComparison.Ordinal) || policy.CleanupCutoverAt is null) return null;
         var now = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
-        var receipts = await db.ReceivedBatches.LongCountAsync(token);
-        var fenced = await db.Agents.LongCountAsync(x => x.ReplayCleanedBefore != null, token);
+        var receipts = await db.Set<ReceivedBatch>().LongCountAsync(token);
+        var fenced = db is HostMonitoringDbContext host ? await host.InboxStates.LongCountAsync(x => x.ReplayCleanedBefore != null, token)
+            : await db.Set<Agent>().LongCountAsync(x => x.ReplayCleanedBefore != null, token);
         var proof = protector.Protect(JsonSerializer.Serialize(new PreviewProof(actor, replaySeconds, retentionDays, version, now)));
         return new(policy.ReplayWindowSeconds, policy.ReceiptRetentionDays, replaySeconds, retentionDays, receipts, fenced, now, version, proof);
     }
@@ -72,7 +91,7 @@ public sealed class AgentInboxSettings(IDbContextFactory<AgentManagementDbContex
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
         // HOLDLOCK alone or UPDLOCK does not block concurrent policy readers while adding generations.
-        var policy = await db.ReplayPolicies.FromSqlRaw("SELECT * FROM [agent].[ReplayPolicies] WITH (XLOCK, HOLDLOCK) WHERE [Scope] = 1").SingleAsync(token);
+        var policy = await db.Set<AgentReplayPolicy>().FromSqlRaw("SELECT * FROM [agent].[ReplayPolicies] WITH (XLOCK, HOLDLOCK) WHERE [Scope] = 1").SingleAsync(token);
         if (!expected.AsSpan().SequenceEqual(policy.Version)) return false;
         var now = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         if ((replaySeconds < policy.ReplayWindowSeconds || retentionDays < policy.ReceiptRetentionDays) &&
@@ -82,7 +101,7 @@ public sealed class AgentInboxSettings(IDbContextFactory<AgentManagementDbContex
         var previousRetention = policy.ReceiptRetentionDays;
         var previousVersion = Convert.ToBase64String(policy.Version);
         var generation = policy.ChangeInboxSettings(replaySeconds, retentionDays, now);
-        if (generation is not null) db.ReplayGenerations.Add(generation);
+        if (generation is not null) db.Set<AgentReplayGeneration>().Add(generation);
         await db.SaveChangesAsync(token);
         await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
             new OperationAudit(actor, policy.Id, now, new AgentInboxSettingsChanged(previousReplay, previousRetention,

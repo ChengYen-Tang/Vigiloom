@@ -71,6 +71,8 @@ builder.Services.AddScoped<HostMetricConfiguration>();
 builder.Services.AddScoped<HostMonitoringThresholds>();
 builder.Services.AddScoped<HostAuditFeed>();
 builder.Services.AddScoped<HostReceiverMonitoring>();
+builder.Services.AddScoped<HostInboxSettings>();
+builder.Services.AddScoped<HostReplayPolicy>();
 builder.Services.AddScoped<HostMonitoringLogConfiguration>();
 builder.Services.AddScoped<HostAgentMonitoring>();
 builder.Services.AddScoped<HostMetricReader>();
@@ -145,6 +147,7 @@ app.MapHostMetricSettingsEndpoints();
 app.MapHostThresholdEndpoints();
 app.MapHostAuditEndpoints();
 app.MapHostLogSettingsEndpoints();
+app.MapHostInboxEndpoints();
 app.MapGet("/internal/v1/agent-receiver/status", async (HostReceiverMonitoring receiver, CancellationToken token) =>
     Results.Ok(new AgentReceiverSnapshot(await receiver.LastCommittedBatchAsync(token))));
 app.MapHostAgentStatusEndpoints();

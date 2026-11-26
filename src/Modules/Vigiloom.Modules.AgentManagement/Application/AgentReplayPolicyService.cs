@@ -9,13 +9,25 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Controls the one-way rollout of the Agent replay window.</summary>
-public sealed class AgentReplayPolicyService(IDbContextFactory<AgentManagementDbContext> contexts,
-    IOperationAuditWriter<OperationAudit> audit)
+public interface IAgentReplayPolicy
+{
+    Task<AgentReplayPolicyView> GetAsync(CancellationToken token);
+    Task<AgentReplayPolicyView?> TransitionAsync(AgentReplayPhase target, string version, Guid actor, CancellationToken token);
+}
+
+public sealed class AgentReplayPolicyService(IDbContextFactory<AgentManagementDbContext> contexts, IOperationAuditWriter<OperationAudit> audit)
+    : AgentReplayPolicyCore<AgentManagementDbContext>(contexts, audit);
+
+public sealed class HostReplayPolicy(IDbContextFactory<HostMonitoringDbContext> contexts, IOperationAuditWriter<OperationAudit> audit)
+    : AgentReplayPolicyCore<HostMonitoringDbContext>(contexts, audit);
+
+public abstract class AgentReplayPolicyCore<TContext>(IDbContextFactory<TContext> contexts, IOperationAuditWriter<OperationAudit> audit)
+    : IAgentReplayPolicy where TContext : DbContext
 {
     public async Task<AgentReplayPolicyView> GetAsync(CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
-        return View(await db.ReplayPolicies.AsNoTracking().SingleAsync(token));
+        return View(await db.Set<AgentReplayPolicy>().AsNoTracking().SingleAsync(token));
     }
 
     public async Task<AgentReplayPolicyView?> TransitionAsync(AgentReplayPhase target, string version, Guid actor, CancellationToken token)
@@ -28,7 +40,7 @@ public sealed class AgentReplayPolicyService(IDbContextFactory<AgentManagementDb
         if (expected.Length != 8) return null;
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
-        var policy = await db.ReplayPolicies.FromSqlRaw("SELECT * FROM [agent].[ReplayPolicies] WITH (UPDLOCK, HOLDLOCK) WHERE [Scope] = 1").SingleAsync(token);
+        var policy = await db.Set<AgentReplayPolicy>().FromSqlRaw("SELECT * FROM [agent].[ReplayPolicies] WITH (UPDLOCK, HOLDLOCK) WHERE [Scope] = 1").SingleAsync(token);
         if (!expected.AsSpan().SequenceEqual(policy.Version)) return null;
         var now = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         var previous = policy.Phase;

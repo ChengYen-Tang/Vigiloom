@@ -99,6 +99,14 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 });
             });
             using var client = host.CreateClient();
+            var inboxSettings = await client.GetFromJsonAsync<AgentInboxSettingsSnapshot>("/internal/v1/agent-inbox", token);
+            Assert.IsTrue(inboxSettings!.CleanupReady);
+            using (var preview = await client.PostAsJsonAsync("/internal/v1/agent-inbox/preview",
+                new InboxPreviewCommand(new(43200, inboxSettings.RetentionDays, inboxSettings.Version), Guid.CreateVersion7()), token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, preview.StatusCode);
+                Assert.AreEqual(43200, (await preview.Content.ReadFromJsonAsync<AgentInboxSettingsPreview>(cancellationToken: token))!.ReplaySeconds);
+            }
             var retention = await client.GetFromJsonAsync<HostMetricRetentionSnapshot>("/internal/v1/host-metrics/retention", token);
             Assert.AreEqual(30, retention!.RawDays);
             using (var unauthorizedSettings = await client.GetAsync("/api/v1/agent-management/settings/platform", token))
