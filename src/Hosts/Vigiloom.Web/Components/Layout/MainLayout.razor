@@ -1,31 +1,33 @@
 @inherits LayoutComponentBase
+@inject Microsoft.Extensions.Localization.IStringLocalizer<MainLayout> L
 
 <header class="main-header">
     <a href="/" class="main-brand">Vigiloom</a>
     <Microsoft.AspNetCore.Components.Authorization.AuthorizeView>
         <Authorized>
-            <nav class="main-navigation" aria-label="主要導覽">
-                <a href="/workspace">總覽</a>
-                <a href="/devices">設備</a><span aria-disabled="true">應用服務</span><a href="/groups">群組</a>
-                <a href="/speed-tests">網路測速</a><a href="/events">事件</a>
+            <nav class="main-navigation" aria-label="@L["主要導覽"]">
+                <a href="/workspace">@L["總覽"]</a>
+                <a href="/devices">@L["設備"]</a><span aria-disabled="true">@L["應用服務"]</span><a href="/groups">@L["群組"]</a>
+                <a href="/speed-tests">@L["網路測速"]</a><a href="/events">@L["事件"]</a>
             </nav>
             <details class="main-settings">
-                <summary>設定與帳號</summary>
-                <nav aria-label="設定與帳號">
+                <summary>@L["設定與帳號"]</summary>
+                <nav aria-label="@L["設定與帳號"]">
                     <Microsoft.AspNetCore.Components.Authorization.AuthorizeView Policy="@Vigiloom.Web.Authentication.AccessPolicies.Administrator">
-                        <Authorized Context="adminState"><a href="/settings/service-discovery">待加入服務</a><a href="/settings/service-reception">管線接入</a><a href="/settings/service-instances">服務執行個體</a><a href="/settings/service-health">服務健康檢查</a><a href="/settings/log-quota">Log 收集配額</a><a href="/settings/trace-quota">Trace 收集配額</a><a href="/settings/ping">Ping 監測</a><a href="/settings/speed-tests">網路測速</a><a href="/settings/publication-templates">公開範本</a><a href="/settings/agents">Agent 設定</a><a href="/settings/agent-packages">Agent 套件管理</a><a href="/settings/intelligence">情報來源</a><a href="/settings/sigma">行為規則</a><a href="/settings/line">LINE 通知</a><a href="/settings/jobs">背景工作</a><a href="/settings/audit">操作稽核</a><a href="/account/manage">帳號管理</a><a href="/account/api-credentials">API 憑證</a></Authorized>
+                        <Authorized Context="adminState"><a href="/settings/service-discovery">@L["待加入服務"]</a><a href="/settings/service-reception">@L["管線接入"]</a><a href="/settings/service-instances">@L["服務執行個體"]</a><a href="/settings/service-health">@L["服務健康檢查"]</a><a href="/settings/log-quota">@L["Log 收集配額"]</a><a href="/settings/trace-quota">@L["Trace 收集配額"]</a><a href="/settings/ping">@L["Ping 監測"]</a><a href="/settings/speed-tests">@L["網路測速"]</a><a href="/settings/publication-templates">@L["公開範本"]</a><a href="/settings/agents">@L["Agent 設定"]</a><a href="/settings/agent-packages">@L["Agent 套件管理"]</a><a href="/settings/intelligence">@L["情報來源"]</a><a href="/settings/sigma">@L["行為規則"]</a><a href="/settings/line">@L["LINE 通知"]</a><a href="/settings/jobs">@L["背景工作"]</a><a href="/settings/audit">@L["操作稽核"]</a><a href="/account/manage">@L["帳號管理"]</a><a href="/account/api-credentials">@L["API 憑證"]</a></Authorized>
                     </Microsoft.AspNetCore.Components.Authorization.AuthorizeView>
-                    <a href="/notifications">通知紀錄</a><a href="/account/two-factor-settings">雙重驗證</a><a href="/account/change-password">修改密碼</a><a href="/account/logout">登出</a>
+                    <a href="/notifications">@L["通知紀錄"]</a><a href="/account/two-factor-settings">@L["雙重驗證"]</a><a href="/account/change-password">@L["修改密碼"]</a><a href="/account/logout">@L["登出"]</a>
                 </nav>
             </details>
         </Authorized>
-        <NotAuthorized><a href="/account/login">登入</a></NotAuthorized>
+        <NotAuthorized><a href="/account/login">@L["登入"]</a></NotAuthorized>
     </Microsoft.AspNetCore.Components.Authorization.AuthorizeView>
+    <LanguageMenu />
 </header>
 @Body
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
+    <a href="." class="reload">@L["Reload"]</a>
     <span class="dismiss">🗙</span>
 </div>

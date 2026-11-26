@@ -2,6 +2,8 @@ using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.WebUtilities;
+using AngleSharp.Html.Parser;
 
 namespace Vigiloom.Web.Tests;
 
@@ -31,5 +33,38 @@ public sealed class LocalizationTests(TestContext context)
         Assert.Contains($"<html lang=\"{expected}\">", html);
         Assert.Contains("autostart=\"false\"", html);
         Assert.Contains("culture-start", html);
+        var text = (await new HtmlParser().ParseDocumentAsync(html, context.CancellationToken)).Body!.TextContent;
+        if (expected == "en") Assert.Contains("Language", text);
+        if (expected == "zh-Hans") Assert.Contains("语言", text);
+    }
+
+    [TestMethod]
+    public async Task LanguageChoicePersistsAndRejectsExternalRedirects()
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Development");
+            builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Vigiloom"] = "Server=localhost;Database=unused;Integrated Security=true;TrustServerCertificate=true"
+            }));
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+        using var choice = await client.GetAsync("/culture/set?culture=en&returnUrl=%2Faccount%2Flogin", context.CancellationToken);
+        Assert.AreEqual("/account/login", choice.Headers.Location?.OriginalString);
+        using var page = await client.GetAsync("/account/login", context.CancellationToken);
+        Assert.Contains("<html lang=\"en\">", await page.Content.ReadAsStringAsync(context.CancellationToken));
+        using var unsafeRedirect = await client.GetAsync("/culture/set?culture=zh-Hans&returnUrl=%2F%2Fevil.example", context.CancellationToken);
+        Assert.AreEqual("/", unsafeRedirect.Headers.Location?.OriginalString);
+        using var unsupported = await client.GetAsync("/culture/set?culture=fr", context.CancellationToken);
+        Assert.AreEqual(System.Net.HttpStatusCode.BadRequest, unsupported.StatusCode);
+
+        using var original = await client.GetAsync("/account/login?culture=zh-Hans&ui-culture=zh-Hans&ReturnUrl=%2Fworkspace", context.CancellationToken);
+        var document = await new HtmlParser().ParseDocumentAsync(await original.Content.ReadAsStringAsync(context.CancellationToken), context.CancellationToken);
+        var menu = document.QuerySelector("nav[data-enhance-nav='false']");
+        Assert.IsNotNull(menu);
+        var english = menu.QuerySelector("a[lang='en']")!.GetAttribute("href")!;
+        var query = QueryHelpers.ParseQuery(new Uri(new Uri("https://localhost"), english).Query);
+        Assert.AreEqual("/account/login?ReturnUrl=%2Fworkspace", query["returnUrl"].ToString());
     }
 }

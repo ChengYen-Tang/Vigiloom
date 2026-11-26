@@ -6,6 +6,7 @@ using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 using System.Threading.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Localization;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Contracts.Operations;
@@ -750,6 +751,16 @@ app.UseRequestLocalization(new RequestLocalizationOptions()
     .SetDefaultCulture("zh-Hant")
     .AddSupportedCultures("en", "zh-Hant", "zh-Hans")
     .AddSupportedUICultures("en", "zh-Hant", "zh-Hans"));
+app.MapGet("/culture/set", (string? culture, string? returnUrl, HttpContext context) =>
+{
+    if (culture is not ("en" or "zh-Hant" or "zh-Hans")) return Results.BadRequest();
+    context.Response.Cookies.Append(CookieRequestCultureProvider.DefaultCookieName,
+        CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(culture)),
+        new CookieOptions { IsEssential = true, SameSite = SameSiteMode.Lax, Secure = context.Request.IsHttps, MaxAge = TimeSpan.FromDays(365) });
+    var destination = returnUrl is { Length: > 0 } && returnUrl[0] == '/' &&
+        (returnUrl.Length == 1 || returnUrl[1] is not ('/' or '\\')) ? returnUrl : "/";
+    return Results.LocalRedirect(destination);
+}).AllowAnonymous();
 app.UseMiddleware<OtlpTransportGuard>();
 app.UseMiddleware<AgentTransportGuard>();
 app.UseRateLimiter();
