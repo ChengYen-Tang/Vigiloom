@@ -274,6 +274,9 @@ builder.Services.AddScoped<Vigiloom.Web.Services.IApplicationManagement>(service
         : services.GetRequiredService<Vigiloom.Web.Services.RemoteApplicationManagement>());
 builder.Services.AddScoped<SourceCredentials>();
 builder.Services.AddScoped<SourceAdministration>();
+builder.Services.AddHttpClient<Vigiloom.Web.Services.SourceManagement>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<AgentMonitoring>();
 builder.Services.AddScoped<HostMetricHistory>();
 builder.Services.AddScoped<HostMetricRetentionSettings>();

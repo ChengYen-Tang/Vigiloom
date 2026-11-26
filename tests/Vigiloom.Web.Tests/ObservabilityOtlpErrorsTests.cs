@@ -7,6 +7,7 @@ using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
+using Vigiloom.Modules.ServiceObservability.Application;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -136,6 +137,24 @@ public sealed class ObservabilityOtlpErrorsTests(TestContext context)
             update.EnsureSuccessStatusCode();
             Assert.AreEqual(45, (await client.GetFromJsonAsync<TelemetryRetentionSnapshot>("/internal/v1/telemetry-retention", token))!.LogDays);
             Assert.AreEqual(actor, audit.Actor);
+            using var issue = await client.PostAsJsonAsync("/internal/v1/observation-sources", new IssueServiceSourceCommand("Example", actor), token);
+            issue.EnsureSuccessStatusCode();
+            var credential = await issue.Content.ReadFromJsonAsync<SourceCredentialIssue>(cancellationToken: token);
+            Assert.IsNotNull(credential);
+            var sources = await client.GetFromJsonAsync<ServiceSourceSummary[]>("/internal/v1/observation-sources", token);
+            var source = sources!.Single(item => item.Id == credential.SourceId);
+            using var rotate = await client.PostAsJsonAsync($"/internal/v1/observation-sources/{source.Id:D}/rotate",
+                new RotateServiceSourceCommand(Convert.FromBase64String(source.Version), actor), token);
+            rotate.EnsureSuccessStatusCode();
+            var rotated = await rotate.Content.ReadFromJsonAsync<SourceRotationResult>(cancellationToken: token);
+            Assert.AreEqual(SourceRotationStatus.Rotated, rotated!.Status);
+            using var scope = host.Services.CreateScope();
+            var auth = scope.ServiceProvider.GetRequiredService<SourceCredentials>();
+            Assert.IsNull(await auth.AuthenticateVersionedAsync(credential.Secret, token));
+            Assert.IsNotNull(await auth.AuthenticateVersionedAsync(rotated.Credential, token));
+            using var revoke = await client.PostAsJsonAsync($"/internal/v1/observation-sources/{source.Id:D}/revoke", new RevokeServiceSourceCommand(actor), token);
+            Assert.AreEqual(HttpStatusCode.NoContent, revoke.StatusCode);
+            Assert.IsNull(await auth.AuthenticateVersionedAsync(rotated.Credential, token));
         }, context.CancellationToken);
 
     private sealed class LogCount : IApplicationLogRetentionCounter

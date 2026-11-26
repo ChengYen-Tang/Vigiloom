@@ -35,6 +35,7 @@ builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(services => s
     ?? throw new InvalidOperationException("ConnectionStrings:Observability is required."), "service", pooled: true);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<SourceCredentials>();
+builder.Services.AddScoped<SourceAdministration>();
 builder.Services.AddScoped<SelfSourceProvider>();
 builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
     () => provider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
@@ -191,6 +192,7 @@ app.MapHealthReads();
 app.MapServiceReads();
 app.MapTelemetryHistoryEndpoints();
 app.MapRetentionEndpoints();
+app.MapSourceEndpoints();
 app.Run();
 
 public partial class Program;
