@@ -156,11 +156,8 @@ namespace Vigiloom.Modules.NetworkMonitoring.Persistence.Migrations
                 table: "PingTargets",
                 columns: new[] { "Enabled", "DueAt" });
 
-            // Network owns these cross-module references; no Resources CLR entity is exposed.
-            migrationBuilder.AddForeignKey("FK_PingTargets_Devices_DeviceId", "PingTargets", "DeviceId", "Devices",
-                schema: "network", principalSchema: "resources", principalColumn: "Id", onDelete: ReferentialAction.NoAction);
-            migrationBuilder.AddForeignKey("FK_PingStateEvents_Devices_DeviceId", "PingStateEvents", "DeviceId", "Devices",
-                schema: "network", principalSchema: "resources", principalColumn: "Id", onDelete: ReferentialAction.NoAction);
+            migrationBuilder.Sql("IF OBJECT_ID(N'[resources].[Devices]', N'U') IS NOT NULL ALTER TABLE [network].[PingTargets] ADD CONSTRAINT [FK_PingTargets_Devices_DeviceId] FOREIGN KEY ([DeviceId]) REFERENCES [resources].[Devices] ([Id]);");
+            migrationBuilder.Sql("IF OBJECT_ID(N'[resources].[Devices]', N'U') IS NOT NULL ALTER TABLE [network].[PingStateEvents] ADD CONSTRAINT [FK_PingStateEvents_Devices_DeviceId] FOREIGN KEY ([DeviceId]) REFERENCES [resources].[Devices] ([Id]);");
         }
 
         /// <inheritdoc />

@@ -1,9 +1,11 @@
 using System.Net;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Configuration;
 
-namespace Vigiloom.Web.Gateway;
+namespace Vigiloom.Infrastructure.Authentication;
 
-internal static class TrustedProxyForwarding
+public static class TrustedProxyForwarding
 {
     public static ForwardedHeadersOptions? Create(IConfiguration configuration)
     {

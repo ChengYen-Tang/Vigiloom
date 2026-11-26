@@ -172,9 +172,15 @@ public static class WorkerHost
             .ConfigurePrimaryHttpMessageHandler(IntelligenceHttp.CreateAdvisoryHandler);
         builder.Services.AddScoped<ISpeedProbe, SpeedtestNetProbe>();
         builder.Services.AddScoped<AutomaticSpeedJob>();
-        builder.Services.AddHostedService<SpeedWorker>();
-        builder.Services.AddHostedService<SpeedSchedule>();
-        builder.Services.AddHostedService<SpeedRetentionSchedule>();
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Network:Url"]))
+        {
+            builder.Services.AddHostedService<SpeedWorker>();
+            builder.Services.AddHostedService<SpeedSchedule>();
+            builder.Services.AddHostedService<SpeedRetentionSchedule>();
+            builder.Services.AddHostedService<PingWorker>();
+            builder.Services.AddHostedService<PingRollupBackfillSchedule>();
+            builder.Services.AddHostedService<PingRetentionSchedule>();
+        }
         builder.Services.AddHostedService<AgentInboxRetentionSchedule>();
         builder.Services.AddHostedService<InventoryExpirySchedule>();
         builder.Services.AddHostedService<IntelligenceRefreshSchedule>();
@@ -190,12 +196,9 @@ public static class WorkerHost
         builder.Services.AddHostedService<BaselineRefreshSchedule>();
         builder.Services.AddHostedService<IntegrityExpirySchedule>();
         builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
-        builder.Services.AddHostedService<PingWorker>();
-        builder.Services.AddHostedService<PingRollupBackfillSchedule>();
         builder.Services.AddHostedService<HostMetricRollupSchedule>();
         builder.Services.AddHostedService<HostMetricRetentionSchedule>();
         builder.Services.AddHostedService<TelemetryRetentionSchedule>();
-        builder.Services.AddHostedService<PingRetentionSchedule>();
         builder.Services.AddHostedService<AuditRetentionSchedule>();
         builder.Services.AddHostedService<MetricRollupSchedule>();
         builder.Services.AddSingleton<HealthRunner>();

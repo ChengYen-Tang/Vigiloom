@@ -13,6 +13,8 @@ internal sealed class DeviceHistoryPreviewReader(IDbContextFactory<ResourcesDbCo
     public async Task<PublicDeviceHistory?> ReadAsync(Guid id, CancellationToken token)
     {
         if (id.Version != 7) return null;
+        if (!string.IsNullOrWhiteSpace(configuration?["Services:Network:Url"]))
+            return await provider!.GetRequiredService<RemoteNetworkPublicClient>().PreviewAsync(id, token);
         if (!string.IsNullOrWhiteSpace(configuration?["Services:Resources:Url"]))
         {
             var remote = provider!.GetRequiredService<RemotePublicReader>();
