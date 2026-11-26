@@ -34,6 +34,7 @@ using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Application;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -241,6 +242,17 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             }
             Assert.AreEqual(2, await verify.TraceSpans.CountAsync(token));
             await using (var logs = await logContexts.CreateDbContextAsync(token)) Assert.AreEqual(2, await logs.LogRecords.CountAsync(token));
+            using var versionResponse = await client.PostAsJsonAsync("/internal/v1/public-observation/versions", new[] { serviceId }, token);
+            versionResponse.EnsureSuccessStatusCode();
+            var versions = await versionResponse.Content.ReadFromJsonAsync<PublicObservationVersions[]>(cancellationToken: token);
+            Assert.IsNotNull(versions);
+            Assert.AreEqual(serviceId, versions.Single().Id);
+            Assert.HasCount(8, versions[0].Service);
+            Assert.HasCount(8, versions[0].Source);
+            using var statuses = await client.PostAsJsonAsync("/internal/v1/public-observation/statuses", new[] { serviceId }, token);
+            statuses.EnsureSuccessStatusCode();
+            var statusMap = await statuses.Content.ReadFromJsonAsync<Dictionary<Guid, Vigiloom.Modules.ServiceObservability.Application.Health.HealthStatusReader.OverviewStatus>>(cancellationToken: token);
+            Assert.AreEqual(ServiceHealthState.Unknown, statusMap![serviceId].Status.State);
             using var anonymous = await client.GetAsync($"/api/v1/service-health/{serviceId:D}/status", token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             using var internalStatus = await client.GetAsync($"/internal/v1/health/{serviceId:D}/status", token);

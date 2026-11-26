@@ -218,6 +218,7 @@ app.MapCollectorEndpoints();
 app.MapHealthAdministration();
 app.MapInstanceAdministration();
 app.MapTraceQuota();
+app.MapPublicObservation();
 app.Run();
 
 public partial class Program;

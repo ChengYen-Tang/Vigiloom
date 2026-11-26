@@ -481,6 +481,9 @@ builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemoteNetworkPublicClient
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicServiceHistoryReader>();
+builder.Services.AddHttpClient<Vigiloom.Web.Publishing.PublicObservationClient>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicDeviceHistoryReader>();
 builder.Services.AddScoped<Vigiloom.Web.Publishing.DeviceHistoryPreviewReader>();
 builder.Services.AddSingleton<Vigiloom.Web.Publishing.PublicHistoryAdmission>();
