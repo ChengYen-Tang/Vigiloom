@@ -28,6 +28,9 @@ public sealed class ApplicationDiscovery(IDbContextFactory<ResourcesDbContext> c
         {
             var cutoff = now.AddMinutes(-3);
             await db.ApplicationCandidates.Where(c => c.LastSeen < cutoff).ExecuteDeleteAsync(token);
+            if (await db.ApplicationCandidates.CountAsync(token) >= 10_000 ||
+                await db.ApplicationCandidates.CountAsync(c => c.SourceId == proposed.SourceId, token) >= 1_000)
+                return ApplicationObservationStatus.CapacityReached;
             db.ApplicationCandidates.Add(new ApplicationCandidate(proposed.SourceId, proposed.ServiceKey, proposed.Environment, proposed.DisplayName, proposed.ServiceNamespace, now));
         }
         else candidate.Observe(proposed.DisplayName, now);
