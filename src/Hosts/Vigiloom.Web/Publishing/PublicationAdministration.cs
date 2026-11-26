@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Publishing;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.Publishing.Persistence;
@@ -19,7 +20,8 @@ internal sealed record PublicationChangeResult(PublicationChangeStatus Status, P
 /// <summary>Coordinates owner-module publication settings and audit in one database transaction.</summary>
 internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbContext> resources,
     IDbContextFactory<ServiceObservabilityDbContext> services, IDbContextFactory<PublishingDbContext> publishing,
-    IOperationAuditWriter<OperationAudit> audit, TimeProvider clock, ILogger<PublicationAdministration> logger)
+    IOperationAuditWriter<OperationAudit> audit, TimeProvider clock, ILogger<PublicationAdministration> logger,
+    IEnumerable<IHealthTransitionSink>? transitions = null)
 {
     public async Task<PublicationSettings?> ReadAsync(PublicationResourceKind kind, Guid id, CancellationToken token)
     {
@@ -87,7 +89,7 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
             }
             var now = clock.GetUtcNow().ToUniversalTime();
             var healthBoundary = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value] /* health-invalidation */").SingleAsync(token);
-            await HealthPublicationCoordinator.InvalidateAsync(db, id, healthBoundary, token);
+            await HealthPublicationCoordinator.InvalidateAsync(db, id, healthBoundary, token, transitions);
             row.SetPublication(change.Public, name, change.PolicyVersion, now);
             try { await db.SaveChangesAsync(token); }
             catch (DbUpdateConcurrencyException) { return new(PublicationChangeStatus.Conflict); }
@@ -182,7 +184,7 @@ internal sealed class PublicationAdministration(IDbContextFactory<ResourcesDbCon
             // ensures a delayed confirmation cannot authorize history for a later publication.
             var healthBoundary = await db.Database.SqlQueryRaw<DateTimeOffset>(
                 "SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value] /* health-invalidation */").SingleAsync(token);
-            await HealthPublicationCoordinator.InvalidateAsync(db, id, healthBoundary, token);
+            await HealthPublicationCoordinator.InvalidateAsync(db, id, healthBoundary, token, transitions);
             row.ConfirmPublicSince(afterCommit);
             await db.SaveChangesAsync(token);
             await tx.CommitAsync(token);
