@@ -216,6 +216,16 @@ public sealed class GroupManagementTests
             using var addedByPage = await adminClient.PostAsync($"/groups/{group2.Id:D}?serviceFilter=available", new FormUrlEncodedContent(serviceFields), token);
             Assert.AreEqual(HttpStatusCode.Redirect, addedByPage.StatusCode, await addedByPage.Content.ReadAsStringAsync(token));
         }
+        adminClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var englishGroup = await adminClient.GetAsync($"/groups/{group2.Id:D}", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await englishGroup.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Systems", document.Body!.TextContent);
+            Assert.Contains("Health status", document.Body.TextContent);
+            Assert.IsNotNull(document.QuerySelector($"a[href='/services/{serviceId:D}']"));
+            Assert.IsNotNull(document.QuerySelector($"input[name='deviceIds'][value='{device.Id:D}'][aria-label^='Select ']") );
+        }
+        adminClient.DefaultRequestHeaders.AcceptLanguage.Clear();
         Dictionary<string, string> staleServiceFields;
         using (var membersPage = await adminClient.GetAsync($"/groups/{group2.Id:D}", token))
         {

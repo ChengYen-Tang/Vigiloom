@@ -123,4 +123,190 @@
   <data xml:space="preserve" name="已有相同名稱的群組，請使用其他名稱。">
     <value>已有相同名称的群组，请使用其他名称。</value>
   </data>
+  <data xml:space="preserve" name="群組詳情">
+    <value>群组详情</value>
+  </data>
+  <data xml:space="preserve" name="← 返回群組">
+    <value>← 返回群组</value>
+  </data>
+  <data xml:space="preserve" name="無法載入群組，請稍後再試。">
+    <value>无法加载群组，请稍后重试。</value>
+  </data>
+  <data xml:space="preserve" name="找不到群組">
+    <value>找不到群组</value>
+  </data>
+  <data xml:space="preserve" name="此群組不存在。">
+    <value>此群组不存在。</value>
+  </data>
+  <data xml:space="preserve" name="尚無說明">
+    <value>暂无说明</value>
+  </data>
+  <data xml:space="preserve" name="公開設定">
+    <value>公开设置</value>
+  </data>
+  <data xml:space="preserve" name="群組中有 {0} 台設備。">
+    <value>群组中有 {0} 台设备。</value>
+  </data>
+  <data xml:space="preserve" name="另有 {0} 台已封存。">
+    <value>另有 {0} 台已归档。</value>
+  </data>
+  <data xml:space="preserve" name="搜尋名稱或目標">
+    <value>搜索名称或目标</value>
+  </data>
+  <data xml:space="preserve" name="範圍">
+    <value>范围</value>
+  </data>
+  <data xml:space="preserve" name="群組設備">
+    <value>群组设备</value>
+  </data>
+  <data xml:space="preserve" name="可加入設備">
+    <value>可添加设备</value>
+  </data>
+  <data xml:space="preserve" name="全部設備">
+    <value>全部设备</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的設備。">
+    <value>没有符合条件的设备。</value>
+  </data>
+  <data xml:space="preserve" name="選取">
+    <value>选择</value>
+  </data>
+  <data xml:space="preserve" name="主要目標">
+    <value>主要目标</value>
+  </data>
+  <data xml:space="preserve" name="監控模式">
+    <value>监控模式</value>
+  </data>
+  <data xml:space="preserve" name="群組歸屬">
+    <value>群组归属</value>
+  </data>
+  <data xml:space="preserve" name="選取 {0}">
+    <value>选择 {0}</value>
+  </data>
+  <data xml:space="preserve" name="深入監控">
+    <value>深入监控</value>
+  </data>
+  <data xml:space="preserve" name="僅 Ping">
+    <value>仅 Ping</value>
+  </data>
+  <data xml:space="preserve" name="已加入">
+    <value>已加入</value>
+  </data>
+  <data xml:space="preserve" name="未加入">
+    <value>未加入</value>
+  </data>
+  <data xml:space="preserve" name="加入所選設備">
+    <value>添加所选设备</value>
+  </data>
+  <data xml:space="preserve" name="移出所選設備">
+    <value>移出所选设备</value>
+  </data>
+  <data xml:space="preserve" name="設備分頁">
+    <value>设备分页</value>
+  </data>
+  <data xml:space="preserve" name="群組中有 {0} 個服務。">
+    <value>群组中有 {0} 个服务。</value>
+  </data>
+  <data xml:space="preserve" name="搜尋服務或環境">
+    <value>搜索服务或环境</value>
+  </data>
+  <data xml:space="preserve" name="群組服務">
+    <value>群组服务</value>
+  </data>
+  <data xml:space="preserve" name="可加入服務">
+    <value>可添加服务</value>
+  </data>
+  <data xml:space="preserve" name="全部服務">
+    <value>全部服务</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的服務。">
+    <value>没有符合条件的服务。</value>
+  </data>
+  <data xml:space="preserve" name="環境">
+    <value>环境</value>
+  </data>
+  <data xml:space="preserve" name="健康狀態">
+    <value>健康状态</value>
+  </data>
+  <data xml:space="preserve" name="加入所選服務">
+    <value>添加所选服务</value>
+  </data>
+  <data xml:space="preserve" name="移出所選服務">
+    <value>移出所选服务</value>
+  </data>
+  <data xml:space="preserve" name="服務分頁">
+    <value>服务分页</value>
+  </data>
+  <data xml:space="preserve" name="刪除群組">
+    <value>删除群组</value>
+  </data>
+  <data xml:space="preserve" name="將移除 {0} 台設備、{1} 個服務的群組歸屬。">
+    <value>将移除 {0} 台设备、{1} 个服务的群组归属。</value>
+  </data>
+  <data xml:space="preserve" name="另有 {0} 台已封存設備的歸屬也會移除。">
+    <value>另有 {0} 台已归档设备的归属也会移除。</value>
+  </data>
+  <data xml:space="preserve" name="不會刪除資源或歷史，也不會變更監控或公開設定。">
+    <value>不会删除资源或历史，也不会变更监控或公开设置。</value>
+  </data>
+  <data xml:space="preserve" name="我了解以上影響">
+    <value>我了解以上影响</value>
+  </data>
+  <data xml:space="preserve" name="確認刪除群組">
+    <value>确认删除群组</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取">
+    <value>无法读取</value>
+  </data>
+  <data xml:space="preserve" name="未知或資料不足">
+    <value>未知或数据不足</value>
+  </data>
+  <data xml:space="preserve" name="收集已停止">
+    <value>收集已停止</value>
+  </data>
+  <data xml:space="preserve" name="來源已撤銷">
+    <value>来源已撤销</value>
+  </data>
+  <data xml:space="preserve" name="健康檢查已停用">
+    <value>健康检查已停用</value>
+  </data>
+  <data xml:space="preserve" name="正常">
+    <value>正常</value>
+  </data>
+  <data xml:space="preserve" name="降級">
+    <value>降级</value>
+  </data>
+  <data xml:space="preserve" name="異常">
+    <value>异常</value>
+  </data>
+  <data xml:space="preserve" name="請先選取服務。">
+    <value>请先选择服务。</value>
+  </data>
+  <data xml:space="preserve" name="選取的服務無效或超過數量上限。">
+    <value>选择的服务无效或超过数量上限。</value>
+  </data>
+  <data xml:space="preserve" name="請選擇要加入或移出的操作。">
+    <value>请选择要加入或移出的操作。</value>
+  </data>
+  <data xml:space="preserve" name="無法確認操作結果，請重新整理並檢查。">
+    <value>无法确认操作结果，请刷新并检查。</value>
+  </data>
+  <data xml:space="preserve" name="請先選取設備。">
+    <value>请先选择设备。</value>
+  </data>
+  <data xml:space="preserve" name="選取的設備無效或超過數量上限。">
+    <value>选择的设备无效或超过数量上限。</value>
+  </data>
+  <data xml:space="preserve" name="請先確認操作影響。">
+    <value>请先确认操作影响。</value>
+  </data>
+  <data xml:space="preserve" name="服務不存在，請重新整理後再試。">
+    <value>服务不存在，请刷新后重试。</value>
+  </data>
+  <data xml:space="preserve" name="設備不存在或已封存，請重新整理後再試。">
+    <value>设备不存在或已归档，请刷新后重试。</value>
+  </data>
+  <data xml:space="preserve" name="每次最多處理 100 筆，且同一設備不能同時加入及移出。">
+    <value>每次最多处理 100 项，且同一设备不能同时加入及移出。</value>
+  </data>
 </root>
