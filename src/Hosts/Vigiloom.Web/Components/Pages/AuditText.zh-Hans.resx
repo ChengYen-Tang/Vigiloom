@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="操作紀錄保存" xml:space="preserve"><value>操作记录保存</value></data>
+  <data name="管理操作紀錄、告警、通知與安全變更歷史的保存期限。" xml:space="preserve"><value>管理操作记录、告警、通知与安全变更历史的保存期限。</value></data>
+  <data name="此期限適用於中央設定、設備、Agent、安全設定、事件查詢與匯出、背景工作、帳號與 API 憑證的操作紀錄，以及告警、通知、已結束的背景工作、YARA 掃描結果（含規則與輸出）、盤點與檔案完整性變更歷史、漏洞評估歷史與安全基準觀測歷史。目前的盤點快照、完整性狀態、漏洞評估及各基準版本最新觀測會保留。GitHub Advisory 不再使用的舊版本及已完成或放棄的匯入暫存也依期限清理；目前及前一可用版本、共享來源與已發布的撤回紀錄會保留。其他安全事件證據不在此期限內。首次管理員初始化紀錄、進行中的告警、尚未排入派送的通知與未結束的工作會保留。到期後定期清理，延長期限無法還原已刪除資料。" xml:space="preserve"><value>此期限适用于中央设置、设备、Agent、安全设置、事件查询与导出、后台工作、账号与 API 凭证的操作记录，以及告警、通知、已结束的后台工作、YARA 扫描结果（含规则与输出）、盘点与文件完整性变更历史、漏洞评估历史与安全基准观察历史。当前的盘点快照、完整性状态、漏洞评估及各基准版本最新观察会保留。GitHub Advisory 不再使用的旧版本及已完成或放弃的导入暂存也依期限清理；当前及前一可用版本、共享来源与已发布的撤回记录会保留。其他安全事件证据不在此期限内。首次管理员初始化记录、进行中的告警、尚未排入派送的通知与未结束的工作会保留。到期后定期清理，延长期限无法还原已删除数据。</value></data>
+  <data name="SigmaHQ、Signature-Base、CISA KEV、FIRST EPSS 與 Debian 的舊情報內容也依此期限清理；目前使用、上一個可用、最新候選及仍被事件引用的版本會保留。版本及啟用紀錄仍可查詢；已清理內容的舊版本無法直接回復。" xml:space="preserve"><value>SigmaHQ、Signature-Base、CISA KEV、FIRST EPSS 与 Debian 的旧情报内容也依此期限清理；当前使用、上一个可用、最新候选及仍被事件引用的版本会保留。版本及启用记录仍可查询；已清理内容的旧版本无法直接恢复。</value></data>
+  <data name="Ubuntu 與 Microsoft 安全情報的舊封存檔與不再使用的內容也依此期限清理；仍被其他版本使用的共用文件，以及已發布的撤回資訊會保留。" xml:space="preserve"><value>Ubuntu 与 Microsoft 安全情报的旧归档文件与不再使用的内容也依此期限清理；仍被其他版本使用的共用文件，以及已发布的撤回信息会保留。</value></data>
+  <data name="此期限也適用於已停止重試的 Hangfire 失敗工作；執行中及等待重試的工作會保留。" xml:space="preserve"><value>此期限也适用于已停止重试的 Hangfire 失败工作；执行中及等待重试的工作会保留。</value></data>
+  <data name="無法讀取保存設定，請重新整理後再試。" xml:space="preserve"><value>无法读取保存设置，请刷新后再试。</value></data>
+  <data name="保存天數（1～3650 天）" xml:space="preserve"><value>保存天数（1～3650 天）</value></data>
+  <data name="以 {0} 為準，預計有 {1} 筆操作紀錄、安全歷史與情報資料符合清理條件。清理可能解除其他舊情報的引用，讓它們接續符合清理條件；實際數量可能變動。" xml:space="preserve"><value>以 {0} 为准，预计有 {1} 笔操作记录、安全历史与情报数据符合清理条件。清理可能解除其他旧情报的引用，让它们接续符合清理条件；实际数量可能变动。</value></data>
+  <data name="預計清理 {0} 筆已恢復告警及 {1} 筆通知。" xml:space="preserve"><value>预计清理 {0} 笔已恢复告警及 {1} 笔通知。</value></data>
+  <data name="預計清理 {0} 筆已結束的背景工作及其派送紀錄。" xml:space="preserve"><value>预计清理 {0} 笔已结束的后台工作及其派送记录。</value></data>
+  <data name="Hangfire 失敗工作的數量未包含在上述預覽中，符合期限的紀錄也會清理。" xml:space="preserve"><value>Hangfire 失败工作的数量未包含在上述预览中，符合期限的记录也会清理。</value></data>
+  <data name="確認後將依排程清理；預覽在 5 分鐘內有效。" xml:space="preserve"><value>确认后将依排程清理；预览在 5 分钟内有效。</value></data>
+  <data name="確認儲存" xml:space="preserve"><value>确认保存</value></data>
+  <data name="取消" xml:space="preserve"><value>取消</value></data>
+  <data name="預覽變更" xml:space="preserve"><value>预览变更</value></data>
+  <data name="返回操作稽核" xml:space="preserve"><value>返回操作稽核</value></data>
+  <data name="請輸入有效的保存天數。" xml:space="preserve"><value>请输入有效的保存天数。</value></data>
+  <data name="設定已被其他操作變更，請重新整理後再試。" xml:space="preserve"><value>设置已被其他操作变更，请刷新后再试。</value></data>
+  <data name="保存設定已儲存。" xml:space="preserve"><value>保存设置已保存。</value></data>
+  <data name="預覽已過期或天數已變更，請重新預覽。" xml:space="preserve"><value>预览已过期或天数已变更，请重新预览。</value></data>
+  <data name="無法確認儲存結果，請重新整理後檢查。" xml:space="preserve"><value>无法确认保存结果，请刷新后检查。</value></data>
+</root>
