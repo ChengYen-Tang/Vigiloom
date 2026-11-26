@@ -5,7 +5,7 @@ using Vigiloom.Contracts.Devices;
 
 namespace Vigiloom.Web.HostMonitoring;
 
-internal sealed class RemoteAgentStatus(HttpClient client) : IAgentStatusReader, IAgentOverviewReader, IAgentSettingsStatusReader
+internal sealed class RemoteAgentStatus(HttpClient client) : IAgentStatusReader, IAgentOverviewReader, IAgentSettingsStatusReader, IAgentQueueCapacityStatusReader
 {
     public async Task<AgentConnectionStatus?> GetAsync(Guid deviceId, CancellationToken token)
     {
@@ -23,6 +23,15 @@ internal sealed class RemoteAgentStatus(HttpClient client) : IAgentStatusReader,
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<AgentSettingsStatus>(cancellationToken: token)
             ?? throw new InvalidOperationException("Host monitoring returned an empty Agent settings status.");
+    }
+
+    async Task<AgentQueueCapacityStatus?> IAgentQueueCapacityStatusReader.GetAsync(Guid deviceId, CancellationToken token)
+    {
+        using var response = await client.GetAsync($"internal/v1/devices/{deviceId:D}/agent-queue-capacity-status", token);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AgentQueueCapacityStatus>(cancellationToken: token)
+            ?? throw new InvalidOperationException("Host monitoring returned an empty Agent queue capacity status.");
     }
 
     public async Task<IReadOnlyDictionary<Guid, AgentConnectionStatus>> GetConnectionsAsync(IReadOnlyList<Guid> deviceIds, CancellationToken token)

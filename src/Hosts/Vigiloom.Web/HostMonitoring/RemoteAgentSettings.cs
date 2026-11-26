@@ -4,7 +4,7 @@ using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Web.HostMonitoring;
 
-internal sealed class RemoteAgentSettings(HttpClient client) : IAgentSettings
+internal sealed class RemoteAgentSettings(HttpClient client) : IAgentSettings, IAgentQueueCapacitySettings
 {
     public async Task<AgentSettingsView?> GetAsync(Guid? deviceId, CancellationToken token)
     {
@@ -26,4 +26,25 @@ internal sealed class RemoteAgentSettings(HttpClient client) : IAgentSettings
 
     private static string Path(Guid? id) => id is { } deviceId
         ? $"internal/v1/agent-settings/devices/{deviceId:D}" : "internal/v1/agent-settings/platform";
+
+    async Task<AgentQueueCapacityView?> IAgentQueueCapacitySettings.GetAsync(Guid? deviceId, CancellationToken token)
+    {
+        using var response = await client.GetAsync(CapacityPath(deviceId), token);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AgentQueueCapacityView>(cancellationToken: token)
+            ?? throw new InvalidOperationException("Host monitoring returned empty queue capacity settings.");
+    }
+
+    async Task<AgentQueueCapacityView?> IAgentQueueCapacitySettings.UpdateAsync(Guid? deviceId, AgentQueueCapacityUpdate update, Guid actorId, CancellationToken token)
+    {
+        using var response = await client.PostAsJsonAsync(CapacityPath(deviceId), new AgentQueueCapacityCommand(update, actorId), token);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Conflict) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AgentQueueCapacityView>(cancellationToken: token)
+            ?? throw new InvalidOperationException("Host monitoring returned an empty queue capacity update.");
+    }
+
+    private static string CapacityPath(Guid? id) => id is { } deviceId
+        ? $"internal/v1/agent-queue-capacity/devices/{deviceId:D}" : "internal/v1/agent-queue-capacity/platform";
 }

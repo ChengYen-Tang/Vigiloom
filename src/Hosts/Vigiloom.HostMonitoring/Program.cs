@@ -61,6 +61,7 @@ builder.Services.AddHttpClient<IHostWorkRetentionDays, OperationsWorkRetentionDa
 builder.Services.AddScoped<HostObservationReceiver>();
 builder.Services.AddScoped<HostHeartbeat>();
 builder.Services.AddScoped<HostAgentConfiguration>();
+builder.Services.AddScoped<HostQueueCapacity>();
 builder.Services.AddScoped<HostAgentMonitoring>();
 builder.Services.AddScoped<HostInboxCleanup>();
 builder.Services.AddScoped<HostLogIdentityCleanup>();
@@ -104,10 +105,12 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/ch
     context.Request.Path.StartsWithSegments("/api/v1/agent/batches") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/heartbeat") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/queue-capacity") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/settings"), agent => agent.UseMiddleware<AgentAccess>());
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
 app.MapAgentBatchEndpoints();
 app.MapHostAgentSettingsEndpoints();
+app.MapHostQueueCapacityEndpoints();
 app.MapHostAgentStatusEndpoints();
 app.MapPost("/api/v1/agent/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes));

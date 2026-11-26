@@ -13,6 +13,7 @@ internal static class HostAgentStatusEndpoints
     {
         app.MapGet("/internal/v1/devices/{id:guid}/agent-status", ReadAsync);
         app.MapGet("/internal/v1/devices/{id:guid}/agent-settings-status", ReadSettingsAsync);
+        app.MapGet("/internal/v1/devices/{id:guid}/agent-queue-capacity-status", ReadCapacityAsync);
         app.MapPost("/internal/v1/agent-connections", async (Guid[] ids, IHttpClientFactory clients, HostAgentMonitoring monitoring, CancellationToken token) =>
         {
             using var response = await clients.CreateClient("resources").PostAsJsonAsync("internal/v1/devices/agent-overview", ids, token);
@@ -27,6 +28,9 @@ internal static class HostAgentStatusEndpoints
         app.MapGet("/api/v1/devices/{id:guid}/agent-settings-status", ReadSettingsAsync).RequireAuthorization("MonitoringApiRead")
             .Produces<AgentSettingsStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get the Agent's observed scheduling settings");
+        app.MapGet("/api/v1/devices/{id:guid}/agent-queue-capacity-status", ReadCapacityAsync).RequireAuthorization("MonitoringApiRead")
+            .Produces<AgentQueueCapacityStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Get the Agent's observed queue capacity");
     }
 
     private static async Task<IResult> ReadAsync(Guid id, IHttpClientFactory clients, HostAgentMonitoring monitoring, HttpContext context, CancellationToken token)
@@ -43,6 +47,14 @@ internal static class HostAgentStatusEndpoints
         if (overview is null) return Results.NotFound();
         context.Response.Headers.CacheControl = "no-store";
         return Results.Ok(await monitoring.GetSettingsStatusAsync(overview.Device, overview.Registration, token));
+    }
+
+    private static async Task<IResult> ReadCapacityAsync(Guid id, IHttpClientFactory clients, HostAgentMonitoring monitoring, HttpContext context, CancellationToken token)
+    {
+        var overview = await ReadDeviceAsync(id, clients, token);
+        if (overview is null) return Results.NotFound();
+        context.Response.Headers.CacheControl = "no-store";
+        return Results.Ok(await monitoring.GetQueueCapacityStatusAsync(overview.Device, overview.Registration, token));
     }
 
     private static async Task<DeviceAgentOverview?> ReadDeviceAsync(Guid id, IHttpClientFactory clients, CancellationToken token)

@@ -1,4 +1,3 @@
-using System.Net;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Modules.AgentManagement.Application;
@@ -11,21 +10,21 @@ internal static class HostAgentSettingsEndpoints
     {
         app.MapGet("/internal/v1/agent-settings/platform", (HostAgentConfiguration settings, CancellationToken token) => settings.GetAsync(null, token));
         app.MapGet("/internal/v1/agent-settings/devices/{deviceId:guid}", async (Guid deviceId, HostAgentConfiguration settings, IHttpClientFactory clients, CancellationToken token) =>
-            await ExistsAsync(clients, deviceId, token) ? Results.Ok(await settings.GetAsync(deviceId, token)) : Results.NotFound());
+            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? Results.Ok(await settings.GetAsync(deviceId, token)) : Results.NotFound());
         app.MapPost("/internal/v1/agent-settings/platform", (AgentSettingsCommand command, HostAgentConfiguration settings, CancellationToken token) =>
             UpdateInternalAsync(settings, null, command, token));
         app.MapPost("/internal/v1/agent-settings/devices/{deviceId:guid}", async (Guid deviceId, AgentSettingsCommand command, HostAgentConfiguration settings, IHttpClientFactory clients, CancellationToken token) =>
-            await ExistsAsync(clients, deviceId, token) ? await UpdateInternalAsync(settings, deviceId, command, token) : Results.NotFound());
+            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateInternalAsync(settings, deviceId, command, token) : Results.NotFound());
         var admin = app.MapGroup("/api/v1/agent-management/settings").RequireAuthorization("Administrator");
         admin.MapGet("/platform", (HostAgentConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token));
         admin.MapPut("/platform", (AgentSettingsUpdate input, HostAgentConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token));
         admin.MapGet("/devices/{deviceId:guid}", async (Guid deviceId, HostAgentConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
-            await ExistsAsync(clients, deviceId, token) ? await ReadAsync(settings, deviceId, context, token) : Results.NotFound());
+            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await ReadAsync(settings, deviceId, context, token) : Results.NotFound());
         admin.MapPut("/devices/{deviceId:guid}", async (Guid deviceId, AgentSettingsUpdate input, HostAgentConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
-            await ExistsAsync(clients, deviceId, token) ? await UpdateAsync(settings, deviceId, input, context, token) : Results.NotFound());
+            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateAsync(settings, deviceId, input, context, token) : Results.NotFound());
         app.MapGet("/api/v1/devices/{deviceId:guid}/agent-settings", async (Guid deviceId, HostAgentConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
         {
-            if (!await ExistsAsync(clients, deviceId, token)) return Results.NotFound();
+            if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok((await settings.GetAsync(deviceId, token)).Effective);
         }).RequireAuthorization("MonitoringApiRead");
@@ -36,14 +35,6 @@ internal static class HostAgentSettingsEndpoints
         if (command.Actor == Guid.Empty || command.Input is null || !AgentConfiguration.Valid(command.Input.Overrides)) return Results.BadRequest();
         var saved = await settings.UpdateAsync(deviceId, command.Input, command.Actor, token);
         return saved is null ? Results.Conflict() : Results.Ok(saved);
-    }
-
-    private static async Task<bool> ExistsAsync(IHttpClientFactory clients, Guid id, CancellationToken token)
-    {
-        using var response = await clients.CreateClient("resources").GetAsync($"internal/v1/devices/{id:D}/agent", token);
-        if (response.StatusCode == HttpStatusCode.NotFound) return false;
-        response.EnsureSuccessStatusCode();
-        return true;
     }
 
     private static async Task<IResult> ReadAsync(HostAgentConfiguration settings, Guid? deviceId, HttpContext context, CancellationToken token)
