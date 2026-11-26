@@ -19,7 +19,9 @@ public sealed class RemoteServiceHealthTests(TestContext context)
         using var client = new HttpClient(new Handler(id, start, end)) { BaseAddress = new Uri("http://observability/") };
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         { ["Services:Observability:Url"] = "http://observability" }).Build();
-        var query = new ServiceHealthQueries(client, config, null!, null!);
+        var query = new ServiceQueries(client, config, null!, null!, null!);
+        Assert.AreEqual(id, (await query.DetailAsync(id, context.CancellationToken))!.Id);
+        Assert.IsEmpty((await query.InstancesAsync(id, 2, context.CancellationToken))!.Items);
         Assert.AreEqual(ServiceHealthState.Healthy, (await query.StatusAsync(id, context.CancellationToken))!.State);
         Assert.AreEqual(1.0, (await query.HistoryAsync(id, start, end, context.CancellationToken))!.Coverage);
     }
@@ -29,7 +31,14 @@ public sealed class RemoteServiceHealthTests(TestContext context)
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             object result;
-            if (request.RequestUri!.AbsolutePath == $"/internal/v1/health/{id:D}/status")
+            if (request.RequestUri!.AbsolutePath == $"/internal/v1/services/{id:D}")
+                result = new Vigiloom.Contracts.Services.ServiceDetails(id, "API", "api", "", "prod", start, false, false, null, null, null, end);
+            else if (request.RequestUri.AbsolutePath == $"/internal/v1/services/{id:D}/instances")
+            {
+                Assert.AreEqual("2", QueryHelpers.ParseQuery(request.RequestUri.Query)["page"].ToString());
+                result = new ServiceInstancePage([], false);
+            }
+            else if (request.RequestUri.AbsolutePath == $"/internal/v1/health/{id:D}/status")
                 result = new ServiceHealthStatus(ServiceHealthState.Healthy, 1, 0);
             else
             {

@@ -173,6 +173,8 @@ app.MapGet("/internal/v1/application-logs/{serviceId:guid}", async (Guid service
     try { return Results.Ok(await history.GetAsync(serviceId, from, to, page ?? 1, traceId, token)); }
     catch (ArgumentException) { return Results.BadRequest(); }
 });
+app.MapGet("/internal/v1/application-logs/{serviceId:guid}/latest", async (Guid serviceId, ApplicationLogHistory history, CancellationToken token) =>
+    serviceId.Version != 7 ? Results.BadRequest() : Results.Ok(new { LastReceivedAt = await history.LastReceivedAsync(serviceId, token) }));
 app.MapPost("/internal/v1/application-logs/cleanup", async (ApplicationLogCleanupRequest input, ApplicationLogCleanup cleanup, CancellationToken token) =>
 {
     if (input.RetentionDays is < 1 or > 3650) return Results.BadRequest();
