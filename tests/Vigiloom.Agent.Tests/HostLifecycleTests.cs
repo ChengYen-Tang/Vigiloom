@@ -292,6 +292,9 @@ public sealed class HostLifecycleTests(TestContext testContext)
                 Assert.AreEqual(cachedMetrics.Settings, host.Services.GetRequiredService<AgentMetricSettingsRuntime>().Current);
                 Assert.AreEqual(cachedLogs.Revision, host.Services.GetRequiredService<AgentLogSettingsRuntime>().ForOwner(firstOwner)?.Revision);
                 await heartbeatHandler.First.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                // The first heartbeat may have started before cached settings were loaded.
+                // Advance the default interval so that worker can observe the cached period.
+                clock.Advance(TimeSpan.FromSeconds(30));
                 await clock.HeartbeatPeriodConfigured.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
                 clock.Advance(TimeSpan.FromSeconds(61));
                 await heartbeatHandler.Second.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
