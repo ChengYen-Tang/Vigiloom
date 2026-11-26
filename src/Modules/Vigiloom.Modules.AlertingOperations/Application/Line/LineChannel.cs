@@ -11,8 +11,8 @@ using Vigiloom.Modules.AlertingOperations.Persistence;
 namespace Vigiloom.Modules.AlertingOperations.Application.Line;
 
 public sealed record LineGroupView(Guid Id, string ExternalId, string? Name, bool Approved, DateTimeOffset LastSeenAt);
-public sealed record LineChannelView(bool Enabled, bool HasAccessToken, bool HasChannelSecret, IReadOnlyList<LineGroupView> Groups);
-public sealed record LineChannelUpdate([property: JsonRequired] bool Enabled, string? AccessToken, string? ChannelSecret);
+public sealed record LineChannelView(bool Enabled, bool HasAccessToken, bool HasChannelSecret, IReadOnlyList<LineGroupView> Groups, int AggregationSeconds = 10);
+public sealed record LineChannelUpdate([property: JsonRequired] bool Enabled, string? AccessToken, string? ChannelSecret, int? AggregationSeconds = null);
 
 /// <summary>Stores channel credentials and groups; webhook discovery never approves a group.</summary>
 public sealed class LineChannel(IDbContextFactory<OperationsDbContext> contexts, IDataProtectionProvider protection, TimeProvider clock,
@@ -28,12 +28,13 @@ public sealed class LineChannel(IDbContextFactory<OperationsDbContext> contexts,
         var groups = await db.LineGroups.AsNoTracking().OrderByDescending(x => x.LastSeenAt)
             .Select(x => new LineGroupView(x.Id, x.ExternalId, x.Name, x.Approved, x.LastSeenAt)).ToArrayAsync(token);
         return new(settings?.Enabled ?? false, settings?.ProtectedAccessToken is not null,
-            settings?.ProtectedChannelSecret is not null, groups);
+            settings?.ProtectedChannelSecret is not null, groups, settings?.AggregationSeconds ?? 10);
     }
 
     public async Task<bool> SaveAsync(LineChannelUpdate update, Guid actor, CancellationToken token)
     {
-        if (actor == Guid.Empty || update.AccessToken is { Length: > 4096 } || update.ChannelSecret is { Length: > 4096 }) return false;
+        if (actor == Guid.Empty || update.AccessToken is { Length: > 4096 } || update.ChannelSecret is { Length: > 4096 } ||
+            update.AggregationSeconds is < 0 or > 300) return false;
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, token);
         var settings = await db.LineSettings.SingleOrDefaultAsync(token);
@@ -44,6 +45,8 @@ public sealed class LineChannel(IDbContextFactory<OperationsDbContext> contexts,
         if (update.Enabled && !settings.Enabled)
             settings.LastNotificationRowId = await db.Notifications.MaxAsync(x => (long?)x.RowId, token) ?? 0;
         settings.Enabled = update.Enabled;
+        if (update.AggregationSeconds is { } seconds) settings.AggregationSeconds = seconds;
+        if (!settings.Enabled) settings.AggregationStartedAt = null;
         await db.SaveChangesAsync(token);
         await audit.AppendAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(),
             new OperationAudit(actor, settings.Id, clock.GetUtcNow(), new LineSettingsChanged(LineAuditAction.Channel, update.Enabled,

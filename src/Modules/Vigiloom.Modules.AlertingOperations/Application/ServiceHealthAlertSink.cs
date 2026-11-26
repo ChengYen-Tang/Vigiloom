@@ -39,15 +39,15 @@ public sealed class ServiceHealthAlertSink(IServiceGroupSource groups) : IHealth
             alert.State = (int)transition.State;
         }
         var memberships = await groups.ReadAsync(transition.ServiceId, connection, transaction, token);
-        var groupText = memberships.Count == 0 ? "無" : string.Join("、", memberships.Select(x => x.Name));
+        var groupText = memberships.Count == 0 ? "None" : string.Join(", ", memberships.Select(x => x.Name));
         var title = transition.State switch
         {
-            ServiceHealthState.Healthy => "服務健康檢查已恢復",
-            ServiceHealthState.Degraded => "服務健康檢查降級",
-            _ => "服務健康檢查異常"
+            ServiceHealthState.Healthy => "Service health recovered",
+            ServiceHealthState.Degraded => "Service health degraded",
+            _ => "Service health unhealthy"
         };
         NotificationWriter.Add(db, new NotificationRequest(Guid.CreateVersion7(), "service-health", transition.ObservedAt, title,
-            $"服務：{transition.ServiceName}；環境：{transition.Environment}；檢查：{transition.TargetId:D}；群組：{groupText}",
+            $"Service: {transition.ServiceName}; Environment: {transition.Environment}; Check: {transition.TargetId:D}; Groups: {groupText}",
             ResourceId: transition.ServiceId, EvidenceId: transition.TargetId));
         await db.SaveChangesAsync(token);
     }

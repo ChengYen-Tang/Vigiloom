@@ -37,10 +37,10 @@ public sealed class PingAlertSink : IPingTransitionSink
             OccurredAt = transition.OccurredAt, IsRecovery = transition.Current == Reachability.Reachable,
             DeviceName = transition.Device.Name, GroupsJson = JsonSerializer.Serialize(transition.Device.Groups) };
         db.PingAlertEvents.Add(alertEvent);
-        var groups = transition.Device.Groups.Count == 0 ? "無" : string.Join("、", transition.Device.Groups.Select(x => x.Name));
-        var title = transition.Current == Reachability.Reachable ? "Ping 已恢復" : "Ping 無法連線";
+        var groups = transition.Device.Groups.Count == 0 ? "None" : string.Join(", ", transition.Device.Groups.Select(x => x.Name));
+        var title = transition.Current == Reachability.Reachable ? "Ping recovered" : "Ping unreachable";
         NotificationWriter.Add(db, new NotificationRequest(alertEvent.MessageId, "ping", transition.OccurredAt, title,
-            $"設備：{transition.Device.Name}；目標：{transition.Target}；群組：{groups}", ResourceId: transition.DeviceId));
+            $"Device: {transition.Device.Name}; Target: {transition.Target}; Groups: {groups}", ResourceId: transition.DeviceId));
         await db.SaveChangesAsync(token);
     }
 }
