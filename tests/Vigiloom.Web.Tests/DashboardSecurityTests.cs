@@ -36,7 +36,8 @@ public sealed class DashboardSecurityTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
-    public Task Dashboard_EnforcesRolesCsrfAndDurableAudit() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task Dashboard_EnforcesRolesCsrfAndDurableAudit() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, outer) =>
+        await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (scheduleDatabase, token) =>
     {
         const string setupSecret = "test-only-bootstrap-secret-with-adequate-length";
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -45,6 +46,7 @@ public sealed class DashboardSecurityTests
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
+                ["ConnectionStrings:Scheduling"] = scheduleDatabase.ConnectionString,
                 ["Vigiloom:SetupToken"] = setupSecret
             }));
             builder.ConfigureServices(services =>
@@ -53,7 +55,7 @@ public sealed class DashboardSecurityTests
                 services.AddSingleton<IRecurringJobManager>(sp => sp.GetRequiredService<FailingRecurringManager>());
             });
         });
-        await HangfireSchemaInstaller.InstallAsync(database.ConnectionString, token);
+        await HangfireSchemaInstaller.InstallAsync(scheduleDatabase.ConnectionString, token);
         var identity = factory.Services.GetRequiredService<IDbContextFactory<IdentityAccessDbContext>>();
         var scheduling = factory.Services.GetRequiredService<IDbContextFactory<SchedulingDbContext>>();
         await using (var db = await identity.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
@@ -81,7 +83,7 @@ public sealed class DashboardSecurityTests
         using (var response = await readerClient.GetAsync("/settings/jobs", token)) Assert.AreNotEqual(HttpStatusCode.OK, response.StatusCode);
         using var admin = Client(factory);
         await LoginAsync(admin, "admin", "Strong-Password-123", token);
-        await using (var healthConnection = new SqlConnection(database.ConnectionString))
+        await using (var healthConnection = new SqlConnection(scheduleDatabase.ConnectionString))
         {
             await healthConnection.OpenAsync(token);
             await using var command = healthConnection.CreateCommand();
@@ -222,6 +224,13 @@ public sealed class DashboardSecurityTests
             Assert.AreEqual("accepted", rows.GetString(2));
             Assert.IsFalse(await rows.ReadAsync(token));
         }
+        var storage = factory.Services.GetRequiredService<JobStorage>();
+        new RecurringJobManager(storage).AddOrUpdate("req43-dashboard-test", Job.FromExpression(() => Probe()), Cron.Daily(), new RecurringJobOptions());
+        using (var trigger = await admin.PostAsync("/admin/jobs/recurring/trigger", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["jobs[]"] = "req43-dashboard-test", ["__RequestVerificationToken"] = requestToken
+        }), token)) Assert.AreEqual(HttpStatusCode.NoContent, trigger.StatusCode);
+        Assert.IsGreaterThan(0L, storage.GetMonitoringApi().EnqueuedCount("default"));
         using (var settingsPage = await admin.GetAsync("/settings/jobs", token))
         {
             var document = await new HtmlParser().ParseDocumentAsync(await settingsPage.Content.ReadAsStringAsync(token), token);
@@ -277,7 +286,7 @@ public sealed class DashboardSecurityTests
             ["jobs[]"] = jobId, ["__RequestVerificationToken"] = requestToken
         }), token);
         Assert.AreEqual(HttpStatusCode.ServiceUnavailable, blocked.StatusCode);
-    }, TestContext.CancellationToken);
+    }, outer), TestContext.CancellationToken);
 
     private static HttpClient Client(WebApplicationFactory<Program> factory) => factory.CreateClient(new WebApplicationFactoryClientOptions
     {
