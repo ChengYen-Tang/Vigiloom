@@ -296,4 +296,56 @@
   <data name="來源已變更、撤銷或不存在，請重新整理後確認。" xml:space="preserve"><value>来源已变更、撤销或不存在，请刷新后确认。</value></data>
   <data name="無法確認更換結果，請重新整理並檢查；如有需要可再次更換憑證。" xml:space="preserve"><value>无法确认更换结果，请刷新并检查；如有需要可再次更换凭证。</value></data>
   <data name="無法確認撤銷結果，請重新整理後檢查。" xml:space="preserve"><value>无法确认撤销结果，请刷新后检查。</value></data>
+  <data name="Collector 回報" xml:space="preserve"><value>Collector 回报</value></data>
+  <data name="查看已選服務的執行個體最近回報時間。" xml:space="preserve"><value>查看已选服务实例最近回报时间。</value></data>
+  <data name="請選擇使用 Collector 專用來源憑證的監控服務；服務名稱本身無法證明來源。回報時間不代表所有管線或應用服務正常。" xml:space="preserve"><value>请选择使用 Collector 专用来源凭证的监控服务；服务名称本身无法证明来源。回报时间不代表所有管线或应用服务正常。</value></data>
+  <data name="已登記的 Collector" xml:space="preserve"><value>已登记的 Collector</value></data>
+  <data name="無法讀取登記資料，請重新整理後再試。" xml:space="preserve"><value>无法读取登记数据，请刷新后再试。</value></data>
+  <data name="此頁沒有 Collector。" xml:space="preserve"><value>此页没有 Collector。</value></data>
+  <data name="尚未登記 Collector。" xml:space="preserve"><value>尚未登记 Collector。</value></data>
+  <data name="查看回報" xml:space="preserve"><value>查看回报</value></data>
+  <data name="管理來源對應" xml:space="preserve"><value>管理来源对应</value></data>
+  <data name="來源憑證已撤銷" xml:space="preserve"><value>来源凭证已撤销</value></data>
+  <data name="監控服務已停收" xml:space="preserve"><value>监控服务已停止收集</value></data>
+  <data name="監控服務：" xml:space="preserve"><value>监控服务：</value></data>
+  <data name="Collector 分頁" xml:space="preserve"><value>Collector 分页</value></data>
+  <data name="上一頁 Collector" xml:space="preserve"><value>上一页 Collector</value></data>
+  <data name="下一頁 Collector" xml:space="preserve"><value>下一页 Collector</value></data>
+  <data name="選擇監控服務" xml:space="preserve"><value>选择监控服务</value></data>
+  <data name="無法讀取監控資料，請重新整理後再試。" xml:space="preserve"><value>无法读取监控数据，请刷新后再试。</value></data>
+  <data name="確認來源並加入。" xml:space="preserve"><value>确认来源并加入。</value></data>
+  <data name="監控服務" xml:space="preserve"><value>监控服务</value></data>
+  <data name="監控服務分頁" xml:space="preserve"><value>监控服务分页</value></data>
+  <data name="服務第 {0} 頁" xml:space="preserve"><value>服务第 {0} 页</value></data>
+  <data name="上一頁服務" xml:space="preserve"><value>上一页服务</value></data>
+  <data name="下一頁服務" xml:space="preserve"><value>下一页服务</value></data>
+  <data name="執行個體回報" xml:space="preserve"><value>实例回报</value></data>
+  <data name="找不到所選服務，請重新選擇。" xml:space="preserve"><value>找不到所选服务，请重新选择。</value></data>
+  <data name="服務識別碼：" xml:space="preserve"><value>服务标识符：</value></data>
+  <data name="來源識別碼：" xml:space="preserve"><value>来源标识符：</value></data>
+  <data name="顯示截至 {0} UTC 前 24 小時內保存的 uptime 回報；每個執行個體選取量測時間最新的一筆，並顯示該筆保存時間。舊資料清除或來源未回報時可能沒有資料。" xml:space="preserve"><value>显示截至 {0} UTC 前 24 小时内保存的 uptime 回报；每个实例选取测量时间最新的一笔，并显示该笔保存时间。旧数据清除或来源未回报时可能没有数据。</value></data>
+  <data name="此來源憑證已撤銷；先前回報不能代表目前狀態。" xml:space="preserve"><value>此来源凭证已撤销；先前回报不能代表当前状态。</value></data>
+  <data name="此服務已停收；先前回報不能代表目前狀態。" xml:space="preserve"><value>此服务已停止收集；先前回报不能代表当前状态。</value></data>
+  <data name="此頁沒有可辨識的執行個體。" xml:space="preserve"><value>此页没有可识别的实例。</value></data>
+  <data name="表格可左右滑動，查看完整時間。" xml:space="preserve"><value>表格可左右滑动，查看完整时间。</value></data>
+  <data name="Collector 執行個體回報，可左右滑動" xml:space="preserve"><value>Collector 实例回报，可左右滑动</value></data>
+  <data name="執行個體" xml:space="preserve"><value>实例</value></data>
+  <data name="退役狀態" xml:space="preserve"><value>退役状态</value></data>
+  <data name="平台保存時間（UTC）" xml:space="preserve"><value>平台保存时间（UTC）</value></data>
+  <data name="來源量測時間（UTC）" xml:space="preserve"><value>来源测量时间（UTC）</value></data>
+  <data name="查看 {0} 的來源轉送" xml:space="preserve"><value>查看 {0} 的来源转送</value></data>
+  <data name="另有無法區分執行個體的回報：{0} UTC。" xml:space="preserve"><value>另有无法区分实例的回报：{0} UTC。</value></data>
+  <data name="執行個體回報分頁" xml:space="preserve"><value>实例回报分页</value></data>
+  <data name="登記此 Collector" xml:space="preserve"><value>登记此 Collector</value></data>
+  <data name="登記僅建立管理對應，不會自動驗證來源或變更收集設定。" xml:space="preserve"><value>登记仅建立管理对应，不会自动验证来源或变更收集设置。</value></data>
+  <data name="Collector 名稱" xml:space="preserve"><value>Collector 名称</value></data>
+  <data name="我已確認此服務使用僅供 Collector 自身監控的來源憑證" xml:space="preserve"><value>我已确认此服务使用仅供 Collector 自身监控的来源凭证</value></data>
+  <data name="登記 Collector" xml:space="preserve"><value>登记 Collector</value></data>
+  <data name="返回管線接入" xml:space="preserve"><value>返回管线接入</value></data>
+  <data name="請填寫名稱，並確認監控來源憑證的用途。" xml:space="preserve"><value>请填写名称，并确认监控来源凭证的用途。</value></data>
+  <data name="無法確認登記結果，請重新整理後檢查。" xml:space="preserve"><value>无法确认登记结果，请刷新后检查。</value></data>
+  <data name="Collector 已登記。" xml:space="preserve"><value>Collector 已登记。</value></data>
+  <data name="此監控服務已登記，請重新整理後確認。" xml:space="preserve"><value>此监控服务已登记，请刷新后确认。</value></data>
+  <data name="服務或來源無法使用，請重新整理後確認。" xml:space="preserve"><value>服务或来源无法使用，请刷新后确认。</value></data>
+  <data name="無法更新清單，請重新整理。" xml:space="preserve"><value>无法更新清单，请刷新。</value></data>
 </root>

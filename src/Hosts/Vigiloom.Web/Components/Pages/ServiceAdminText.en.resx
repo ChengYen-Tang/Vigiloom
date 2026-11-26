@@ -296,4 +296,56 @@
   <data name="來源已變更、撤銷或不存在，請重新整理後確認。" xml:space="preserve"><value>The source changed, was revoked or no longer exists. Refresh and check.</value></data>
   <data name="無法確認更換結果，請重新整理並檢查；如有需要可再次更換憑證。" xml:space="preserve"><value>Unable to confirm rotation. Refresh and check; rotate the credential again if necessary.</value></data>
   <data name="無法確認撤銷結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm revocation. Refresh and check.</value></data>
+  <data name="Collector 回報" xml:space="preserve"><value>Collector reports</value></data>
+  <data name="查看已選服務的執行個體最近回報時間。" xml:space="preserve"><value>View the latest report time for instances of the selected service.</value></data>
+  <data name="請選擇使用 Collector 專用來源憑證的監控服務；服務名稱本身無法證明來源。回報時間不代表所有管線或應用服務正常。" xml:space="preserve"><value>Select a monitoring service that uses a dedicated Collector source credential; the service name alone does not prove its source. Report times do not indicate that all pipelines or applications are healthy.</value></data>
+  <data name="已登記的 Collector" xml:space="preserve"><value>Registered Collectors</value></data>
+  <data name="無法讀取登記資料，請重新整理後再試。" xml:space="preserve"><value>Unable to load registrations. Refresh and try again.</value></data>
+  <data name="此頁沒有 Collector。" xml:space="preserve"><value>There are no Collectors on this page.</value></data>
+  <data name="尚未登記 Collector。" xml:space="preserve"><value>No Collectors have been registered.</value></data>
+  <data name="查看回報" xml:space="preserve"><value>View reports</value></data>
+  <data name="管理來源對應" xml:space="preserve"><value>Manage source mappings</value></data>
+  <data name="來源憑證已撤銷" xml:space="preserve"><value>Source credential revoked</value></data>
+  <data name="監控服務已停收" xml:space="preserve"><value>Monitoring service collection stopped</value></data>
+  <data name="監控服務：" xml:space="preserve"><value>Monitoring service: </value></data>
+  <data name="Collector 分頁" xml:space="preserve"><value>Collector pagination</value></data>
+  <data name="上一頁 Collector" xml:space="preserve"><value>Previous Collectors</value></data>
+  <data name="下一頁 Collector" xml:space="preserve"><value>Next Collectors</value></data>
+  <data name="選擇監控服務" xml:space="preserve"><value>Select monitoring service</value></data>
+  <data name="無法讀取監控資料，請重新整理後再試。" xml:space="preserve"><value>Unable to load monitoring data. Refresh and try again.</value></data>
+  <data name="確認來源並加入。" xml:space="preserve"><value> to confirm the source and add a service.</value></data>
+  <data name="監控服務" xml:space="preserve"><value>Monitoring service</value></data>
+  <data name="監控服務分頁" xml:space="preserve"><value>Monitoring service pagination</value></data>
+  <data name="服務第 {0} 頁" xml:space="preserve"><value>Services, page {0}</value></data>
+  <data name="上一頁服務" xml:space="preserve"><value>Previous services</value></data>
+  <data name="下一頁服務" xml:space="preserve"><value>Next services</value></data>
+  <data name="執行個體回報" xml:space="preserve"><value>Instance reports</value></data>
+  <data name="找不到所選服務，請重新選擇。" xml:space="preserve"><value>Selected service not found. Select another.</value></data>
+  <data name="服務識別碼：" xml:space="preserve"><value>Service ID: </value></data>
+  <data name="來源識別碼：" xml:space="preserve"><value>Source ID: </value></data>
+  <data name="顯示截至 {0} UTC 前 24 小時內保存的 uptime 回報；每個執行個體選取量測時間最新的一筆，並顯示該筆保存時間。舊資料清除或來源未回報時可能沒有資料。" xml:space="preserve"><value>Shows uptime reports retained in the 24 hours up to {0} UTC. For each instance, the latest measurement and its storage time are shown. Data may be absent if old records were removed or the source did not report.</value></data>
+  <data name="此來源憑證已撤銷；先前回報不能代表目前狀態。" xml:space="preserve"><value>This source credential was revoked; earlier reports do not represent its current status.</value></data>
+  <data name="此服務已停收；先前回報不能代表目前狀態。" xml:space="preserve"><value>Collection for this service has stopped; earlier reports do not represent its current status.</value></data>
+  <data name="此頁沒有可辨識的執行個體。" xml:space="preserve"><value>There are no identifiable instances on this page.</value></data>
+  <data name="表格可左右滑動，查看完整時間。" xml:space="preserve"><value>Scroll horizontally to see all times.</value></data>
+  <data name="Collector 執行個體回報，可左右滑動" xml:space="preserve"><value>Collector instance reports, scroll horizontally</value></data>
+  <data name="執行個體" xml:space="preserve"><value>Instance</value></data>
+  <data name="退役狀態" xml:space="preserve"><value>Retirement status</value></data>
+  <data name="平台保存時間（UTC）" xml:space="preserve"><value>Platform storage time (UTC)</value></data>
+  <data name="來源量測時間（UTC）" xml:space="preserve"><value>Source measurement time (UTC)</value></data>
+  <data name="查看 {0} 的來源轉送" xml:space="preserve"><value>View source forwarding for {0}</value></data>
+  <data name="另有無法區分執行個體的回報：{0} UTC。" xml:space="preserve"><value>There is also a report without an identifiable instance: {0} UTC.</value></data>
+  <data name="執行個體回報分頁" xml:space="preserve"><value>Instance report pagination</value></data>
+  <data name="登記此 Collector" xml:space="preserve"><value>Register this Collector</value></data>
+  <data name="登記僅建立管理對應，不會自動驗證來源或變更收集設定。" xml:space="preserve"><value>Registration only creates a management mapping; it does not automatically validate the source or change collection settings.</value></data>
+  <data name="Collector 名稱" xml:space="preserve"><value>Collector name</value></data>
+  <data name="我已確認此服務使用僅供 Collector 自身監控的來源憑證" xml:space="preserve"><value>I confirm this service uses a source credential dedicated to Collector self-monitoring</value></data>
+  <data name="登記 Collector" xml:space="preserve"><value>Register Collector</value></data>
+  <data name="返回管線接入" xml:space="preserve"><value>Back to pipeline ingestion</value></data>
+  <data name="請填寫名稱，並確認監控來源憑證的用途。" xml:space="preserve"><value>Enter a name and confirm the purpose of the monitoring source credential.</value></data>
+  <data name="無法確認登記結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm registration. Refresh and check.</value></data>
+  <data name="Collector 已登記。" xml:space="preserve"><value>Collector registered.</value></data>
+  <data name="此監控服務已登記，請重新整理後確認。" xml:space="preserve"><value>This monitoring service is already registered. Refresh and check.</value></data>
+  <data name="服務或來源無法使用，請重新整理後確認。" xml:space="preserve"><value>The service or source is unavailable. Refresh and check.</value></data>
+  <data name="無法更新清單，請重新整理。" xml:space="preserve"><value>Unable to refresh the list. Refresh the page.</value></data>
 </root>
