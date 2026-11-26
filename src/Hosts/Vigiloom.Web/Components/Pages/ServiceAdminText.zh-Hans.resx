@@ -930,4 +930,22 @@
   <data name="此規則的格式或日誌來源尚不支援。" xml:space="preserve"><value>此规则的格式或日志来源尚不支持。</value></data>
   <data name="無法執行試跑，請稍後再試。" xml:space="preserve"><value>无法执行试运行，请稍后重试。</value></data>
   <data name="未選擇" xml:space="preserve"><value>未选择</value></data>
+  <data name="規則設定" xml:space="preserve"><value>规则设置</value></data>
+  <data name="來源不可用時仍可停用規則。" xml:space="preserve"><value>来源不可用时仍可停用规则。</value></data>
+  <data name="狀態：{0}" xml:space="preserve"><value>状态：{0}</value></data>
+  <data name="找不到此設定，請回到清單重新選擇。" xml:space="preserve"><value>找不到此设置，请返回列表重新选择。</value></data>
+  <data name="無法讀取規則設定，請稍後再試。" xml:space="preserve"><value>无法读取规则设置，请稍后重试。</value></data>
+  <data name="設定已變更或來源不存在，請重新載入。" xml:space="preserve"><value>设置已更改或来源不存在，请重新加载。</value></data>
+  <data name="無法停用規則，請稍後再試。" xml:space="preserve"><value>无法停用规则，请稍后重试。</value></data>
+  <data name="行為規則證據" xml:space="preserve"><value>行为规则证据</value></data>
+  <data name="返回通知紀錄" xml:space="preserve"><value>返回通知记录</value></data>
+  <data name="找不到此規則版本，相關資料可能已不再保留。" xml:space="preserve"><value>找不到此规则版本，相关数据可能已不再保留。</value></data>
+  <data name="規則：{0} · 情報版本：{1} · 試跑：{2}" xml:space="preserve"><value>规则：{0} · 情报版本：{1} · 试运行：{2}</value></data>
+  <data name="此處顯示告警使用的上游規則與本機排除條件，並非目前設定的即時狀態。" xml:space="preserve"><value>此处显示告警使用的上游规则与本地排除条件，并非当前设置的实时状态。</value></data>
+  <data name="規則與匹配條件" xml:space="preserve"><value>规则与匹配条件</value></data>
+  <data name="關聯規則的基礎事件條件" xml:space="preserve"><value>关联规则的基础事件条件</value></data>
+  <data name="無法取得符合版本的基礎規則。" xml:space="preserve"><value>无法获取匹配版本的基础规则。</value></data>
+  <data name="本機排除條件" xml:space="preserve"><value>本地排除条件</value></data>
+  <data name="無法讀取排除條件。" xml:space="preserve"><value>无法读取排除条件。</value></data>
+  <data name="無法載入規則證據，請稍後再試。" xml:space="preserve"><value>无法加载规则证据，请稍后重试。</value></data>
 </root>

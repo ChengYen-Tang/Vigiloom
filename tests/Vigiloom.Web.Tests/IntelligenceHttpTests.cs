@@ -76,6 +76,14 @@ public sealed class IntelligenceHttpTests(TestContext context)
             Assert.Contains("規則來源無法使用", listDoc.Body!.TextContent);
             var link = listDoc.QuerySelector("a[href^='/settings/sigma/saved?']")?.GetAttribute("href");
             Assert.IsNotNull(link);
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishDetail = await admin.GetAsync(link, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await englishDetail.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("Saved rule settings", text);
+                Assert.Contains("rules/test.yml", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var readOnly = await reader.GetAsync(link, token);
             Assert.AreNotEqual(HttpStatusCode.OK, readOnly.StatusCode);
             using var detail = await admin.GetAsync(link, token);
