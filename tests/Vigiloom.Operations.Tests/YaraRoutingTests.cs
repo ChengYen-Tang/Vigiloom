@@ -18,6 +18,7 @@ using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Agent.Baseline;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -51,6 +52,12 @@ public sealed class YaraRoutingTests(TestContext context)
             Assert.AreEqual(identity.AgentId, inventoryView!.AgentId);
             var until = DateTimeOffset.UtcNow;
             var query = $"from={Uri.EscapeDataString(until.AddDays(-1).ToString("O"))}&until={Uri.EscapeDataString(until.ToString("O"))}";
+            var detectionPath = $"/internal/v1/devices/{identity.DeviceId:D}/detections/";
+            Assert.IsNotNull(await securityClient.GetFromJsonAsync<SigmaDetectionEventPage>(detectionPath + "sigma?" + query, token));
+            Assert.IsNotNull(await securityClient.GetFromJsonAsync<SigmaDetectionGapPage>(detectionPath + "sigma-gaps?" + query, token));
+            Assert.IsNotNull(await securityClient.GetFromJsonAsync<IocDetectionPage>(detectionPath + "ioc?" + query + "&page=1", token));
+            using (var invalidDetection = await securityClient.GetAsync(detectionPath + "ioc?" + query + "&page=0", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidDetection.StatusCode);
             Assert.IsNotNull(await securityClient.GetFromJsonAsync<InventoryChangePage>(inventoryPath + "changes?" + query, token));
             using (var invalidChanges = await securityClient.GetAsync(inventoryPath + "changes?" + query + "&cursor=invalid", token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalidChanges.StatusCode);

@@ -1,6 +1,7 @@
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 using Vigiloom.Web.Authentication;
+using Vigiloom.Web.HostMonitoring;
 
 namespace Vigiloom.Web.Api;
 
@@ -9,7 +10,7 @@ internal static class SigmaDetectionEndpoints
     public static void MapSigmaDetectionEndpoints(this WebApplication app)
     {
         app.MapGet("/api/v1/devices/{deviceId:guid}/sigma-detections", async (Guid deviceId, DateTimeOffset from,
-            DateTimeOffset until, string? cursor, SigmaDetectionHistory history, HttpContext context, CancellationToken token) =>
+            DateTimeOffset until, string? cursor, DetectionAccess history, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             try
@@ -23,7 +24,7 @@ internal static class SigmaDetectionEndpoints
             .WithSummary("Read private Sigma detection results for a device");
 
         app.MapGet("/api/v1/devices/{deviceId:guid}/sigma-gaps", async (Guid deviceId, DateTimeOffset from,
-            DateTimeOffset until, string? cursor, SigmaDetectionHistory history, HttpContext context, CancellationToken token) =>
+            DateTimeOffset until, string? cursor, DetectionAccess history, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             try
