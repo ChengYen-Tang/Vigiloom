@@ -2,6 +2,8 @@ using System.Data.Common;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
@@ -11,6 +13,27 @@ namespace Vigiloom.Modules.AgentManagement.Tests;
 [TestClass]
 public sealed class HostSecurityObservationTests(TestContext context)
 {
+    [TestMethod]
+    public async Task SecuritySettingsUseRemoteServicesWithoutLegacyDatabase()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var id = Guid.CreateVersion7();
+        var epoch = Guid.CreateVersion7();
+        var inventory = InventorySettingsSnapshot.Create(InventorySettings.Default);
+        var integrity = IntegritySettingsSnapshot.Create([], 0);
+        var agent = new SecurityAgentObservation(Guid.CreateVersion7(), now, now, 30, epoch, 1,
+            epoch, 1, now, JsonSerializer.Serialize(new InventorySettingsReport(inventory, now, null)),
+            epoch, 1, now, JsonSerializer.Serialize(new IntegritySettingsReport(integrity.Revision, integrity.Generation, now, null)), null, null);
+        var remote = new Remote(new(new(id, 1, true), agent));
+        var inventoryMonitor = new AgentInventorySettingsMonitoring(new ThrowingFactory(), new UnusedDevices(), new UnusedInventory(), TimeProvider.System, remote,
+            (_, _) => Task.FromResult(inventory));
+        var integrityMonitor = new AgentIntegritySettingsMonitoring(new ThrowingFactory(), new UnusedDevices(), new UnusedIntegrity(), TimeProvider.System, remote,
+            (_, _) => Task.FromResult(integrity));
+
+        Assert.AreEqual(AgentSettingsApplyState.Applied, (await inventoryMonitor.GetAsync(id, context.CancellationToken))!.State);
+        Assert.AreEqual(AgentSettingsApplyState.Applied, (await integrityMonitor.GetAsync(id, context.CancellationToken))!.State);
+    }
+
     [TestMethod]
     public async Task BaselineReaderUsesRemoteHostObservation()
     {
@@ -34,6 +57,21 @@ public sealed class HostSecurityObservationTests(TestContext context)
     private sealed class Factory : IDbContextFactory<AgentManagementDbContext>
     {
         public AgentManagementDbContext CreateDbContext() => new(new DbContextOptionsBuilder<AgentManagementDbContext>().UseSqlServer("Server=localhost;Database=unused;Integrated Security=true;TrustServerCertificate=true").Options);
+    }
+
+    private sealed class ThrowingFactory : IDbContextFactory<AgentManagementDbContext>
+    {
+        public AgentManagementDbContext CreateDbContext() => throw new InvalidOperationException("Remote settings must not use the legacy database.");
+    }
+
+    private sealed class UnusedInventory : IInventorySettingsReader
+    {
+        public Task<InventorySettingsSnapshot> ReadAsync(DbConnection connection, DbTransaction transaction, Guid deviceId, CancellationToken token) => throw new InvalidOperationException();
+    }
+
+    private sealed class UnusedIntegrity : IIntegritySettingsReader
+    {
+        public Task<IntegritySettingsSnapshot> ReadAsync(DbConnection connection, DbTransaction transaction, Guid deviceId, CancellationToken token) => throw new InvalidOperationException();
     }
 
     private sealed class UnusedDevices : IDeviceAgentSource
