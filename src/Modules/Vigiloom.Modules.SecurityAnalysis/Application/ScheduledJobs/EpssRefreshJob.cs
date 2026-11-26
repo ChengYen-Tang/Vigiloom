@@ -17,4 +17,3 @@ public sealed class EpssRefreshJob(EpssRefresh refresh, ILogger<EpssRefreshJob> 
         if (result == EpssRefreshResult.Conflict) logger.LogWarning("EPSS refresh ended with {Result}", result);
     }
 }
-

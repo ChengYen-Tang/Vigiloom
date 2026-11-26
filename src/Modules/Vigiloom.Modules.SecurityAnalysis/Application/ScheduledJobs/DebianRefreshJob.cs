@@ -17,4 +17,3 @@ public sealed class DebianRefreshJob(DebianRefresh refresh, ILogger<DebianRefres
         if (result == DebianRefreshResult.Conflict) logger.LogWarning("Debian source refresh ended with {Result}", result);
     }
 }
-

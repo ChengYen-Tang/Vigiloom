@@ -19,4 +19,3 @@ public sealed class AdvisoryRefreshJob(AdvisoryRefresh refresh, ILogger<Advisory
             logger.LogWarning("Advisory refresh ended with {Result}", result);
     }
 }
-

@@ -17,4 +17,3 @@ public sealed class UbuntuRefreshJob(UbuntuRefresh refresh, ILogger<UbuntuRefres
         if (result == UbuntuRefreshResult.Conflict) logger.LogWarning("Ubuntu OSV refresh ended with {Result}", result);
     }
 }
-

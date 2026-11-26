@@ -17,4 +17,3 @@ public sealed class MsrcRefreshJob(MsrcRefresh refresh, ILogger<MsrcRefreshJob> 
         if (result == MsrcRefreshResult.Conflict) logger.LogWarning("MSRC refresh ended with {Result}", result);
     }
 }
-
