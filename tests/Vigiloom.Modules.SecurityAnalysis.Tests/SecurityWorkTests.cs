@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Security;
+using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Migrator.Security;
 using Vigiloom.Modules.SecurityAnalysis.Domain;
@@ -18,6 +20,69 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests;
 [TestCategory("Database")]
 public sealed class SecurityWorkTests(TestContext context)
 {
+    [TestMethod]
+    public Task RemovedIntegrityScopeDoesNotLeaveARecurringDelivery() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            await SecurityDatabaseCommand.RunAsync(database.ConnectionString, null, token);
+            var agent = Guid.CreateVersion7();
+            var device = Guid.CreateVersion7();
+            var now = DateTimeOffset.UtcNow;
+            var item = new IntegrityItem(IntegrityKey.Create(IntegrityItemKind.File, ["test"]), IntegrityItemKind.File, new string('a', 64));
+            var measured = IntegrityDigest.MeasureChunk([item]);
+            var chunk = new IntegrityChunk(6, Guid.CreateVersion7(), now, Guid.CreateVersion7(), 1, Guid.CreateVersion7(), 1, now,
+                IntegrityScanOutcome.Complete, false, null, 0, 1, 1, measured.Bytes, IntegrityDigest.Combine([measured.Digest]), [item]);
+            var host = new HostHandler(IntegrityChunkCodec.Serialize(chunk));
+            using var http = new HttpClient(host) { BaseAddress = new Uri("http://host/") };
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = database.ConnectionString }).Build();
+            var consumer = new SecurityWorkHandler(config, new TestClients(http));
+            var reference = new HostSecurityBatchReady(agent, chunk.BatchId, device, 1, "integrity");
+            var work = new ServiceWork(nameof(HostSecurityBatchReady), JsonSerializer.Serialize(reference), Guid.CreateVersion7().ToString());
+            await consumer.ExecuteAsync(work, token);
+            await consumer.ExecuteAsync(work, token);
+            Assert.AreEqual(1, host.Gets);
+            Assert.AreEqual(2, host.Deletes);
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            await using var db = new SecurityAnalysisDbContext(options);
+            Assert.AreEqual(0, await db.IntegrityScans.CountAsync(token));
+        }, context.CancellationToken);
+
+    [TestMethod]
+    public Task OutOfOrderAndConflictingInventoryKeepsCommittedStaging() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            await SecurityDatabaseCommand.RunAsync(database.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var agent = Guid.CreateVersion7();
+            var device = Guid.CreateVersion7();
+            var now = DateTimeOffset.UtcNow;
+            InventoryEntry[] items = [new("a", "a", "1", "x64")];
+            var measured = InventoryDigest.MeasureChunk(items);
+            var active = new InventoryChunk(4, Guid.CreateVersion7(), now, Guid.CreateVersion7(), 2,
+                InventorySource.LinuxDpkg, now, InventoryOutcome.Complete, 0, 2, 2, measured.Bytes * 2L,
+                InventoryDigest.Combine([measured.Digest, measured.Digest]), items);
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = database.ConnectionString }).Build();
+            async Task Deliver(InventoryChunk chunk)
+            {
+                var host = new HostHandler(InventoryChunkCodec.Serialize(chunk));
+                using var http = new HttpClient(host) { BaseAddress = new Uri("http://host/") };
+                var consumer = new SecurityWorkHandler(config, new TestClients(http));
+                var reference = new HostSecurityBatchReady(agent, chunk.BatchId, device, 1, "inventory");
+                var work = new ServiceWork(nameof(HostSecurityBatchReady), JsonSerializer.Serialize(reference), Guid.CreateVersion7().ToString());
+                await consumer.ExecuteAsync(work, token);
+                Assert.AreEqual(1, host.Deletes);
+            }
+            await Deliver(active);
+            await Deliver(active with { Generation = 3, SnapshotId = Guid.CreateVersion7(), BatchId = Guid.CreateVersion7(), TotalBytes = 4 });
+            await Deliver(active with { Generation = 1, SnapshotId = Guid.CreateVersion7(), BatchId = Guid.CreateVersion7() });
+            await using var db = new SecurityAnalysisDbContext(options);
+            var state = await db.InventorySources.SingleAsync(token);
+            Assert.AreEqual(2L, state.ActiveGeneration);
+            Assert.AreEqual(0L, state.ClosedGeneration);
+            Assert.AreEqual(1, await db.InventoryChunks.CountAsync(token));
+            Assert.AreEqual(1, await db.InventorySnapshots.CountAsync(token));
+        }, context.CancellationToken);
+
     [TestMethod]
     public Task SavesYaraResultBeforeDeletingHostBatchAndDeduplicatesRetry() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
