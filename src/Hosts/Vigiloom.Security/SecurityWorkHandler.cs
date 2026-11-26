@@ -76,7 +76,7 @@ public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClien
         else if (batch.Kind == "integrity" && IntegrityChunkCodec.TryRead(payload, out var integrity) && integrity!.BatchId == batch.BatchId)
         {
             await transaction.SaveAsync("staging", token);
-            var result = await new IntegrityStageWriter().StageAsync(sql, transaction, new(batch.AgentId, batch.DeviceId, batch.DeviceGeneration), integrity, now, token);
+            var result = await new IntegrityStageWriter(detectionTimeline).StageAsync(sql, transaction, new(batch.AgentId, batch.DeviceId, batch.DeviceGeneration), integrity, now, token);
             if (result == IntegrityStageResult.CapacityExceeded) throw new InvalidOperationException("Integrity staging is busy.");
             if (result is IntegrityStageResult.Conflict or IntegrityStageResult.Expired) await transaction.RollbackAsync("staging", token);
         }
