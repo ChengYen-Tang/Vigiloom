@@ -6,6 +6,18 @@ namespace Vigiloom.Modules.AlertingOperations.Application.Timeline;
 /// <summary>Removes local log summaries once their corresponding retained logs are deleted.</summary>
 public sealed class TimelineLogCleanup(IDbContextFactory<OperationsDbContext> contexts)
 {
+    public async Task<int> RunHealthBatchAsync(int retentionDays, CancellationToken token)
+        => await RunServiceBatchAsync("service-health", retentionDays, token);
+
+    public async Task<int> RunTraceBatchAsync(int retentionDays, CancellationToken token)
+        => await RunServiceBatchAsync("service-trace", retentionDays, token);
+
+    private async Task<int> RunServiceBatchAsync(string source, int retentionDays, CancellationToken token)
+    {
+        if (retentionDays is < 1 or > 3650) throw new ArgumentOutOfRangeException(nameof(retentionDays));
+        await using var db = await contexts.CreateDbContextAsync(token);
+        return await db.Database.ExecuteSqlInterpolatedAsync($"DELETE TOP (500) FROM [operations].[TimelineRecords] WHERE [Source] = {source} AND [Time] < DATEADD(day, {-retentionDays}, TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'))", token);
+    }
     public async Task<long> RunAsync(CancellationToken token)
     {
         const int batchSize = 500;

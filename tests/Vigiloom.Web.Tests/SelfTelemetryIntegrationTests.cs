@@ -219,6 +219,12 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
                 SpanId = ByteString.CopyFrom(Enumerable.Repeat((byte)2, 8).ToArray()), StartTimeUnixNano = nanos, EndTimeUnixNano = nanos };
             var traceRequest = new ExportTraceServiceRequest { ResourceSpans = { new ResourceSpans { Resource = resource,
                 ScopeSpans = { new ScopeSpans { Spans = { span } } } } } };
+            for (var i = 1; i < 33; i++)
+            {
+                var extra = span.Clone();
+                extra.SpanId = ByteString.CopyFrom(Enumerable.Repeat((byte)(i + 2), 8).ToArray());
+                traceRequest.ResourceSpans[0].ScopeSpans[0].Spans.Add(extra);
+            }
             using (var traceBody = new ByteArrayContent(traceRequest.ToByteArray()))
             {
                 traceBody.Headers.ContentType = new MediaTypeHeaderValue("application/x-protobuf");
@@ -238,7 +244,7 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             await using (var logs = await logContexts.CreateDbContextAsync(token)) Assert.AreEqual(1, await logs.LogRecords.CountAsync(token));
             await using var verify = await observationContexts.CreateDbContextAsync(token);
             Assert.AreEqual(1, await verify.MetricPoints.CountAsync(token));
-            Assert.AreEqual(1, await verify.TraceSpans.CountAsync(token));
+            Assert.AreEqual(33, await verify.TraceSpans.CountAsync(token));
             SourceCredentialIssue externalSource;
             await using (var scope = observation.Services.CreateAsyncScope())
                 externalSource = await scope.ServiceProvider.GetRequiredService<SourceAdministration>().IssueAsync("External", Guid.CreateVersion7(), token);
@@ -275,8 +281,11 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             var externalNanos = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
             var externalTrace = traceRequest.Clone();
             externalTrace.ResourceSpans[0].Resource = ExternalResource();
-            externalTrace.ResourceSpans[0].ScopeSpans[0].Spans[0].StartTimeUnixNano = externalNanos;
-            externalTrace.ResourceSpans[0].ScopeSpans[0].Spans[0].EndTimeUnixNano = externalNanos;
+            foreach (var externalSpan in externalTrace.ResourceSpans[0].ScopeSpans[0].Spans)
+            {
+                externalSpan.StartTimeUnixNano = externalNanos;
+                externalSpan.EndTimeUnixNano = externalNanos;
+            }
             using (var accepted = await PostExternalPayloadAsync(gatewayClient, "traces", externalSource.Secret, externalTrace.ToByteArray(), token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
@@ -290,7 +299,7 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
                 Assert.IsNull(ExportLogsServiceResponse.Parser.ParseFrom(await accepted.Content.ReadAsByteArrayAsync(token)).PartialSuccess);
             }
-            Assert.AreEqual(2, await verify.TraceSpans.CountAsync(token));
+            Assert.AreEqual(66, await verify.TraceSpans.CountAsync(token));
             await using (var logs = await logContexts.CreateDbContextAsync(token)) Assert.AreEqual(2, await logs.LogRecords.CountAsync(token));
             var idleBuilder = Host.CreateApplicationBuilder();
             idleBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -338,7 +347,8 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
                 var target = await scope.ServiceProvider.GetRequiredService<HealthTargetAdministration>()
                     .CreateAsync(new(serviceId, null, new("http://127.0.0.1:12345/health", 30, 5, 1, 1, true, "")), actor, token);
                 Assert.AreEqual(HealthTargetStatus.Saved, target.Status);
-                var store = new HealthStore(observationContexts, observation.Services.GetServices<IHealthTransitionSink>());
+                var store = new HealthStore(observationContexts, observation.Services.GetServices<IHealthTransitionSink>(),
+                    observation.Services.GetRequiredService<IHealthObservationSink>());
                 var lease = Assert.ContainsSingle(await store.ClaimAsync(1, token));
                 var work = await store.LoadAsync(lease, token);
                 var network = await store.NetworkAsync(token);
@@ -369,6 +379,11 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
                 }, token);
                 await using var saved = await operationContexts.CreateDbContextAsync(token);
                 Assert.IsTrue(await saved.Set<ServiceHealthAlert>().AnyAsync(row => row.ServiceId == serviceId && row.RecoveredAt == null, token));
+                Assert.IsTrue(await saved.Set<TimelineRecord>().AnyAsync(row => row.ResourceId == serviceId && row.Source == "service-health", token));
+                Assert.IsTrue(await saved.Set<TimelineRecord>().AnyAsync(row => row.ResourceId == serviceId && row.Source == "service-trace", token));
+                Assert.IsTrue(await saved.Set<TimelineRecord>().AnyAsync(row => row.ResourceId == approval.ServiceId && row.Source == "service-trace", token));
+                Assert.AreEqual(33, await saved.Set<TimelineRecord>().CountAsync(row => row.ResourceId == serviceId && row.Source == "service-trace", token));
+                Assert.AreEqual(33, await saved.Set<TimelineRecord>().CountAsync(row => row.ResourceId == approval.ServiceId && row.Source == "service-trace", token));
             }
             async Task ProjectAsync(Guid id)
             {

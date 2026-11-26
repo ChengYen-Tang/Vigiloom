@@ -243,6 +243,61 @@ namespace Vigiloom.Modules.AlertingOperations.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.NetworkDiagnostic", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("LeaseUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ObservedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("PingFailureAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<short>("PingFailureKind")
+                        .HasColumnType("smallint");
+
+                    b.Property<int>("PingFailures")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("PingSuccessAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<DateTimeOffset?>("SpeedFailureAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<short>("SpeedFailureKind")
+                        .HasColumnType("smallint");
+
+                    b.Property<int>("SpeedFailures")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("SpeedSuccessAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("Id"), false);
+
+                    b.HasIndex("LeaseUntil");
+
+                    b.HasIndex("RowId")
+                        .IsUnique();
+
+                    SqlServerIndexBuilderExtensions.IsClustered(b.HasIndex("RowId"));
+
+                    b.ToTable("NetworkDiagnostics", "operations");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AlertingOperations.Domain.Notification", b =>
                 {
                     b.Property<Guid>("Id")
