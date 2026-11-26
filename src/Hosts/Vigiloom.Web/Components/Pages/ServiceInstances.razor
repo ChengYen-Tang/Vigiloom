@@ -4,8 +4,8 @@
 @using System.Security.Claims
 @using Vigiloom.Contracts.Services
 @using Vigiloom.Modules.ServiceObservability.Application
-@inject InstancePolicyAdministration Policies
-@inject ServiceInstanceAdministration Instances
+@inject Vigiloom.Web.Services.InstanceManagement Policies
+@inject Vigiloom.Web.Services.InstanceManagement Instances
 @inject Vigiloom.Web.Services.IApplicationManagement Collections
 @inject ILogger<ServiceInstances> Logger
 
@@ -131,7 +131,7 @@
     {
         try
         {
-            var policy = await Policies.GetAsync(HttpContext.RequestAborted);
+            var policy = await Policies.GetPolicyAsync(HttpContext.RequestAborted);
             var isPolicyPost = HttpMethods.IsPost(HttpContext.Request.Method) && HttpContext.Request.HasFormContentType &&
                 (await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted))["_handler"] == "instance-policy";
             if (!isPolicyPost) PolicyForm = new() { PerService = policy.PerService, Total = policy.Total, Version = policy.Version };
@@ -150,7 +150,7 @@
         if (PolicyForm.PerService <= 0 || PolicyForm.Total <= 0 || Actor() is not { } actor) { error = "請輸入大於零的上限。"; return; }
         try
         {
-            var result = await Policies.UpdateAsync(new(PolicyForm.PerService, PolicyForm.Total, PolicyForm.Version), actor, HttpContext.RequestAborted);
+            var result = await Policies.UpdatePolicyAsync(new(PolicyForm.PerService, PolicyForm.Total, PolicyForm.Version), actor, HttpContext.RequestAborted);
             if (result is null) error = "設定已被其他人修改，請重新整理並確認。";
             else { PolicyForm.Version = result.Version; message = "容量設定已儲存。"; }
         }

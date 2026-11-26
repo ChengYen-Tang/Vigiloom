@@ -46,5 +46,16 @@ public sealed class ReceptionOverviewTests(TestContext context)
             Assert.IsNull(active.LastMetricAt); Assert.IsNull(active.LastTraceAt);
             Assert.AreEqual(now.AddMinutes(-3), revoked.LastLogAt);
             Assert.IsNotNull(revoked.RevokedAt);
+            var remote = new ReceptionOverview(new PooledDbContextFactory<ServiceObservabilityDbContext>(options),
+                new RemoteLogTimes(new Dictionary<Guid, DateTimeOffset> { [first.Id] = now.AddMinutes(-4), [second.Id] = now }));
+            var remoteRows = await remote.ListAsync(1, token);
+            Assert.AreEqual(now, remoteRows.Single(x => x.SourceId == sourceA.Id).LastLogAt);
+            Assert.IsNull(remoteRows.Single(x => x.SourceId == sourceB.Id).LastLogAt);
+
         }, context.CancellationToken);
+    private sealed class RemoteLogTimes(IReadOnlyDictionary<Guid, DateTimeOffset> times) : IReceptionLogTimes
+    {
+        public Task<IReadOnlyDictionary<Guid, DateTimeOffset>> GetAsync(IReadOnlyList<Guid> serviceIds, CancellationToken token) => Task.FromResult(times);
+    }
+
 }

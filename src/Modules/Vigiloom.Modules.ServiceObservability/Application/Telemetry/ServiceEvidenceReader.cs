@@ -6,7 +6,13 @@ using OtlpSpan = OpenTelemetry.Proto.Trace.V1.Span;
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
 /// <summary>Produces readable, bounded evidence from the original retained OTLP payload.</summary>
-public sealed class ServiceEvidenceReader(TelemetryHistory history)
+public interface IApplicationLogHistory
+{
+    Task<TelemetryPage<TelemetryLog, TelemetryContext>> LogsAsync(Guid serviceId, DateTimeOffset from, DateTimeOffset to,
+        int page, byte[]? traceId, CancellationToken token);
+}
+
+public sealed class ServiceEvidenceReader(TelemetryHistory history, IApplicationLogHistory? remoteLogs = null)
 {
     public async Task<ServiceEvidencePage<ServiceLogEvidence>> LogsAsync(Guid serviceId, DateTimeOffset from, DateTimeOffset to, int page, string? traceId, CancellationToken token)
     {
@@ -17,7 +23,9 @@ public sealed class ServiceEvidenceReader(TelemetryHistory history)
             try { traceBytes = Convert.FromHexString(traceId); }
             catch (FormatException) { throw new ArgumentException("Invalid trace identifier.", nameof(traceId)); }
         }
-        var result = await history.LogsAsync(serviceId, from, to, page, traceBytes, token);
+        var result = remoteLogs is null
+            ? await history.LogsAsync(serviceId, from, to, page, traceBytes, token)
+            : await remoteLogs.LogsAsync(serviceId, from, to, page, traceBytes, token);
         var items = new List<ServiceLogEvidence>(result.Items.Count);
         foreach (var item in result.Items)
         {

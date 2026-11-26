@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.Telemetry;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
@@ -18,6 +19,7 @@ using Vigiloom.Modules.Resources.Application.Publishing;
 using Vigiloom.Resources.Publication;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddVigiloomSelfTelemetry("Vigiloom.Resources");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddOptions<IdentityOptions>();
 builder.Services.AddAntiforgery();
@@ -32,12 +34,11 @@ builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.Applic
     options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
 });
 builder.Services.AddAuthorization(options => options.AddVigiloomAccessPolicies());
-var resourceDatabase = builder.Configuration.GetConnectionString("Resources")
-    ?? throw new InvalidOperationException("ConnectionStrings:Resources is required.");
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
     builder.Configuration["Temporal:Namespace"] ?? "default");
 builder.Services.AddScoped<ResourceWork>();
-builder.Services.AddScoped(provider => new OutboxDispatcher(resourceDatabase, provider.GetServices<IOutboxHandler>(),
+builder.Services.AddScoped(provider => new OutboxDispatcher(provider.GetRequiredService<IConfiguration>().GetConnectionString("Resources")
+    ?? throw new InvalidOperationException("ConnectionStrings:Resources is required."), provider.GetServices<IOutboxHandler>(),
     provider.GetRequiredService<ILogger<OutboxDispatcher>>()));
 builder.Services.AddHostedService<WorkDispatcher>();
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(
@@ -46,6 +47,7 @@ builder.Services.AddModuleSqlServer<ResourcesDbContext>(
 builder.Services.AddScoped<DevicePingSource>();
 builder.Services.AddScoped<DeviceAgentSource>();
 builder.Services.AddScoped<GroupMembersReader>();
+builder.Services.AddScoped<ServiceGroupsReader>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
 builder.Services.AddScoped<DeviceChangeOutbox>();
@@ -100,6 +102,8 @@ internalApi.MapGet("/devices/{id:guid}/agent", async (Guid id, DeviceAgentSource
     await source.GetAsync(id, token) is { } device ? Results.Ok(device) : Results.NotFound());
 internalApi.MapGet("/groups/{id:guid}/members", async (Guid id, GroupMembersReader source, CancellationToken token) =>
     await source.GetAsync(id, token) is { } members ? Results.Ok(members) : Results.NotFound());
+internalApi.MapGet("/application-services/{id:guid}/groups", (Guid id, ServiceGroupsReader source, CancellationToken token) =>
+    source.ReadAsync(id, token));
 internalApi.MapGet("/publications/groups/{id:guid}", async (Guid id, PublishedPolicies policies, CancellationToken token) =>
     await policies.GroupAsync(id, token) is { } policy ? Results.Ok(policy) : Results.NotFound());
 internalApi.MapGet("/publications/groups/{id:guid}/summary", async (Guid id, PublishedPolicies policies, CancellationToken token) =>
@@ -120,7 +124,10 @@ internalApi.MapInternalGroupManagement();
 internalApi.MapInternalPackages();
 internalApi.MapInternalAgentRegistration();
 internalApi.MapPost("/application-candidates/observe", async (ApplicationObservation request, ApplicationDiscovery discovery, CancellationToken token) =>
-    Results.Ok(await discovery.ObserveAsync(request, token)));
+{
+    try { return Results.Ok(await discovery.ObserveAsync(request, token)); }
+    catch (ApplicationDiscoveryBusyException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
+});
 internalApi.MapPost("/self-services/register", async (ApplicationObservation request, SelfServiceRegistration registration, CancellationToken token) =>
     await registration.RegisterAsync(request, token) is { } id ? Results.Ok(id) : Results.BadRequest());
 internalApi.MapPost("/application-services/{id:guid}/state", async (Guid id, ApplicationStateChange request, ApplicationLifecycle lifecycle, CancellationToken token) =>

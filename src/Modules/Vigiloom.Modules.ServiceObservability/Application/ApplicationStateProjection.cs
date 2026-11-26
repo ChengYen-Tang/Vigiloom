@@ -8,7 +8,8 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 namespace Vigiloom.Modules.ServiceObservability.Application;
 
 /// <summary>Applies the resource-owned application state to an existing observation record.</summary>
-public sealed class ApplicationStateProjection(IDbContextFactory<ServiceObservabilityDbContext> contexts)
+public sealed class ApplicationStateProjection(IDbContextFactory<ServiceObservabilityDbContext> contexts,
+    IEnumerable<IHealthTransitionSink>? transitions = null)
 {
     public async Task InvalidatePublicationAsync(Guid id, CancellationToken token, Guid? deliveryId = null, byte[]? payloadHash = null)
     {
@@ -38,7 +39,7 @@ public sealed class ApplicationStateProjection(IDbContextFactory<ServiceObservab
             }
         }
         if (await HealthPublicationCoordinator.LockServiceAsync(db, id, token) is null) return;
-        await HealthPublicationCoordinator.InvalidateAsync(db, id, await DiscoveryTransaction.NowAsync(db, token), token);
+        await HealthPublicationCoordinator.InvalidateAsync(db, id, await DiscoveryTransaction.NowAsync(db, token), token, transitions);
         await db.SaveChangesAsync(token);
         await tx.CommitAsync(token);
     }
@@ -56,7 +57,7 @@ public sealed class ApplicationStateProjection(IDbContextFactory<ServiceObservab
         var stopped = current.StoppedAt is not null;
         if ((service.ArchivedAt is not null) == archived && (service.RevokedAt is not null) == stopped) return;
         var now = await DiscoveryTransaction.NowAsync(db, token);
-        await HealthPublicationCoordinator.InvalidateAsync(db, service.Id, now, token);
+        await HealthPublicationCoordinator.InvalidateAsync(db, service.Id, now, token, transitions);
         if (archived)
         {
             if (service.ArchivedAt is null) service.Archive(now);

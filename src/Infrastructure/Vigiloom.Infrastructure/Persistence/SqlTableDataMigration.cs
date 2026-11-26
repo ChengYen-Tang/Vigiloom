@@ -31,7 +31,8 @@ public static class SqlTableDataMigration
         CopyAsync(sourceConnection, targetConnection, tables.Select(table => new TableMapping(schema, table, schema, table)).ToArray(), token);
 
     public static async Task CopyAsync(string sourceConnection, string targetConnection, IReadOnlyList<TableMapping> tables, CancellationToken token = default,
-        Func<SqlConnection, SqlConnection, SqlTransaction, CancellationToken, Task>? afterCopy = null)
+        Func<SqlConnection, SqlConnection, SqlTransaction, CancellationToken, Task>? afterCopy = null,
+        Func<SqlConnection, SqlTransaction, CancellationToken, Task>? beforeCopy = null)
     {
         ValidateConnections(sourceConnection, targetConnection);
         await using var source = new SqlConnection(sourceConnection);
@@ -39,6 +40,7 @@ public static class SqlTableDataMigration
         await source.OpenAsync(token);
         await target.OpenAsync(token);
         await using var transaction = (SqlTransaction)await target.BeginTransactionAsync(token);
+        if (beforeCopy is not null) await beforeCopy(target, transaction, token);
         using var quote = new SqlCommandBuilder();
         foreach (var table in tables)
         {

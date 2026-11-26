@@ -4,8 +4,7 @@
 @using Vigiloom.Contracts.Services
 @using Vigiloom.Modules.ServiceObservability.Application
 @using Vigiloom.Modules.ServiceObservability.Application.Telemetry
-@inject CollectorAdministration Collectors
-@inject CollectorCounters Counters
+@inject Vigiloom.Web.Services.CollectorManagement Collectors
 @inject ILogger<CollectorCountersPage> Logger
 
 <PageTitle>Collector 來源轉送 - Vigiloom</PageTitle>
@@ -90,7 +89,7 @@
             collector = await Collectors.GetAsync(CollectorId, HttpContext.RequestAborted);
             if (collector is null) return;
             routes = await Collectors.RoutesAsync(CollectorId, HttpContext.RequestAborted);
-            if (SourceId is { } source) result = await Counters.QueryAsync(CollectorId, source, InstanceId, HttpContext.RequestAborted);
+            if (SourceId is { } source) result = await Collectors.CountersAsync(CollectorId, source, InstanceId, HttpContext.RequestAborted);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         { Logger.LogWarning("Cannot load Collector counters: {ExceptionType}", ex.GetType().Name); loadError = true; }

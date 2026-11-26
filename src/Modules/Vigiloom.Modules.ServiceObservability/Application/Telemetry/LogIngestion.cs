@@ -2,6 +2,7 @@ using Google.Protobuf;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using OpenTelemetry.Proto.Logs.V1;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Modules.ServiceObservability.Domain.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Persistence;
@@ -88,18 +89,26 @@ internal sealed class LogIngestion(IDbContextFactory<ServiceObservabilityDbConte
         };
         foreach (var log in scope.LogRecords)
         {
-            var eventTime = EffectiveTime(log);
-            TryEventTime(eventTime, out var occurred);
+            var item = ToItem(log, received);
             db.LogRecords.Add(new StoredLogRecord
             {
                 ServiceId = binding.Service.ServiceId, InstanceId = binding.InstanceId, Context = shared,
-                OccurredAt = eventTime == 0 ? received : occurred, ReceivedAt = received,
-                UsedReceivedTime = eventTime == 0, UsedObservedTime = log.TimeUnixNano == 0 && log.ObservedTimeUnixNano != 0,
-                TraceId = log.TraceId.Length == 0 ? null : log.TraceId.ToByteArray(),
-                SpanId = log.SpanId.Length == 0 ? null : log.SpanId.ToByteArray(), RecordPayload = log.ToByteArray()
+                OccurredAt = item.OccurredAt, ReceivedAt = received,
+                UsedReceivedTime = item.UsedReceivedTime, UsedObservedTime = item.UsedObservedTime,
+                TraceId = item.TraceId, SpanId = item.SpanId, RecordPayload = item.RecordPayload
             });
         }
         return LogIngestionStatus.Accepted;
+    }
+
+    internal static ApplicationLogItem ToItem(OpenTelemetry.Proto.Logs.V1.LogRecord log, DateTimeOffset received)
+    {
+        var eventTime = EffectiveTime(log);
+        TryEventTime(eventTime, out var occurred);
+        return new(eventTime == 0 ? received : occurred, eventTime == 0,
+            log.TimeUnixNano == 0 && log.ObservedTimeUnixNano != 0,
+            log.TraceId.Length == 0 ? null : log.TraceId.ToByteArray(),
+            log.SpanId.Length == 0 ? null : log.SpanId.ToByteArray(), log.ToByteArray());
     }
 
     internal static LogIngestionStatus CheckTimes(ScopeLogs scope, DateTimeOffset approvedAt, DateTimeOffset received)
