@@ -2,6 +2,7 @@ using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 using Vigiloom.Web.Telemetry;
+using Vigiloom.Web.Services;
 
 namespace Vigiloom.Web.Api;
 
@@ -10,10 +11,10 @@ internal static class TelemetryHistoryEndpoints
     internal static void MapTelemetryHistoryEndpoints(this WebApplication app)
     {
         app.MapGet("/api/v1/service-reception/collector-observations/{serviceId:guid}", async (Guid serviceId,
-            CollectorObservations observations, CancellationToken token, int page = 1) =>
+            CollectorManagement observations, CancellationToken token, int page = 1) =>
         {
             if (page is < 1 or > 2_000) return Results.BadRequest();
-            var result = await observations.QueryAsync(serviceId, page, token);
+            var result = await observations.ObservationsAsync(serviceId, page, token);
             return result is null ? Results.NotFound() : Results.Ok(result);
         }).RequireAuthorization(Vigiloom.Web.Authentication.AccessPolicies.Administrator).RequireRateLimiting("api-client")
             .Produces<CollectorObservationPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429)

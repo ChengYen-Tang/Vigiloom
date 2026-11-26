@@ -36,6 +36,9 @@ builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(services => s
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<SourceCredentials>();
 builder.Services.AddScoped<SourceAdministration>();
+builder.Services.AddScoped<CollectorAdministration>();
+builder.Services.AddScoped<CollectorObservations>();
+builder.Services.AddScoped<CollectorCounters>();
 builder.Services.AddScoped<SelfSourceProvider>();
 builder.Services.AddSingleton(provider => new ReceptionRejectionDiagnostics(
     () => provider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>(),
@@ -193,6 +196,7 @@ app.MapServiceReads();
 app.MapTelemetryHistoryEndpoints();
 app.MapRetentionEndpoints();
 app.MapSourceEndpoints();
+app.MapCollectorEndpoints();
 app.Run();
 
 public partial class Program;
