@@ -181,7 +181,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
 builder.Services.AddHttpClient<Vigiloom.Web.Devices.RemoteDeviceManagement>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IDeviceManagement>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<DeviceManagement>()
@@ -189,7 +189,7 @@ builder.Services.AddScoped<IDeviceManagement>(services =>
 builder.Services.AddScoped<GroupManagement>();
 builder.Services.AddHttpClient<Vigiloom.Web.Groups.RemoteGroupManagement>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IGroupManagement>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<GroupManagement>()
@@ -206,7 +206,7 @@ builder.Services.AddScoped<Vigiloom.Web.Events.EventTimelineAudit>();
 builder.Services.AddScoped<ServiceMembership>();
 builder.Services.AddHttpClient<RemoteServiceMembership>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IServiceMembership>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<ServiceMembership>()
@@ -217,7 +217,7 @@ builder.Services.AddScoped<IDeviceAgentSource, DeviceAgentSource>();
 builder.Services.AddScoped<AgentIdentity>();
 builder.Services.AddHttpClient<Vigiloom.Web.AgentVersions.RemoteAgentRegistration>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IAgentRegistration>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<AgentIdentity>()
@@ -259,7 +259,7 @@ builder.Services.AddScoped<ServiceApproval>();
 builder.Services.AddScoped<Vigiloom.Web.Services.LocalCandidateAdministration>();
 builder.Services.AddHttpClient<Vigiloom.Web.Services.RemoteCandidateAdministration>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Web.Services.ICandidateAdministration>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<Vigiloom.Web.Services.LocalCandidateAdministration>()
@@ -282,7 +282,7 @@ builder.Services.AddScoped<ApplicationStateProjection>();
 builder.Services.AddScoped<Vigiloom.Web.Services.LocalApplicationManagement>();
 builder.Services.AddHttpClient<Vigiloom.Web.Services.RemoteApplicationManagement>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<Vigiloom.Web.Services.IApplicationManagement>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<Vigiloom.Web.Services.LocalApplicationManagement>()
@@ -303,7 +303,7 @@ builder.Services.AddScoped<HostLogConfiguration>();
 builder.Services.AddScoped<AgentPackageQuery>();
 builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentPackageQuery>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IAgentPackageQuery>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<AgentPackageQuery>()
@@ -311,7 +311,7 @@ builder.Services.AddScoped<IAgentPackageQuery>(services =>
 builder.Services.AddScoped<AgentVersionAssignments>();
 builder.Services.AddHttpClient<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IAgentAssignments>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<AgentVersionAssignments>()
@@ -324,7 +324,7 @@ builder.Services.AddScoped<YaraScans>();
 builder.Services.AddScoped<AgentPackageAccess>();
 builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentUpdateAccess>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IAgentUpdateAccess>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<AgentPackageAccess>()
@@ -334,7 +334,7 @@ builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentVersionClient, Vigiloo
 builder.Services.AddScoped<PackageLibrary>();
 builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentPackageLibrary>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IAgentPackageLibrary>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<PackageLibrary>()
@@ -472,11 +472,11 @@ builder.Services.AddScoped<Vigiloom.Web.Publishing.TemplateRetirementWorkflow>()
 builder.Services.AddScoped<Vigiloom.Web.Publishing.PublicReader>();
 builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemotePublicationManagement>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemotePublicReader>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]
         ?? throw new InvalidOperationException("Services:Resources:Url is required when using remote publication or the network service.")).TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddHttpClient<Vigiloom.Web.Publishing.RemoteNetworkPublicClient>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
