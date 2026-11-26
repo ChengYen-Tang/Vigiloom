@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.Telemetry;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Persistence;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Identity;
 using Vigiloom.Modules.IdentityAccess.Domain;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddVigiloomSelfTelemetry("Vigiloom.Identity");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddAuthorization(options => options.AddPolicy(BuiltInRoles.Administrator, policy => policy.RequireRole(BuiltInRoles.Administrator)));
 builder.Services.AddModuleSqlServer<IdentityAccessDbContext>(

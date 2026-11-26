@@ -7,7 +7,13 @@ using System.Text;
 namespace Vigiloom.Modules.ServiceObservability.Application;
 
 /// <summary>Persists only bounded discovery metadata for a currently authorized source.</summary>
-public sealed class CandidateDiscovery(IDbContextFactory<ServiceObservabilityDbContext> contexts)
+public interface ICandidateObserver
+{
+    Task<CandidateObservation> ObserveAsync(AuthenticatedSource source, string serviceKey, string environment, string displayName, CancellationToken token, string? serviceNamespace = null);
+    Task<CandidateObservation> ObserveAsync(Guid sourceId, string serviceKey, string environment, string displayName, CancellationToken token, string? serviceNamespace = null);
+}
+
+public sealed class CandidateDiscovery(IDbContextFactory<ServiceObservabilityDbContext> contexts) : ICandidateObserver
 {
     public const int PerSourceLimit = 1_000;
     public const int GlobalLimit = 10_000;
@@ -15,7 +21,7 @@ public sealed class CandidateDiscovery(IDbContextFactory<ServiceObservabilityDbC
     public Task<CandidateObservation> ObserveAsync(AuthenticatedSource source, string serviceKey, string environment, string displayName, CancellationToken token, string? serviceNamespace = null) =>
         source.Version is { Length: 8 } ? ObserveCoreAsync(source.SourceId, source.Version, serviceKey, environment, displayName, token, serviceNamespace) : Task.FromResult(CandidateObservation.SourceUnavailable);
 
-    internal Task<CandidateObservation> ObserveAsync(Guid sourceId, string serviceKey, string environment, string displayName, CancellationToken token, string? serviceNamespace = null) =>
+    public Task<CandidateObservation> ObserveAsync(Guid sourceId, string serviceKey, string environment, string displayName, CancellationToken token, string? serviceNamespace = null) =>
         ObserveCoreAsync(sourceId, null, serviceKey, environment, displayName, token, serviceNamespace);
 
     private async Task<CandidateObservation> ObserveCoreAsync(Guid sourceId, byte[]? version, string serviceKey, string environment, string displayName, CancellationToken token, string? serviceNamespace)

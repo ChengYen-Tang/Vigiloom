@@ -87,19 +87,34 @@ public sealed class HostLogTests(TestContext context)
                 [1], [], "", "", [new ApplicationLogItem(DateTimeOffset.UtcNow, false, false, traceId, null, payload)]);
             using (var application = await client.PostAsJsonAsync("/internal/v1/application-logs", appLog, token))
                 Assert.AreEqual(HttpStatusCode.OK, application.StatusCode);
-            using (var duplicateApplication = await client.PostAsJsonAsync("/internal/v1/application-logs", appLog, token))
+            var appScope = new ApplicationLogScope(appLog.ServiceId, null, appLog.ScopePayload, "", appLog.Items);
+            var grouped = new ApplicationLogBatch(appLog.SourceId, [new ApplicationLogResource(new byte[60_000], "", [appScope, appScope])]);
+            using (var duplicateApplication = await client.PostAsJsonAsync("/internal/v1/application-logs/grouped", grouped, token))
                 Assert.AreEqual(HttpStatusCode.OK, duplicateApplication.StatusCode);
+            using (var invalidBatch = await client.PostAsJsonAsync("/internal/v1/application-logs/batch",
+                new[] { appLog, appLog with { SourceId = Guid.CreateVersion7() } }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidBatch.StatusCode);
             Assert.AreEqual(1, await quota.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM logquota.Buckets WHERE Kind = 2 AND SourceId = {appLog.SourceId}").SingleAsync(token));
             await quota.Database.ExecuteSqlRawAsync("UPDATE logquota.Buckets SET Microtokens = 0, LastRefill = DATEADD(second, 30, SYSDATETIMEOFFSET()) WHERE Kind = 0", token);
             using (var limited = await client.PostAsJsonAsync("/internal/v1/application-logs", appLog, token))
                 Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
+            using (var limitedBatch = await client.PostAsJsonAsync("/internal/v1/application-logs/grouped", grouped, token))
+                Assert.AreEqual(HttpStatusCode.TooManyRequests, limitedBatch.StatusCode);
             await using var logs = await provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await logs.HostLogs.CountAsync(token));
-            Assert.AreEqual(2, await logs.LogRecords.CountAsync(token));
+            Assert.AreEqual(3, await logs.LogRecords.CountAsync(token));
+            var latest = await client.GetFromJsonAsync<System.Text.Json.JsonElement>($"/internal/v1/application-logs/{appLog.ServiceId:D}/latest", token);
+            Assert.IsTrue(latest.GetProperty("lastReceivedAt").GetDateTimeOffset() > DateTimeOffset.UtcNow.AddMinutes(-1));
+            using var latestBatch = await client.PostAsJsonAsync("/internal/v1/application-logs/latest-by-service", new[] { appLog.ServiceId, Guid.CreateVersion7() }, token);
+            latestBatch.EnsureSuccessStatusCode();
+            var lastTimes = await latestBatch.Content.ReadFromJsonAsync<ApplicationLogLastReceived[]>(cancellationToken: token);
+            Assert.IsNotNull(lastTimes);
+            Assert.AreEqual(appLog.ServiceId, lastTimes.Single().ServiceId);
+            Assert.IsTrue(lastTimes[0].ReceivedAt > DateTimeOffset.UtcNow.AddMinutes(-1));
             await using var timeline = await provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await timeline.Set<TimelineRecord>().CountAsync(x => x.Source == "host-log" && x.ResourceId == input.DeviceId, token));
             Assert.Contains("login", (await timeline.Set<TimelineRecord>().SingleAsync(x => x.Source == "host-log", token)).Evidence);
-            Assert.AreEqual(2, await timeline.Set<TimelineRecord>().CountAsync(x => x.Source == "service-log" && x.ResourceId == appLog.ServiceId, token));
+            Assert.AreEqual(3, await timeline.Set<TimelineRecord>().CountAsync(x => x.Source == "service-log" && x.ResourceId == appLog.ServiceId, token));
             var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(-5).ToString("O"));
             var until = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddMinutes(5).ToString("O"));
             var hostHistory = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{input.DeviceId:D}?from={from}&until={until}", token);
@@ -112,11 +127,11 @@ public sealed class HostLogTests(TestContext context)
             using (var badCursor = await client.GetAsync($"/internal/v1/host-logs/{input.DeviceId:D}?from={from}&until={until}&cursor=invalid", token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, badCursor.StatusCode);
             var history = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}", token);
-            Assert.HasCount(2, history!.Items);
-            Assert.HasCount(2, history.Contexts);
+            Assert.HasCount(3, history!.Items);
+            Assert.HasCount(3, history.Contexts);
             CollectionAssert.AreEqual(payload, history.Items[0].Record);
             var filtered = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}&page=1&traceId={Convert.ToHexString(traceId)}", token);
-            Assert.HasCount(2, filtered!.Items);
+            Assert.HasCount(3, filtered!.Items);
             var absent = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}&page=1&traceId={new string('2', 32)}", token);
             Assert.IsEmpty(absent!.Items);
             var otherHistory = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{Guid.CreateVersion7():D}?from={from}&to={until}&page=1", token);
@@ -124,7 +139,7 @@ public sealed class HostLogTests(TestContext context)
             using (var invalidTrace = await client.GetAsync($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}&page=1&traceId=abc", token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalidTrace.StatusCode);
             var events = await client.GetFromJsonAsync<EventTimelinePage>($"/internal/v1/events?from={from}&until={until}&source=service-log", token);
-            Assert.HasCount(2, events!.Items);
+            Assert.HasCount(3, events!.Items);
             Assert.IsTrue(events.Items.All(entry => entry.Summary.Contains("Application event", StringComparison.Ordinal)));
             var existingLog = await logs.LogRecords.FirstAsync(token);
             for (var i = 0; i < 25; i++)
@@ -138,7 +153,7 @@ public sealed class HostLogTests(TestContext context)
             var secondPage = await client.GetFromJsonAsync<TelemetryPage<TelemetryLog, TelemetryContext>>($"/internal/v1/application-logs/{appLog.ServiceId:D}?from={from}&to={until}&page=2", token);
             Assert.HasCount(25, firstPage!.Items);
             Assert.IsTrue(firstPage.HasMore);
-            Assert.HasCount(2, secondPage!.Items);
+            Assert.HasCount(3, secondPage!.Items);
             Assert.IsFalse(secondPage.HasMore);
             await quota.Database.ExecuteSqlRawAsync("UPDATE logquota.Buckets SET Microtokens = 1000000000000 WHERE Kind = 0", token);
             var moreItems = Enumerable.Range(0, 26).Select(i => item with { MessageId = Guid.CreateVersion7(), Content = $"event {i}" }).ToArray();
@@ -167,14 +182,20 @@ public sealed class HostLogTests(TestContext context)
                 Assert.AreEqual(1, result.Contexts);
                 Assert.IsFalse(result.HasMore);
             }
-            Assert.AreEqual(27, await logs.LogRecords.CountAsync(token));
-            Assert.AreEqual(2, await logs.LogContexts.CountAsync(token));
+            Assert.AreEqual(28, await logs.LogRecords.CountAsync(token));
+            Assert.AreEqual(3, await logs.LogContexts.CountAsync(token));
             await logs.LogRecords.ExecuteDeleteAsync(token);
             await using (var scope = host.Services.CreateAsyncScope())
-                Assert.AreEqual(2L, await scope.ServiceProvider.GetRequiredService<TimelineLogCleanup>().RunAsync(token));
+                Assert.AreEqual(3L, await scope.ServiceProvider.GetRequiredService<TimelineLogCleanup>().RunAsync(token));
             Assert.AreEqual(27, await timeline.Set<TimelineRecord>().CountAsync(token));
             await using var scheduling = await provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(2, await scheduling.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM scheduling.Outbox").SingleAsync(token));
+            await quota.Database.ExecuteSqlRawAsync("UPDATE logquota.Buckets SET Microtokens = 1000000000000, LastRefill = SYSDATETIMEOFFSET()", token);
+            var sharedResource = new ApplicationLogBatch(appLog.SourceId,
+                [new ApplicationLogResource(new byte[60_000], "", Enumerable.Repeat(appScope, 72).ToArray())]);
+            using var shared = await client.PostAsJsonAsync("/internal/v1/application-logs/grouped", sharedResource, token);
+            Assert.AreEqual(HttpStatusCode.OK, shared.StatusCode);
+            Assert.AreEqual(72, await logs.LogRecords.CountAsync(token));
         }, context.CancellationToken);
 
     private sealed class TestOutboxHandler : IOutboxHandler

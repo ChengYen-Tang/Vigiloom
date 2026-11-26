@@ -13,7 +13,7 @@ public sealed record HealthTargetResult(HealthTargetStatus Status, HealthTargetS
 
 /// <summary>Controls health target configuration and writes the corresponding audit in the same transaction.</summary>
 public sealed class HealthTargetAdministration(IDbContextFactory<ServiceObservabilityDbContext> contexts,
-    TimeProvider clock, IOperationAuditWriter<OperationAudit> audit)
+    TimeProvider clock, IOperationAuditWriter<OperationAudit> audit, IEnumerable<IHealthTransitionSink>? transitions = null)
 {
     public const int MaxTargetsPerService = 100;
     public async Task<HealthTargetSnapshot?> GetAsync(Guid id, CancellationToken token)
@@ -110,7 +110,9 @@ public sealed class HealthTargetAdministration(IDbContextFactory<ServiceObservab
         if (interval is not null && boundary < interval.StartedAt) boundary = interval.StartedAt;
         if (boundary > effectiveAt) effectiveAt = boundary;
         if (interval is not null) interval.Close(boundary);
+        var hadState = schedule.State != (byte)EvaluatedHealth.Unknown;
         schedule.Reset(target.Enabled, effectiveAt);
+        if (hadState) await HealthInvalidation.RecordUnknownAsync(db, target, schedule, boundary, transitions, token);
         db.Entry(target).Property(x => x.UpdatedAt).IsModified = true;
         try { await db.SaveChangesAsync(token); }
         catch (DbUpdateConcurrencyException) { return new(HealthTargetStatus.Conflict); }

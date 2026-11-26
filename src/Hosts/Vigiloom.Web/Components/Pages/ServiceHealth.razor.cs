@@ -45,19 +45,19 @@ public partial class ServiceHealth
             var token = HttpContext.RequestAborted;
             var handler = HttpMethods.IsPost(HttpContext.Request.Method) && HttpContext.Request.HasFormContentType
                 ? (await HttpContext.Request.ReadFormAsync(token))["_handler"].ToString() : "";
-            var policy = await Networks.GetAsync(token);
+            var policy = await Health.GetNetworksAsync(token);
             networkEmpty = policy.Networks.Count == 0;
             if (handler != "health-networks") NetworkForm = new() { Text = string.Join('\n', policy.Networks), Version = policy.Version };
             services = await Applications.ListServicesAsync(servicePage, token);
             if (SelectedService is not { } selected || selected.Version != 7) return;
             selectedService = await Applications.GetServiceAsync(selected, token);
             if (selectedService is null) { error = "找不到選取的服務。"; return; }
-            targets = await Targets.ListAsync(selected, targetPage, token);
-            observations = await Observations.LatestAsync(selected, targetPage, token);
+            targets = await Health.ListTargetsAsync(selected, targetPage, token);
+            observations = await Health.LatestAsync(selected, targetPage, token);
             instances = await Instances.ListAsync(selected, instancePage, token);
             if (SelectedTarget is { } id)
             {
-                editingTarget = await Targets.GetAsync(id, token);
+                editingTarget = await Health.GetTargetAsync(id, token);
                 if (editingTarget is null || editingTarget.ServiceId != selected) { error = "找不到此服務的健康檢查。"; selectedService = null; return; }
                 if (handler != "health-target") TargetForm = new() { Id = editingTarget.Id, InstanceId = editingTarget.InstanceId, Endpoint = editingTarget.Endpoint,
                     IntervalSeconds = editingTarget.IntervalSeconds, TimeoutSeconds = editingTarget.TimeoutSeconds,
@@ -81,7 +81,7 @@ public partial class ServiceHealth
         try
         {
             var values = (NetworkForm.Text ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            var saved = await Networks.UpdateAsync(new(values, NetworkForm.Version), actor, HttpContext.RequestAborted);
+            var saved = await Health.UpdateNetworksAsync(new(values, NetworkForm.Version), actor, HttpContext.RequestAborted);
             if (saved is null) error = "網段設定已變更，請重新整理後再試。";
             else { NetworkForm.Version = saved.Version; networkEmpty = saved.Networks.Count == 0; message = "網段設定已儲存。"; }
         }
@@ -99,11 +99,11 @@ public partial class ServiceHealth
         {
             var input = new HealthTargetInput(TargetForm.Endpoint, TargetForm.IntervalSeconds, TargetForm.TimeoutSeconds,
                 TargetForm.FailureThreshold, TargetForm.RecoveryThreshold, TargetForm.Enabled, TargetForm.Version);
-            if (TargetForm.Id is { } existingId && (await Targets.GetAsync(existingId, HttpContext.RequestAborted))?.ServiceId != selected)
+            if (TargetForm.Id is { } existingId && (await Health.GetTargetAsync(existingId, HttpContext.RequestAborted))?.ServiceId != selected)
             { error = "找不到此服務的健康檢查。"; return; }
             var result = TargetForm.Id is { } id
-                ? await Targets.UpdateAsync(id, input, actor, HttpContext.RequestAborted)
-                : await Targets.CreateAsync(new(selected, TargetForm.InstanceId, input), actor, HttpContext.RequestAborted);
+                ? await Health.UpdateAsync(id, input, actor, HttpContext.RequestAborted)
+                : await Health.CreateAsync(new(selected, TargetForm.InstanceId, input), actor, HttpContext.RequestAborted);
             if (result.Status == HealthTargetStatus.Saved)
             {
                 TargetForm.Version = result.Target!.Version;

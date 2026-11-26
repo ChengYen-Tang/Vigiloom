@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Contracts.Services;
 using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 
@@ -10,7 +11,7 @@ namespace Vigiloom.Modules.ServiceObservability.Application;
 public enum ServiceCollectionStatus { Updated, NotFound, Conflict, SourceUnavailable }
 
 public sealed class ServiceCollectionAdministration(IDbContextFactory<ServiceObservabilityDbContext> contexts,
-    IOperationAuditWriter<OperationAudit> audit)
+    IOperationAuditWriter<OperationAudit> audit, IEnumerable<IHealthTransitionSink>? transitions = null)
 {
     /// <summary>Stops or explicitly resumes one service without changing its publication setting.</summary>
     public async Task<ServiceCollectionStatus> SetStoppedAsync(Guid serviceId, string version, bool stopped, Guid actor, CancellationToken token)
@@ -33,7 +34,7 @@ public sealed class ServiceCollectionAdministration(IDbContextFactory<ServiceObs
         if (service.ArchivedAt is not null || !service.Version.AsSpan().SequenceEqual(expected) || (service.RevokedAt is not null) == stopped) return ServiceCollectionStatus.Conflict;
         if (!stopped && source.RevokedAt is not null) return ServiceCollectionStatus.SourceUnavailable;
         var now = await DiscoveryTransaction.NowAsync(db, token);
-        await HealthInvalidation.ServiceAsync(db, serviceId, now, token);
+        await HealthInvalidation.ServiceAsync(db, serviceId, now, token, transitions);
         if (stopped) service.Revoke(now); else service.Resume(now);
         await db.SaveChangesAsync(token);
         await audit.AppendAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),
@@ -57,7 +58,7 @@ public sealed class ServiceCollectionAdministration(IDbContextFactory<ServiceObs
         if (!service.Version.AsSpan().SequenceEqual(expected) || (service.ArchivedAt is not null) == archived)
             return ServiceCollectionStatus.Conflict;
         var now = await DiscoveryTransaction.NowAsync(db, token);
-        await HealthInvalidation.ServiceAsync(db, serviceId, now, token);
+        await HealthInvalidation.ServiceAsync(db, serviceId, now, token, transitions);
         if (archived) service.Archive(now); else service.Restore(now);
         await db.SaveChangesAsync(token);
         await audit.AppendAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(),

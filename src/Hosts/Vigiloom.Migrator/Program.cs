@@ -19,6 +19,13 @@ using Vigiloom.Migrator.Identity;
 using Vigiloom.Migrator.Operations;
 using Vigiloom.Migrator.Resources;
 using Vigiloom.Migrator.Network;
+using Vigiloom.Migrator.Observability;
+
+if (args is ["initialize-observability"] or ["migrate-observability"])
+{
+    await ObservabilityDatabaseCommand.RunAsync(copyExisting: args[0] == "migrate-observability");
+    return;
+}
 
 if (args is ["migrate-network"] or ["initialize-network"])
 {
@@ -46,7 +53,7 @@ var freshInstall = args is ["fresh-install"];
 if (args.Length > 0 && !freshInstall)
 {
     if (args.Length != 2 || args[0] != "recover-admin")
-        throw new ArgumentException("Usage: Vigiloom.Migrator [fresh-install | initialize-identity | migrate-identity | initialize-resources | migrate-resources | initialize-operations | migrate-operations | initialize-network | migrate-network | recover-admin <account-name>]");
+        throw new ArgumentException("Usage: Vigiloom.Migrator [fresh-install | initialize-identity | migrate-identity | initialize-resources | migrate-resources | initialize-operations | migrate-operations | initialize-network | migrate-network | initialize-observability | migrate-observability | recover-admin <account-name>]");
     await LocalRecoveryCommand.RunAsync(args[1]);
     return;
 }

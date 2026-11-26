@@ -3,8 +3,7 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using Vigiloom.Contracts.Services
 @using Vigiloom.Modules.ServiceObservability.Application.Telemetry
-@inject ReceptionOverview Overview
-@inject ReceptionRejectionReader Rejections
+@inject Vigiloom.Web.Services.ReceptionManagement Reception
 @inject ILogger<ServiceReception> Logger
 
 <PageTitle>管線接入 - Vigiloom</PageTitle>
@@ -107,10 +106,10 @@
     {
         page = Math.Clamp(RequestedPage ?? 1, 1, 200);
         HttpContext.Response.Headers.CacheControl = "no-store";
-        try { sources = await Overview.ListAsync(page, HttpContext.RequestAborted); }
+        try { sources = await Reception.ListAsync(page, HttpContext.RequestAborted); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         { Logger.LogWarning("Cannot load source reception overview: {ExceptionType}", ex.GetType().Name); loadError = true; }
-        try { rejections = await Rejections.ListAsync(HttpContext.RequestAborted); }
+        try { rejections = await Reception.RejectionsAsync(HttpContext.RequestAborted); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         { Logger.LogWarning("Cannot load reception rejection summaries: {ExceptionType}", ex.GetType().Name); rejectionError = true; }
     }

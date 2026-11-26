@@ -1,3 +1,4 @@
+using Vigiloom.Infrastructure.Telemetry;
 using Hangfire;
 using Hangfire.SqlServer;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,7 @@ using Vigiloom.Operations.Work;
 using QuotaContract = Vigiloom.Contracts.Operations.LogQuotaSettings;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddVigiloomSelfTelemetry("Vigiloom.Operations");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddModuleSqlServer<OperationsDbContext>(services =>
@@ -159,12 +161,24 @@ app.MapGet("/internal/v1/host-logs/{deviceId:guid}", async (Guid deviceId, DateT
 app.MapPost("/internal/v1/application-logs", async (ApplicationLogSubmission input, ApplicationLogIngestion ingestion, CancellationToken token) =>
     MapReceipt(await ingestion.ReceiveAsync(input, token)))
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(8 * 1024 * 1024));
+app.MapPost("/internal/v1/application-logs/batch", async (ApplicationLogSubmission[] input, ApplicationLogIngestion ingestion, CancellationToken token) =>
+    MapReceipt(await ingestion.ReceiveBatchAsync(input, token)))
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(8 * 1024 * 1024));
+app.MapPost("/internal/v1/application-logs/grouped", async (ApplicationLogBatch input, ApplicationLogIngestion ingestion, CancellationToken token) =>
+    MapReceipt(await ingestion.ReceiveGroupedAsync(input, token)))
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(8 * 1024 * 1024));
 app.MapGet("/internal/v1/application-logs/{serviceId:guid}", async (Guid serviceId, DateTimeOffset from, DateTimeOffset to,
     int? page, string? traceId, ApplicationLogHistory history, CancellationToken token) =>
 {
     try { return Results.Ok(await history.GetAsync(serviceId, from, to, page ?? 1, traceId, token)); }
     catch (ArgumentException) { return Results.BadRequest(); }
 });
+app.MapGet("/internal/v1/application-logs/{serviceId:guid}/latest", async (Guid serviceId, ApplicationLogHistory history, CancellationToken token) =>
+    serviceId.Version != 7 ? Results.BadRequest() : Results.Ok(new { LastReceivedAt = await history.LastReceivedAsync(serviceId, token) }));
+app.MapPost("/internal/v1/application-logs/latest-by-service", async (Guid[] serviceIds, ApplicationLogHistory history, CancellationToken token) =>
+    Results.Ok(await history.LastReceivedAsync(serviceIds, token)));
+app.MapGet("/internal/v1/application-logs/count", async (DateTimeOffset before, ApplicationLogHistory history, CancellationToken token) =>
+    Results.Ok(new { Count = await history.CountBeforeAsync(before.ToUniversalTime(), token) }));
 app.MapPost("/internal/v1/application-logs/cleanup", async (ApplicationLogCleanupRequest input, ApplicationLogCleanup cleanup, CancellationToken token) =>
 {
     if (input.RetentionDays is < 1 or > 3650) return Results.BadRequest();

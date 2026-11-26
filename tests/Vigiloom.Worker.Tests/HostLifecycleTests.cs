@@ -56,6 +56,16 @@ public sealed class HostLifecycleTests(TestContext testContext)
     }
 
     [TestMethod]
+    public void ObservabilityCutoverStopsLegacyApplicationJobs()
+    {
+        var builder = WorkerHost.CreateBuilder(["--Services:Observability:Url=http://observability"]);
+        var hosted = builder.Services.Where(service => service.ServiceType == typeof(IHostedService))
+            .Select(service => service.ImplementationType?.Name).ToArray();
+        foreach (var name in new[] { "HealthWorker", "HealthPolicyWorker", "HealthExpiryWorker", "TelemetryRetentionSchedule", "MetricRollupSchedule" })
+            Assert.DoesNotContain(name, hosted);
+    }
+
+    [TestMethod]
     public async Task MsrcNamedHttpClient_DoesNotFollowRedirect()
     {
         var builder = WorkerHost.CreateBuilder([]);

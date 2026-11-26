@@ -4,7 +4,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Vigiloom.Modules.ServiceObservability.Application
 @using ServiceDetailsDto = Vigiloom.Contracts.Services.ServiceDetails
-@inject ServiceDetailsReader Services
+@inject Vigiloom.Web.ServiceDetails.ServiceQueries Services
 @inject NavigationManager Navigation
 @inject ILogger<ServiceConnect> Logger
 
@@ -59,7 +59,7 @@
         service = null; loadError = false;
         if (ServiceId is null) return;
         if (ServiceId.Value.Version != 7) return;
-        try { service = await Services.ReadAsync(ServiceId.Value, HttpContext.RequestAborted); }
+        try { service = await Services.DetailAsync(ServiceId.Value, HttpContext.RequestAborted); }
         catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { }
         catch (Exception ex) { Logger.LogWarning(ex, "Failed to load service for onboarding"); loadError = true; }
     }

@@ -1,6 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Vigiloom.Contracts.Services;
+using Vigiloom.Modules.ServiceObservability.Application.Health;
+using Vigiloom.Web.Publishing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
@@ -93,6 +99,52 @@ public sealed class WorkspaceOverviewTests(TestContext context)
         await page.GetByRole(AriaRole.Link, new() { Name = device.Name }).ClickAsync();
         await page.WaitForURLAsync($"**/devices/{device.Id:D}");
     }, context.CancellationToken);
+
+    [TestMethod]
+    public Task OverviewUsesRemoteHealthAndShowsServicesAwaitingProjection() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>
+    {
+        var now = DateTimeOffset.UtcNow;
+        var source = new ServiceSource("source", new byte[32], now);
+        var first = new MonitoredService(new ServiceCandidate(source.Id, "one", "prod", "First", now), now);
+        var second = new MonitoredService(new ServiceCandidate(source.Id, "two", "prod", "Second", now), now);
+        using var observationHttp = new HttpClient(new ObservationHandler(first.Id)) { BaseAddress = new Uri("http://observability/") };
+        using var baseFactory = PingTestSite.CreateFactory(database.ConnectionString);
+        using var factory = baseFactory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            { ["Services:Observability:Url"] = "http://observability" }));
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<PublicObservationClient>();
+                services.AddSingleton(new PublicObservationClient(observationHttp));
+            });
+        });
+        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+        await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token))
+        {
+            db.Sources.Add(source);
+            db.Services.AddRange(first, second);
+            await db.SaveChangesAsync(token);
+        }
+        using var client = PingTestSite.Client(factory);
+        await PingTestSite.LoginAsync(client, "reader", token);
+        var result = await client.GetFromJsonAsync<WorkspaceOverview>("/api/v1/workspace/overview", token);
+        Assert.IsNotNull(result);
+        Assert.AreEqual(2, result.Services.Total);
+        Assert.AreEqual("正常", result.Services.Items.Single(item => item.Id == first.Id).State);
+        Assert.AreEqual("未知或資料不足", result.Services.Items.Single(item => item.Id == second.Id).State);
+    }, context.CancellationToken);
+
+    private sealed class ObservationHandler(Guid healthy) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Assert.AreEqual("/internal/v1/public-observation/statuses", request.RequestUri!.AbsolutePath);
+            var statuses = new Dictionary<Guid, HealthStatusReader.OverviewStatus>
+            { [healthy] = new(new ServiceHealthStatus(ServiceHealthState.Healthy, 1, 0), null, false, false) };
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(statuses) });
+        }
+    }
 
     [TestMethod]
     public Task Reader_SeesIndependentStatesAndAbnormalDevicesAcrossPages() => ReusableWebDatabase.ExecuteAsync(async (database, token) =>

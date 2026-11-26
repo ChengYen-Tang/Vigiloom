@@ -8,7 +8,7 @@ using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Rollups;
 namespace Vigiloom.Modules.ServiceObservability.Application.Telemetry;
 
 /// <summary>Commits all accepted metric points in an OTLP request as one transaction.</summary>
-internal sealed class MetricExport(IDbContextFactory<ServiceObservabilityDbContext> contexts, CandidateDiscovery candidates)
+internal sealed class MetricExport(IDbContextFactory<ServiceObservabilityDbContext> contexts, ICandidateObserver candidates)
 {
     private const int MaximumRequestBytes = 4 * 1024 * 1024;
     private const int MaximumGroups = 256;
