@@ -854,4 +854,80 @@
   <data name="停用" xml:space="preserve"><value>Disable</value></data>
   <data name="已儲存設定分頁" xml:space="preserve"><value>Saved settings pagination</value></data>
   <data name="無法讀取規則，請重新整理。" xml:space="preserve"><value>Unable to load rules. Refresh the page.</value></data>
+  <data name="規則管理" xml:space="preserve"><value>Rule management</value></data>
+  <data name="返回行為規則" xml:space="preserve"><value>Back to behavior rules</value></data>
+  <data name="使用已收集的日誌試跑規則，確認結果後再啟用。" xml:space="preserve"><value>Test the rule against collected logs and enable it after checking the results.</value></data>
+  <data name="試跑結果" xml:space="preserve"><value>Test results</value></data>
+  <data name="{0}：預期 {1}，實際 {2}" xml:space="preserve"><value>{0}: expected {1}, actual {2}</value></data>
+  <data name="規則狀態" xml:space="preserve"><value>Rule status</value></data>
+  <data name="支援狀態：{0}" xml:space="preserve"><value>Support status: {0}</value></data>
+  <data name="尚不支援此規則" xml:space="preserve"><value>Rule not yet supported</value></data>
+  <data name="最近試跑：{0}" xml:space="preserve"><value>Latest test: {0}</value></data>
+  <data name="啟用狀態：{0}" xml:space="preserve"><value>Enablement status: {0}</value></data>
+  <data name="來源或版本已變更，尚未評估" xml:space="preserve"><value>Source or version changed; not evaluated</value></data>
+  <data name="目前生效的排除條件：" xml:space="preserve"><value>Active exceptions:</value></data>
+  <data name="無。" xml:space="preserve"><value>None.</value></data>
+  <data name="規則已啟用不代表設備已收集所需日誌。" xml:space="preserve"><value>An enabled rule does not mean the device has collected the required logs.</value></data>
+  <data name="停用規則" xml:space="preserve"><value>Disable rule</value></data>
+  <data name="啟用規則" xml:space="preserve"><value>Enable rule</value></data>
+  <data name="套用通過的試跑" xml:space="preserve"><value>Apply passed test</value></data>
+  <data name="請先完成通過的試跑，才能啟用。" xml:space="preserve"><value>Complete a passing test before enabling.</value></data>
+  <data name="選擇測試日誌" xml:space="preserve"><value>Select test logs</value></data>
+  <data name="搜尋設備" xml:space="preserve"><value>Search devices</value></data>
+  <data name="日誌時間" xml:space="preserve"><value>Log time</value></data>
+  <data name="最近 24 小時" xml:space="preserve"><value>Last 24 hours</value></data>
+  <data name="最近 7 天" xml:space="preserve"><value>Last 7 days</value></data>
+  <data name="最近 30 天" xml:space="preserve"><value>Last 30 days</value></data>
+  <data name="搜尋" xml:space="preserve"><value>Search</value></data>
+  <data name="請選擇設備" xml:space="preserve"><value>Select a device</value></data>
+  <data name="查看日誌" xml:space="preserve"><value>View logs</value></data>
+  <data name="搜尋設備名稱可縮小範圍，目前顯示前 50 筆。" xml:space="preserve"><value>Search by device name to narrow the first 50 results shown.</value></data>
+  <data name="這段時間沒有主機日誌。" xml:space="preserve"><value>No host logs in this period.</value></data>
+  <data name="對每筆案例選擇預期結果，至少包含「應命中」及「不應命中」；一次最多 20 筆。" xml:space="preserve"><value>Select an expected result for each case, including at least one match and one non-match; up to 20 cases at a time.</value></data>
+  <data name="本機排除條件（選填）" xml:space="preserve"><value>Local exceptions (optional)</value></data>
+  <data name="每行輸入一組「欄位=值」，值以不區分大小寫的完整內容比對；符合任一條件的事件會被排除。關聯規則會在計數前排除。變更後請重新試跑並啟用。" xml:space="preserve"><value>Enter one field=value pair per line. Values match the full content case-insensitively; events matching any pair are excluded. Correlation rules exclude before counting. Test and enable again after changes.</value></data>
+  <data name="已選案例" xml:space="preserve"><value>Selected cases</value></data>
+  <data name="可跨頁挑選；勾選移除後，按「更新案例」即可移除。" xml:space="preserve"><value>Cases can be selected across pages; check remove and select Update cases to remove them.</value></data>
+  <data name="左右滑動查看完整日誌資訊。" xml:space="preserve"><value>Scroll horizontally to view complete log details.</value></data>
+  <data name="測試日誌，可左右捲動" xml:space="preserve"><value>Test logs, scroll horizontally</value></data>
+  <data name="接收時間（UTC）" xml:space="preserve"><value>Received (UTC)</value></data>
+  <data name="來源與內容" xml:space="preserve"><value>Source and content</value></data>
+  <data name="預期結果" xml:space="preserve"><value>Expected result</value></data>
+  <data name="採集缺口" xml:space="preserve"><value>Collection gap</value></data>
+  <data name="案例 {0}" xml:space="preserve"><value>Case {0}</value></data>
+  <data name="不使用" xml:space="preserve"><value>Do not use</value></data>
+  <data name="應命中" xml:space="preserve"><value>Should match</value></data>
+  <data name="不應命中" xml:space="preserve"><value>Should not match</value></data>
+  <data name="應為未評估" xml:space="preserve"><value>Should be unevaluated</value></data>
+  <data name="更新案例" xml:space="preserve"><value>Update cases</value></data>
+  <data name="加入所選並查看較早日誌" xml:space="preserve"><value>Add selected and view older logs</value></data>
+  <data name="執行試跑" xml:space="preserve"><value>Run test</value></data>
+  <data name="變更時間並保留案例" xml:space="preserve"><value>Change time and retain cases</value></data>
+  <data name="搜尋其他設備" xml:space="preserve"><value>Search other devices</value></data>
+  <data name="搜尋並保留案例" xml:space="preserve"><value>Search and retain cases</value></data>
+  <data name="其他設備" xml:space="preserve"><value>Other devices</value></data>
+  <data name="切換設備並保留案例" xml:space="preserve"><value>Switch device and retain cases</value></data>
+  <data name="找不到此規則，請回到清單重新選擇。" xml:space="preserve"><value>Rule not found. Return to the list and select again.</value></data>
+  <data name="規則來源無法使用或已變更，請回到清單重新載入。" xml:space="preserve"><value>Rule source unavailable or changed. Return to the list and reload.</value></data>
+  <data name="找不到所選設備，請重新選擇。" xml:space="preserve"><value>Selected device not found. Select again.</value></data>
+  <data name="無法讀取規則或日誌，請重新整理。" xml:space="preserve"><value>Unable to load rule or logs. Refresh the page.</value></data>
+  <data name="規則設定已變更，請重新載入。" xml:space="preserve"><value>Rule settings changed. Reload the page.</value></data>
+  <data name="規則設定無效，請重新載入。" xml:space="preserve"><value>Invalid rule settings. Reload the page.</value></data>
+  <data name="規則已啟用。" xml:space="preserve"><value>Rule enabled.</value></data>
+  <data name="規則已停用。" xml:space="preserve"><value>Rule disabled.</value></data>
+  <data name="此版本需要先完成通過的試跑。" xml:space="preserve"><value>This version needs a passing test first.</value></data>
+  <data name="規則來源無法使用或已變更，請重新載入。" xml:space="preserve"><value>Rule source unavailable or changed. Reload the page.</value></data>
+  <data name="無法更新規則，請稍後再試。" xml:space="preserve"><value>Unable to update the rule. Try again later.</value></data>
+  <data name="規則已變更，請重新載入。" xml:space="preserve"><value>Rule changed. Reload the page.</value></data>
+  <data name="一次最多選擇 20 筆案例。" xml:space="preserve"><value>Select at most 20 cases at a time.</value></data>
+  <data name="請選擇設備。" xml:space="preserve"><value>Select a device.</value></data>
+  <data name="請選擇有效的預期結果。" xml:space="preserve"><value>Select a valid expected result.</value></data>
+  <data name="排除條件請每行輸入「欄位=值」。" xml:space="preserve"><value>Enter each exception as field=value on a separate line.</value></data>
+  <data name="請選擇 2 至 20 筆不同日誌作為案例。" xml:space="preserve"><value>Select 2–20 distinct log entries as cases.</value></data>
+  <data name="試跑通過，可以啟用此版本。" xml:space="preserve"><value>Test passed; this version can be enabled.</value></data>
+  <data name="試跑未通過，請檢查預期結果；須包含應命中及不應命中案例。" xml:space="preserve"><value>Test failed. Check expected results; include match and non-match cases.</value></data>
+  <data name="部分日誌已不存在，請重新選擇案例。" xml:space="preserve"><value>Some logs no longer exist. Select cases again.</value></data>
+  <data name="此規則的格式或日誌來源尚不支援。" xml:space="preserve"><value>This rule format or log source is not yet supported.</value></data>
+  <data name="無法執行試跑，請稍後再試。" xml:space="preserve"><value>Unable to run the test. Try again later.</value></data>
+  <data name="未選擇" xml:space="preserve"><value>Not selected</value></data>
 </root>

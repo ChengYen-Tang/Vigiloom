@@ -55,7 +55,7 @@ public partial class SigmaRule
         page = null; rule = null; devices = null; logs = null; error = null;
         if (string.IsNullOrWhiteSpace(Path) || Path.Length > 512 || !SigmaRuleInventory.ValidCursor(Cursor))
         {
-            error = "找不到此規則，請回到清單重新選擇。";
+            error = L["找不到此規則，請回到清單重新選擇。"].Value;
             return;
         }
         try
@@ -63,24 +63,24 @@ public partial class SigmaRule
             page = await Inventory.GetAsync(Cursor, HttpContext.RequestAborted);
             if (page.Source.Availability != SigmaAvailability.Ready)
             {
-                error = "規則來源無法使用或已變更，請回到清單重新載入。";
+                error = L["規則來源無法使用或已變更，請回到清單重新載入。"].Value;
                 return;
             }
             rule = page.Items.SingleOrDefault(x => string.Equals(x.Source.Path, Path, StringComparison.Ordinal));
-            if (rule is null) { error = "找不到此規則，請回到清單重新選擇。"; return; }
+            if (rule is null) { error = L["找不到此規則，請回到清單重新選擇。"].Value; return; }
             if (!rule.Supported) return;
             devices = await Devices.ListAsync(Search, null, false, false, 1, HttpContext.RequestAborted);
             if (DeviceId is { Version: 7 } device)
             {
                 var until = Clock.GetUtcNow();
                 logs = await Logs.GetAsync(device, until.AddHours(-SelectedHours), until, LogCursor, null, HttpContext.RequestAborted);
-                if (logs is null) error = "找不到所選設備，請重新選擇。";
+                if (logs is null) error = L["找不到所選設備，請重新選擇。"].Value;
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.LogWarning("Could not load Sigma rule: {ErrorType}", ex.GetType().Name);
-            error = "無法讀取規則或日誌，請重新整理。";
+            error = L["無法讀取規則或日誌，請重新整理。"].Value;
         }
     }
 
@@ -96,20 +96,20 @@ public partial class SigmaRule
         if (!Actor(out var actor) || page?.Source.SourceId != StateInput.SourceId ||
             !string.Equals(Path, StateInput.Path, StringComparison.Ordinal))
         {
-            error = "規則設定已變更，請重新載入。";
+            error = L["規則設定已變更，請重新載入。"].Value;
             return;
         }
         var request = new SigmaRuleStateRequest(StateInput.SourceId, StateInput.Path, StateInput.TestId, StateInput.Enable || StateInput.Apply, StateInput.Version ?? "");
-        if (!SigmaRuleService.Valid(request)) { error = "規則設定無效，請重新載入。"; return; }
+        if (!SigmaRuleService.Valid(request)) { error = L["規則設定無效，請重新載入。"].Value; return; }
         try
         {
             var result = await Rules.SetAsync(request, actor, HttpContext.RequestAborted);
             message = result switch
             {
-                SigmaRuleChangeStatus.Changed or SigmaRuleChangeStatus.Unchanged => request.Enabled ? "規則已啟用。" : "規則已停用。",
-                SigmaRuleChangeStatus.TestUnavailable => "此版本需要先完成通過的試跑。",
-                SigmaRuleChangeStatus.SourceUnavailable => "規則來源無法使用或已變更，請重新載入。",
-                _ => "規則設定已變更，請重新載入。"
+                SigmaRuleChangeStatus.Changed or SigmaRuleChangeStatus.Unchanged => request.Enabled ? L["規則已啟用。"].Value : L["規則已停用。"].Value,
+                SigmaRuleChangeStatus.TestUnavailable => L["此版本需要先完成通過的試跑。"].Value,
+                SigmaRuleChangeStatus.SourceUnavailable => L["規則來源無法使用或已變更，請重新載入。"].Value,
+                _ => L["規則設定已變更，請重新載入。"].Value
             };
             await LoadAsync();
             ResetState();
@@ -117,7 +117,7 @@ public partial class SigmaRule
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.LogWarning("Could not update Sigma rule: {ErrorType}", ex.GetType().Name);
-            error = "無法更新規則，請稍後再試。";
+            error = L["無法更新規則，請稍後再試。"].Value;
         }
     }
 
@@ -125,12 +125,12 @@ public partial class SigmaRule
     {
         if (!Actor(out var actor) || !string.Equals(Path, TestInput.Path, StringComparison.Ordinal))
         {
-            error = "規則已變更，請重新載入。";
+            error = L["規則已變更，請重新載入。"].Value;
             return;
         }
         var chosen = TestInput.Selected.Where(x => !x.Remove).ToDictionary(x => (x.AgentId, x.MessageId));
         foreach (var item in TestInput.Samples.Where(x => !string.IsNullOrEmpty(x.Expected))) chosen[(item.AgentId, item.MessageId)] = item;
-        if (chosen.Count > 20) { error = "一次最多選擇 20 筆案例。"; return; }
+        if (chosen.Count > 20) { error = L["一次最多選擇 20 筆案例。"].Value; return; }
         TestInput.Selected = chosen.Values.ToList();
         TestInput.Samples = [];
         if (TestInput.Action == "next" && logs?.NextCursor is { } next)
@@ -158,7 +158,7 @@ public partial class SigmaRule
         }
         if (TestInput.Action == "switch")
         {
-            if (TestInput.NextDevice is not { Version: 7 } nextDevice) { error = "請選擇設備。"; return; }
+            if (TestInput.NextDevice is not { Version: 7 } nextDevice) { error = L["請選擇設備。"].Value; return; }
             DeviceId = nextDevice;
             TestInput.DeviceId = nextDevice;
             LogCursor = null;
@@ -173,7 +173,7 @@ public partial class SigmaRule
         {
             if (!Enum.TryParse<SigmaExpectedOutcome>(item.Expected, out var expected) || !Enum.IsDefined(expected))
             {
-                error = "請選擇有效的預期結果。";
+                error = L["請選擇有效的預期結果。"].Value;
                 return;
             }
             samples.Add(new(item.AgentId, item.MessageId, expected));
@@ -183,22 +183,22 @@ public partial class SigmaRule
         {
             var text = line.TrimEnd('\r');
             var separator = text.IndexOf('=');
-            if (separator <= 0) { error = "排除條件請每行輸入「欄位=值」。"; return; }
+            if (separator <= 0) { error = L["排除條件請每行輸入「欄位=值」。"].Value; return; }
             exceptions.Add(new(text[..separator].Trim(), text[(separator + 1)..]));
         }
         var request = new SigmaRuleTestRequest(TestInput.Path, samples, exceptions);
-        if (!SigmaRuleService.Valid(request)) { error = "請選擇 2 至 20 筆不同日誌作為案例。"; return; }
+        if (!SigmaRuleService.Valid(request)) { error = L["請選擇 2 至 20 筆不同日誌作為案例。"].Value; return; }
         try
         {
             var result = await Rules.TestAsync(request, actor, HttpContext.RequestAborted);
             testResults = result.Result?.Observations;
             message = result.Status switch
             {
-                SigmaRuleTestStatus.Saved when result.Result?.Passed == true => "試跑通過，可以啟用此版本。",
-                SigmaRuleTestStatus.Saved => "試跑未通過，請檢查預期結果；須包含應命中及不應命中案例。",
-                SigmaRuleTestStatus.EventUnavailable => "部分日誌已不存在，請重新選擇案例。",
-                SigmaRuleTestStatus.RuleUnsupported => "此規則的格式或日誌來源尚不支援。",
-                _ => "規則來源無法使用或已變更，請重新載入。"
+                SigmaRuleTestStatus.Saved when result.Result?.Passed == true => L["試跑通過，可以啟用此版本。"].Value,
+                SigmaRuleTestStatus.Saved => L["試跑未通過，請檢查預期結果；須包含應命中及不應命中案例。"].Value,
+                SigmaRuleTestStatus.EventUnavailable => L["部分日誌已不存在，請重新選擇案例。"].Value,
+                SigmaRuleTestStatus.RuleUnsupported => L["此規則的格式或日誌來源尚不支援。"].Value,
+                _ => L["規則來源無法使用或已變更，請重新載入。"].Value
             };
             await LoadAsync();
             ResetState();
@@ -206,13 +206,13 @@ public partial class SigmaRule
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.LogWarning("Could not test Sigma rule: {ErrorType}", ex.GetType().Name);
-            error = "無法執行試跑，請稍後再試。";
+            error = L["無法執行試跑，請稍後再試。"].Value;
         }
     }
 
     private bool Actor(out Guid actor) => Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out actor) && actor.Version == 7;
     private string? SelectedExpected(HostLogEntry item) => TestInput.Samples.FirstOrDefault(x => x.AgentId == item.AgentId && x.MessageId == item.MessageId)?.Expected;
-    private static string ExpectedLabel(string? value) => value switch { "Match" => "應命中", "NoMatch" => "不應命中", "Unknown" => "應為未評估", _ => "未選擇" };
+    private string ExpectedLabel(string? value) => value switch { "Match" => L["應命中"].Value, "NoMatch" => L["不應命中"].Value, "Unknown" => L["應為未評估"].Value, _ => L["未選擇"].Value };
 
     private sealed class StateForm
     {
