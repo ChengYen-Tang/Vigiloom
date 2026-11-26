@@ -88,6 +88,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/otlp"), 
     }));
 app.UseAuthentication();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/heartbeat") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/batches") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/update-results") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/settings") ||
