@@ -81,12 +81,16 @@ builder.Services.AddHttpClient<SelfCandidateObserver>((services, client) =>
 builder.Services.AddHttpClient<IApplicationLogDelivery, ApplicationLogDelivery>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<IApplicationLogOverview, ApplicationLogOverview>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<TelemetryExports>();
 builder.Services.AddSingleton<OtlpConcurrency>();
 builder.Services.AddSingleton<IHealthTransitionSink, HealthTransitionDispatcher>();
 builder.Services.AddSingleton<HealthRunner>();
 builder.Services.AddScoped<HealthStatusReader>();
 builder.Services.AddScoped<HealthHistoryReader>();
+builder.Services.AddScoped<ServiceDetailsReader>();
 builder.Services.AddScoped(provider => new OutboxDispatcher(provider.GetRequiredService<IConfiguration>().GetConnectionString("Observability")
     ?? throw new InvalidOperationException("ConnectionStrings:Observability is required."), provider.GetServices<IOutboxHandler>(),
     provider.GetRequiredService<ILogger<OutboxDispatcher>>()));
@@ -138,6 +142,7 @@ internalApi.MapGet("/observation-sources/{id:guid}/active", async (Guid id,
     return Results.Ok(source ?? new ApplicationSourceStatus(false, null));
 });
 app.MapHealthReads();
+app.MapServiceReads();
 app.Run();
 
 public partial class Program;

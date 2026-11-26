@@ -5,7 +5,12 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 namespace Vigiloom.Modules.ServiceObservability.Application;
 
 /// <summary>Read-only service identity and instance information, without management credentials.</summary>
-public sealed class ServiceDetailsReader(IDbContextFactory<ServiceObservabilityDbContext> contexts)
+public interface IApplicationLogOverview
+{
+    Task<DateTimeOffset?> LastReceivedAsync(Guid serviceId, CancellationToken token);
+}
+
+public sealed class ServiceDetailsReader(IDbContextFactory<ServiceObservabilityDbContext> contexts, IApplicationLogOverview? remoteLogs = null)
 {
     private const int PageSize = 50;
 
@@ -23,7 +28,8 @@ public sealed class ServiceDetailsReader(IDbContextFactory<ServiceObservabilityD
         if (result is null) return null;
         var retention = await db.TelemetryRetentionSettings.AsNoTracking().Where(x => x.Slot == 1)
             .Select(x => new { x.LogDays, x.TraceDays, x.HealthDays }).SingleOrDefaultAsync(token);
-        return result with { ServerTime = await DiscoveryTransaction.NowAsync(db, token),
+        return result with { LastLogReceivedAt = remoteLogs is null ? result.LastLogReceivedAt : await remoteLogs.LastReceivedAsync(id, token),
+            ServerTime = await DiscoveryTransaction.NowAsync(db, token),
             LogRetentionDays = retention?.LogDays ?? 14, TraceRetentionDays = retention?.TraceDays ?? 7, HealthRetentionDays = retention?.HealthDays ?? 365 };
     }
 

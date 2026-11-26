@@ -7,6 +7,13 @@ namespace Vigiloom.Operations.ApplicationLogs;
 /// <summary>Reads stored application Logs without exposing database identifiers.</summary>
 public sealed class ApplicationLogHistory(IDbContextFactory<CentralLogsDbContext> contexts)
 {
+    public async Task<DateTimeOffset?> LastReceivedAsync(Guid serviceId, CancellationToken token)
+    {
+        if (serviceId.Version != 7) throw new ArgumentException("Invalid service identifier.", nameof(serviceId));
+        await using var db = await contexts.CreateDbContextAsync(token);
+        return await db.LogRecords.AsNoTracking().Where(row => row.ServiceId == serviceId)
+            .MaxAsync(row => (DateTimeOffset?)row.ReceivedAt, token);
+    }
     public async Task<TelemetryPage<TelemetryLog, TelemetryContext>> GetAsync(Guid serviceId, DateTimeOffset from,
         DateTimeOffset to, int page, string? traceId, CancellationToken token)
     {

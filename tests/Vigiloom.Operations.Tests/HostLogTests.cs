@@ -103,6 +103,8 @@ public sealed class HostLogTests(TestContext context)
             await using var logs = await provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await logs.HostLogs.CountAsync(token));
             Assert.AreEqual(3, await logs.LogRecords.CountAsync(token));
+            var latest = await client.GetFromJsonAsync<System.Text.Json.JsonElement>($"/internal/v1/application-logs/{appLog.ServiceId:D}/latest", token);
+            Assert.IsTrue(latest.GetProperty("lastReceivedAt").GetDateTimeOffset() > DateTimeOffset.UtcNow.AddMinutes(-1));
             await using var timeline = await provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await timeline.Set<TimelineRecord>().CountAsync(x => x.Source == "host-log" && x.ResourceId == input.DeviceId, token));
             Assert.Contains("login", (await timeline.Set<TimelineRecord>().SingleAsync(x => x.Source == "host-log", token)).Evidence);

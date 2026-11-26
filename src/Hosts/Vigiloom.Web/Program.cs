@@ -435,7 +435,7 @@ builder.Services.AddHttpClient<Vigiloom.Web.SpeedTests.RemoteSpeedHistory>((serv
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IHostMonitoringClient, Vigiloom.Web.HostMonitoring.ServerHostMonitoringClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Vulnerabilities.IVulnerabilityClient, Vigiloom.Web.HostMonitoring.ServerVulnerabilityClient>();
 builder.Services.AddScoped<Vigiloom.Contracts.Services.IServiceDetailsClient, Vigiloom.Web.ServiceDetails.ServerServiceDetailsClient>();
-builder.Services.AddHttpClient<Vigiloom.Web.ServiceDetails.ServiceHealthQueries>((services, client) =>
+builder.Services.AddHttpClient<Vigiloom.Web.ServiceDetails.ServiceQueries>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<WorkspaceIdentityService>();
