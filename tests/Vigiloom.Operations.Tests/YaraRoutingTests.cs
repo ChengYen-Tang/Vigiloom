@@ -40,6 +40,17 @@ public sealed class YaraRoutingTests(TestContext context)
             });
             security.UseKestrel(0);
             using var securityClient = security.CreateClient();
+            var before = await securityClient.GetFromJsonAsync<InventorySettingsView>("/internal/v1/inventory-settings", token);
+            Assert.IsNotNull(before);
+            var actor = Guid.CreateVersion7();
+            using (var updated = await securityClient.PutAsJsonAsync("/internal/v1/inventory-settings",
+                new { Update = new InventorySettingsUpdate(new(1800, true), before.Version), ActorId = actor }, token))
+                Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
+            await using (var db = new SecurityAnalysisDbContext(options))
+                Assert.AreEqual(actor, (await db.InventorySettingAudits.SingleAsync(token)).ActorId);
+            using (var stale = await securityClient.PutAsJsonAsync("/internal/v1/inventory-settings",
+                new { Update = new InventorySettingsUpdate(new(3600), before.Version), ActorId = Guid.CreateVersion7() }, token))
+                Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
             var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             using var created = await securityClient.PostAsJsonAsync("/internal/v1/yara-scans/create",
                 new YaraCreateCommand(identity, new("/tmp/test", "rule test { condition: true }", 1024, 30), Guid.CreateVersion7()), token);
@@ -64,11 +75,17 @@ public sealed class YaraRoutingTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, inventory.StatusCode);
                 var snapshot = await inventory.Content.ReadFromJsonAsync<InventorySettingsSnapshot>(cancellationToken: token);
                 Assert.IsNotNull(snapshot);
+                Assert.AreEqual(1800, snapshot.Settings.ScanIntervalSeconds);
+                Assert.IsTrue(snapshot.Settings.CollectCommandLine);
                 using var cached = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/inventory-settings?contract=2");
                 cached.Headers.IfNoneMatch.Add(inventory.Headers.ETag!);
                 using var unchanged = await agent.SendAsync(cached, token);
                 Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
             }
+            var legacyInventory = await agent.GetFromJsonAsync<InventorySettingsSnapshot>("/api/v1/agent/inventory-settings", token);
+            Assert.IsNotNull(legacyInventory);
+            Assert.AreEqual(1800, legacyInventory.Settings.ScanIntervalSeconds);
+            Assert.IsFalse(legacyInventory.Settings.CollectCommandLine);
             using (var unsupported = await agent.GetAsync("/api/v1/agent/inventory-settings?contract=3", token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, unsupported.StatusCode);
             using (var integrity = await agent.GetAsync("/api/v1/agent/integrity-settings", token))
@@ -80,7 +97,9 @@ public sealed class YaraRoutingTests(TestContext context)
             using (var baseline = await agent.GetAsync("/api/v1/agent/baseline-settings", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, baseline.StatusCode);
-                Assert.IsNotNull(await baseline.Content.ReadFromJsonAsync<BaselineSettingsSnapshot>(cancellationToken: token));
+                var baselineSettings = await baseline.Content.ReadFromJsonAsync<BaselineSettingsSnapshot>(cancellationToken: token);
+                Assert.IsNotNull(baselineSettings);
+                Assert.AreEqual(1800, baselineSettings.ScanIntervalSeconds);
                 Assert.IsTrue(baseline.Headers.CacheControl!.NoStore);
             }
             Assert.AreEqual(job.Id, (await agent.GetFromJsonAsync<YaraScanJob>("/api/v1/agent/yara-scans/next", token))!.Id);
