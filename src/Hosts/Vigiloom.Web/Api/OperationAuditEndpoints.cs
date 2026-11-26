@@ -11,7 +11,7 @@ internal static class OperationAuditEndpoints
     public static void MapOperationAuditEndpoints(this WebApplication app)
     {
         app.MapGet("/api/v1/operations/audit/events", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, HttpContext context, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, HttpContext context, CancellationToken token, int page = 1) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var query = new OperationAuditQuery(from, to, page);
@@ -20,7 +20,7 @@ internal static class OperationAuditEndpoints
             .Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query event timeline access and export audit records");
         app.MapGet("/api/v1/operations/audit/telemetry-retention", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, HttpContext context, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, HttpContext context, CancellationToken token, int page = 1) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var query = new OperationAuditQuery(from, to, page);
@@ -28,7 +28,7 @@ internal static class OperationAuditEndpoints
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query application telemetry retention settings changes");
         app.MapGet("/api/v1/operations/audit/host-metric-retention", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, HttpContext context, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, HttpContext context, CancellationToken token, int page = 1) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var query = new OperationAuditQuery(from, to, page);
@@ -36,7 +36,7 @@ internal static class OperationAuditEndpoints
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query host metric retention settings changes");
         app.MapGet("/api/v1/operations/audit/audit-retention", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryAuditRetentionAsync(query, token)) : Results.ValidationProblem(new Dictionary<string, string[]> { ["range"] = ["Use a UTC range of at most 31 days and a valid page."] });
@@ -63,7 +63,7 @@ internal static class OperationAuditEndpoints
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<AuditRetentionSnapshot>().Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Update settings audit retention");
         app.MapGet("/api/v1/operations/audit/line", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, HttpContext context, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, HttpContext context, CancellationToken token, int page = 1) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var query = new OperationAuditQuery(from, to, page);
@@ -72,7 +72,7 @@ internal static class OperationAuditEndpoints
             .Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query LINE notification setting changes");
         app.MapGet("/api/v1/operations/audit/intelligence", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, HttpContext context, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, HttpContext context, CancellationToken token, int page = 1) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var query = new OperationAuditQuery(from, to, page);
@@ -81,56 +81,56 @@ internal static class OperationAuditEndpoints
             .Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query intelligence management audit events");
         app.MapGet("/api/v1/operations/audit/publications", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryPublicationsAsync(query, token)) : Results.BadRequest();
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query publication changes");
         app.MapGet("/api/v1/operations/audit/agent-inbox", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryAgentInboxAsync(query, token)) : Results.BadRequest();
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
         app.MapGet("/api/v1/operations/audit/health-networks", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryHealthNetworkPoliciesAsync(query, token)) : Results.BadRequest();
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
         app.MapGet("/api/v1/operations/audit/health-targets", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryHealthTargetsAsync(query, token)) : Results.BadRequest();
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
         app.MapGet("/api/v1/operations/audit/trace-quota", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryTraceQuotaAsync(query, token)) : Results.BadRequest();
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
         app.MapGet("/api/v1/operations/audit/log-quota", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryLogQuotaAsync(query, token)) : Results.BadRequest();
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
         app.MapGet("/api/v1/operations/audit/service-collections", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryServiceCollectionsAsync(query, token)) : Results.BadRequest();
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
         app.MapGet("/api/v1/operations/audit/instance-policy", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryInstancePoliciesAsync(query, token)) : Results.BadRequest();
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
         app.MapGet("/api/v1/operations/audit/service-instances", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryServiceInstancesAsync(query, token)) : Results.BadRequest();
@@ -147,7 +147,7 @@ internal static class OperationAuditEndpoints
             .Produces<AuditFeedPage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query a single authorized operation audit source");
         app.MapGet("/api/v1/operations/audit/ping", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query)
@@ -157,7 +157,7 @@ internal static class OperationAuditEndpoints
             .Produces<OperationAuditPage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query Ping settings audit events");
         app.MapGet("/api/v1/operations/audit/agent-replay", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query)
@@ -167,7 +167,7 @@ internal static class OperationAuditEndpoints
             .Produces<OperationAuditPage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query Agent replay policy audit events");
         app.MapGet("/api/v1/operations/audit/service-approvals", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query)
@@ -177,7 +177,7 @@ internal static class OperationAuditEndpoints
             .Produces<OperationAuditPage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query application service approval audit events");
         app.MapGet("/api/v1/operations/audit/service-sources", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query)
@@ -187,7 +187,7 @@ internal static class OperationAuditEndpoints
             .Produces<OperationAuditPage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query service source credential audit events");
         app.MapGet("/api/v1/operations/audit/groups", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query)
@@ -197,7 +197,7 @@ internal static class OperationAuditEndpoints
             .Produces<OperationAuditPage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query group operation audit events");
         app.MapGet("/api/v1/operations/audit", async (DateTimeOffset from, DateTimeOffset to,
-            OperationAuditQueryService audit, CancellationToken token, int page = 1) =>
+            Vigiloom.Web.Operations.AuditQueryReader audit, CancellationToken token, int page = 1) =>
         {
             var query = new OperationAuditQuery(from, to, page);
             return OperationAuditQueryService.Valid(query)
