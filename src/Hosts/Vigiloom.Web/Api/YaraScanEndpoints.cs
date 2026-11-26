@@ -4,6 +4,7 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Web.Authentication;
 using Vigiloom.Web.Events;
+using Vigiloom.Web.AgentVersions;
 
 namespace Vigiloom.Web.Api;
 
@@ -11,7 +12,7 @@ internal static class YaraScanEndpoints
 {
     public static void MapYaraScanEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/v1/devices/{deviceId:guid}/yara-scans", async (Guid deviceId, YaraScans scans, EventTimelineAudit audit, HttpContext context, CancellationToken token) =>
+        app.MapGet("/api/v1/devices/{deviceId:guid}/yara-scans", async (Guid deviceId, YaraScanAccess scans, EventTimelineAudit audit, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             if (!Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor == Guid.Empty) return Results.Forbid();
@@ -26,7 +27,7 @@ internal static class YaraScanEndpoints
             .Produces<IReadOnlyList<YaraScanJob>>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
 
         app.MapPost("/api/v1/devices/{deviceId:guid}/yara-scans", async (Guid deviceId, YaraScanRequest input,
-            YaraScans scans, HttpContext context, CancellationToken token) =>
+            YaraScanAccess scans, HttpContext context, CancellationToken token) =>
         {
             try
             {
@@ -38,7 +39,7 @@ internal static class YaraScanEndpoints
             .Produces<YaraScanJob>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404);
 
         app.MapPost("/api/v1/devices/{deviceId:guid}/yara-scans/{scanId:guid}/cancel", async (Guid deviceId, Guid scanId,
-            YaraScans scans, HttpContext context, CancellationToken token) =>
+            YaraScanAccess scans, HttpContext context, CancellationToken token) =>
         {
             try { return await ApiMutation.ExecuteAsync(context, async _ => await scans.CancelAsync(deviceId, scanId, token) ? Results.NoContent() : Results.NotFound(), allowApiCredential: false); }
             catch (ArgumentException) { return Results.BadRequest(); }
