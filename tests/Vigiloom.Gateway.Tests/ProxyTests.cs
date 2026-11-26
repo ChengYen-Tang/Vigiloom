@@ -24,6 +24,35 @@ public sealed class ProxyTests
 {
     public TestContext TestContext { get; set; } = null!;
     [TestMethod]
+    public async Task SecurityCutoverRoutesAgentSecurityEndpointsTogether()
+    {
+        await using var host = await StartUpstreamAsync("host-monitoring", TestContext.CancellationToken);
+        await using var legacy = await StartUpstreamAsync("existing-agent", TestContext.CancellationToken);
+        var identityBuilder = WebApplication.CreateBuilder();
+        identityBuilder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var identity = identityBuilder.Build();
+        identity.MapGet("/api/v1/agent/identity", () => Results.Json(new { AgentId = Guid.CreateVersion7(), DeviceId = Guid.CreateVersion7() }));
+        await identity.StartAsync(TestContext.CancellationToken);
+        static string Address(WebApplication app) => app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web => web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = Address(host),
+            ["ReverseProxy:Clusters:agent:Destinations:agent:Address"] = Address(legacy),
+            ["Vigiloom:Gateway:AgentIdentityAddress"] = Address(identity),
+            ["Vigiloom:Gateway:SecurityCutover"] = "true"
+        })));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        using (var denied = await client.GetAsync("/api/v1/agent/inventory/status", TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-agent");
+        foreach (var path in new[] { "/api/v1/agent/inventory-settings", "/api/v1/agent/inventory/status?contract=5", "/api/v1/agent/integrity-settings",
+                     $"/api/v1/agent/integrity-status/{Guid.CreateVersion7():D}", "/api/v1/agent/baseline-settings", "/api/v1/agent/yara-scans/next" })
+            Assert.AreEqual("host-monitoring", await client.GetStringAsync(path, TestContext.CancellationToken));
+        using (var batches = await client.PostAsync("/api/v1/agent/batches", null, TestContext.CancellationToken))
+            Assert.AreEqual("host-monitoring", await batches.Content.ReadAsStringAsync(TestContext.CancellationToken));
+        Assert.AreEqual("existing-agent", await client.GetStringAsync("/api/v1/agent/version-assignment", TestContext.CancellationToken));
+    }
+    [TestMethod]
     public async Task KeepsAgentBatchesOnExistingReceiverUntilSecurityCutover()
     {
         await using var upstream = await StartUpstreamAsync("existing-agent", TestContext.CancellationToken);
@@ -92,12 +121,13 @@ public sealed class ProxyTests
         {
             ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = Address(host),
             ["Vigiloom:Gateway:AgentIdentityAddress"] = Address(identity),
+            ["Vigiloom:Gateway:SecurityCutover"] = "true",
             ["Vigiloom:Agent:Transport:RequestsPerMinute"] = "1"
         })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-agent");
         using (var first = await client.PostAsync("/api/v1/agent/heartbeat", null, TestContext.CancellationToken)) Assert.AreEqual(HttpStatusCode.OK, first.StatusCode);
-        using var limited = await client.GetAsync("/api/v1/agent/queue-session", TestContext.CancellationToken);
+        using var limited = await client.GetAsync("/api/v1/agent/inventory/status", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
         Assert.AreEqual("60", limited.Headers.RetryAfter!.ToString());
     }
