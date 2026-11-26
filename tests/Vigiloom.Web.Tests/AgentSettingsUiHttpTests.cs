@@ -927,6 +927,21 @@ public sealed class AgentSettingsUiHttpTests
             }
             using var mapped = await admin.PostAsync(mappingsUrl, new FormUrlEncodedContent(addMapping), token);
             Assert.Contains("來源對應已加入", await BodyTextAsync(mapped, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishMappings = await admin.GetAsync(mappingsUrl, token))
+            {
+                var mappingText = await BodyTextAsync(englishMappings, token);
+                Assert.Contains("Collector source mappings", mappingText);
+                Assert.Contains("billing collector", mappingText);
+                Assert.Contains("otlp_http/source-b", mappingText);
+            }
+            using (var englishCounters = await admin.GetAsync(countersUrl, token))
+                Assert.Contains("Collector source forwarding", await BodyTextAsync(englishCounters, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplifiedMappings = await admin.GetAsync(mappingsUrl, token))
+                Assert.Contains("Collector 来源对应", await BodyTextAsync(simplifiedMappings, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var staleMapping = await admin.PostAsync(mappingsUrl, new FormUrlEncodedContent(addMapping), token))
                 Assert.Contains("資料已變更", await BodyTextAsync(staleMapping, token));
             var removeMapping = await HiddenFieldsAsync(mapped, token, "collector-route-remove");

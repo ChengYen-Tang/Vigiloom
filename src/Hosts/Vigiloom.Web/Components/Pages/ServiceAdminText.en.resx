@@ -348,4 +348,72 @@
   <data name="此監控服務已登記，請重新整理後確認。" xml:space="preserve"><value>This monitoring service is already registered. Refresh and check.</value></data>
   <data name="服務或來源無法使用，請重新整理後確認。" xml:space="preserve"><value>The service or source is unavailable. Refresh and check.</value></data>
   <data name="無法更新清單，請重新整理。" xml:space="preserve"><value>Unable to refresh the list. Refresh the page.</value></data>
+  <data name="Collector 來源對應" xml:space="preserve"><value>Collector source mappings</value></data>
+  <data name="記錄此 Collector 的轉送設定，協助辨識各來源的管線。" xml:space="preserve"><value>Record this Collector's forwarding configuration to identify each source pipeline.</value></data>
+  <data name="此對應只供管理與查詢，不會修改 Collector 設定或授予資料接收權限。請確認轉送元件名稱與實際設定一致。" xml:space="preserve"><value>These mappings are for management and queries only. They do not modify Collector configuration or grant ingestion permissions. Ensure exporter names match the actual configuration.</value></data>
+  <data name="找不到此 Collector。" xml:space="preserve"><value>Collector not found.</value></data>
+  <data name="監控來源：" xml:space="preserve"><value>Monitoring source: </value></data>
+  <data name="監控來源憑證已撤銷。" xml:space="preserve"><value>Monitoring source credential revoked.</value></data>
+  <data name="監控服務已停收。" xml:space="preserve"><value>Monitoring service collection stopped.</value></data>
+  <data name="目前來源對應" xml:space="preserve"><value>Current source mappings</value></data>
+  <data name="尚未加入來源對應。" xml:space="preserve"><value>No source mappings have been added.</value></data>
+  <data name="（來源已撤銷）" xml:space="preserve"><value> (source revoked)</value></data>
+  <data name="轉送元件：" xml:space="preserve"><value>Exporter: </value></data>
+  <data name="移除對應" xml:space="preserve"><value>Remove mapping</value></data>
+  <data name="我了解此操作不會變更 Collector 設定" xml:space="preserve"><value>I understand this action does not change Collector configuration</value></data>
+  <data name="移除" xml:space="preserve"><value>Remove</value></data>
+  <data name="加入來源對應" xml:space="preserve"><value>Add source mapping</value></data>
+  <data name="選擇業務來源並輸入 Collector 設定中的 exporter 名稱，例如 " xml:space="preserve"><value>Select an application source and enter the exporter name from the Collector configuration, for example </value></data>
+  <data name="。監控來源本身不能作為業務來源。" xml:space="preserve"><value>. The monitoring source itself cannot be used as an application source.</value></data>
+  <data name="沒有可選來源。" xml:space="preserve"><value>No sources are available.</value></data>
+  <data name="（已撤銷）" xml:space="preserve"><value> (revoked)</value></data>
+  <data name="（監控來源）" xml:space="preserve"><value> (monitoring source)</value></data>
+  <data name="（已對應）" xml:space="preserve"><value> (mapped)</value></data>
+  <data name="轉送元件名稱" xml:space="preserve"><value>Exporter name</value></data>
+  <data name="加入對應" xml:space="preserve"><value>Add mapping</value></data>
+  <data name="來源選擇分頁" xml:space="preserve"><value>Source selection pagination</value></data>
+  <data name="上一頁來源" xml:space="preserve"><value>Previous sources</value></data>
+  <data name="下一頁來源" xml:space="preserve"><value>Next sources</value></data>
+  <data name="返回 Collector 回報" xml:space="preserve"><value>Back to Collector reports</value></data>
+  <data name="請選擇來源並輸入轉送元件名稱。" xml:space="preserve"><value>Select a source and enter an exporter name.</value></data>
+  <data name="請確認移除來源對應的影響。" xml:space="preserve"><value>Confirm the effects of removing this source mapping.</value></data>
+  <data name="來源對應已加入。" xml:space="preserve"><value>Source mapping added.</value></data>
+  <data name="來源對應已移除。" xml:space="preserve"><value>Source mapping removed.</value></data>
+  <data name="資料已變更，或來源與轉送元件已被使用；請重新整理後確認。" xml:space="preserve"><value>Data changed, or the source and exporter are already in use. Refresh and check.</value></data>
+  <data name="此來源已撤銷、無法使用，或是 Collector 自身的監控來源。" xml:space="preserve"><value>This source is revoked, unavailable or the Collector's own monitoring source.</value></data>
+  <data name="來源對應已達上限。" xml:space="preserve"><value>The source mapping limit has been reached.</value></data>
+  <data name="找不到 Collector 或來源對應，請重新整理後確認。" xml:space="preserve"><value>Collector or source mapping not found. Refresh and check.</value></data>
+  <data name="Collector 來源轉送" xml:space="preserve"><value>Collector source forwarding</value></data>
+  <data name="查看指定執行個體回報的累計計數。" xml:space="preserve"><value>View cumulative counters reported by the selected instance.</value></data>
+  <data name="無法讀取回報，請重新整理後再試。" xml:space="preserve"><value>Unable to load reports. Refresh and try again.</value></data>
+  <data name="{0}：選擇來源" xml:space="preserve"><value>{0}: select source</value></data>
+  <data name="尚未設定來源對應。" xml:space="preserve"><value>No source mappings configured.</value></data>
+  <data name="來源轉送回報" xml:space="preserve"><value>Source forwarding reports</value></data>
+  <data name="找不到所選來源或執行個體，請重新選擇。" xml:space="preserve"><value>Selected source or instance not found. Select again.</value></data>
+  <data name="資料範圍：截至 {0} UTC 前 24 小時內保存的回報。這些是 Collector 回報的累計數，並非目前健康狀態或已遺失筆數；不同維度分開顯示。" xml:space="preserve"><value>Data range: reports retained during the 24 hours up to {0} UTC. These are cumulative counts reported by the Collector, not current health or lost-record counts; dimensions are shown separately.</value></data>
+  <data name="監控或轉送來源已撤銷、服務已停收或執行個體已退役；歷史回報不能代表目前狀態。" xml:space="preserve"><value>A monitoring or forwarding source was revoked, collection stopped or the instance retired; historical reports do not represent current status.</value></data>
+  <data name="累計值列表因查詢上限、資料變動或格式不支援而可能不完整；近期比較會分別檢查各訊號的資料。" xml:space="preserve"><value>The cumulative list may be incomplete due to query limits, changing data or unsupported formats; recent comparisons check each signal separately.</value></data>
+  <data name="最近兩次失敗回報的比較" xml:space="preserve"><value>Comparison of the two latest failure reports</value></data>
+  <data name="僅比較同一序列且累計起始時間相同的樣本；最新回報超過 90 秒、樣本間隔超過 5 分鐘或資料不足時無法判斷。送出失敗可能隨後重試，不代表永久遺失。" xml:space="preserve"><value>Only samples from the same series with the same cumulative start time are compared. The result is unknown when the latest report is older than 90 seconds, samples are more than five minutes apart or data is insufficient. Failed sends may be retried and do not imply permanent loss.</value></data>
+  <data name="（{0} 至 {1} UTC）" xml:space="preserve"><value> ({0} to {1} UTC)</value></data>
+  <data name="此範圍沒有可顯示的計數；無資料不代表計數為零。" xml:space="preserve"><value>No counters are available in this range; missing data does not mean zero.</value></data>
+  <data name="同名指標的不同序列不會合計；序列識別碼用來區分維度，不顯示來源回報的任意屬性。" xml:space="preserve"><value>Different series of the same metric are not summed. Series IDs distinguish dimensions without displaying arbitrary source attributes.</value></data>
+  <data name="左右滑動表格，查看完整計數與時間。" xml:space="preserve"><value>Scroll horizontally to see all counts and times.</value></data>
+  <data name="來源轉送計數，可左右滑動" xml:space="preserve"><value>Source forwarding counters, scroll horizontally</value></data>
+  <data name="計數" xml:space="preserve"><value>Counter</value></data>
+  <data name="累計值" xml:space="preserve"><value>Cumulative value</value></data>
+  <data name="累計起始（UTC）" xml:space="preserve"><value>Cumulative start (UTC)</value></data>
+  <data name="量測時間（UTC）" xml:space="preserve"><value>Measured at (UTC)</value></data>
+  <data name="保存時間（UTC）" xml:space="preserve"><value>Stored at (UTC)</value></data>
+  <data name="序列" xml:space="preserve"><value>Series</value></data>
+  <data name="未提供" xml:space="preserve"><value>Not provided</value></data>
+  <data name="比較期間失敗計數增加" xml:space="preserve"><value>Failure count increased during comparison</value></data>
+  <data name="比較期間未觀察到失敗增加" xml:space="preserve"><value>No failure increase observed during comparison</value></data>
+  <data name="回報過期" xml:space="preserve"><value>Report expired</value></data>
+  <data name="Log 已送出" xml:space="preserve"><value>Logs sent</value></data>
+  <data name="Log 送出失敗" xml:space="preserve"><value>Log send failed</value></data>
+  <data name="Metrics 已送出" xml:space="preserve"><value>Metrics sent</value></data>
+  <data name="Metrics 送出失敗" xml:space="preserve"><value>Metrics send failed</value></data>
+  <data name="Trace 已送出" xml:space="preserve"><value>Traces sent</value></data>
+  <data name="Trace 送出失敗" xml:space="preserve"><value>Trace send failed</value></data>
 </root>
