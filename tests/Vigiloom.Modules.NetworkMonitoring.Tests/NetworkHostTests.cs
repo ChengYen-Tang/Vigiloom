@@ -1,8 +1,13 @@
 extern alias NetworkHost;
 
 using System.Data.Common;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.SqlClient;
@@ -11,8 +16,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Network;
+using Vigiloom.Contracts.Identity;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.NetworkMonitoring.Application;
@@ -46,12 +53,18 @@ public sealed class NetworkHostTests(TestContext context)
         }
         using var host = new WebApplicationFactory<NetworkHost::Program>().WithWebHostBuilder(builder =>
         {
+            builder.UseUrls("http://127.0.0.1:0");
             builder.UseSetting("Hangfire:Enabled", "false");
             builder.UseSetting("Temporal:EnableNetworkWorker", "false");
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-            { ["ConnectionStrings:Network"] = database.ConnectionString, ["Hangfire:Enabled"] = "false" }));
+            { ["ConnectionStrings:Network"] = database.ConnectionString, ["Hangfire:Enabled"] = "false", ["Services:Identity:Url"] = "http://identity",
+                ["Vigiloom:Gateway:TrustedProxies:0"] = "127.0.0.1" }));
             builder.ConfigureTestServices(services =>
             {
+                services.RemoveAll<IDataProtectionProvider>();
+                services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+                services.RemoveAll<IApiCredentialValidation>();
+                services.AddSingleton<IApiCredentialValidation, CredentialValidation>();
                 services.RemoveAll<IDevicePingSource>();
                 services.AddSingleton<IDevicePingSource>(new Source(id, version));
                 services.RemoveAll<IPingProbe>();
@@ -61,7 +74,21 @@ public sealed class NetworkHostTests(TestContext context)
                 foreach (var item in services.Where(item => item.ImplementationType?.Name is "WorkDispatcher" or "SpeedWorker").ToArray()) services.Remove(item);
             });
         });
-        using var client = host.CreateClient();
+        host.UseKestrel(0);
+        host.StartServer();
+        var address = host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var client = new HttpClient { BaseAddress = new Uri(address) };
+        client.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
+        client.DefaultRequestHeaders.Add("X-Forwarded-For", "198.51.100.23");
+        using (var response = await client.GetAsync("/api/v1/speed-tests?from=2026-01-01T00%3A00%3A00Z&to=2026-01-02T00%3A00%3A00Z", token))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        using (var response = await client.GetAsync("/api/v1/settings/speed-tests", token))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
+        using (var response = await client.GetAsync("/api/v1/speed-tests?from=2026-01-01T00%3A00%3A00Z&to=2026-01-02T00%3A00%3A00Z", token))
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        using (var response = await client.GetAsync("/api/v1/settings/speed-tests", token))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
         deadline.CancelAfter(TimeSpan.FromSeconds(20));
         while (true)
@@ -92,5 +119,10 @@ public sealed class NetworkHostTests(TestContext context)
     {
         public string MessageType => TemporalOutboxHandler.Type;
         public Task HandleAsync(OutboxMessage message, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+    private sealed class CredentialValidation : IApiCredentialValidation
+    {
+        public Task<VerifiedApiCredentialResponse?> VerifyAsync(string value, CancellationToken token) =>
+            Task.FromResult<VerifiedApiCredentialResponse?>(value == "valid" ? new(Guid.CreateVersion7(), "test", false) : null);
     }
 }

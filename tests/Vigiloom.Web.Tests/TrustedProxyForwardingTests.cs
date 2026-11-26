@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Vigiloom.Web.Gateway;
+using Vigiloom.Infrastructure.Authentication;
 
 namespace Vigiloom.Web.Tests;
 

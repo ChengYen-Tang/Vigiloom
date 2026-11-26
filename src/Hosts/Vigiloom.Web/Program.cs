@@ -46,7 +46,6 @@ using Vigiloom.Infrastructure.Scheduling.Retention;
 using Vigiloom.Web.Scheduling;
 using Vigiloom.Web.Diagnostics;
 using Vigiloom.Web.Groups;
-using Vigiloom.Web.Gateway;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.NetworkMonitoring.Application;

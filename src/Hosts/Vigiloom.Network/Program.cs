@@ -1,10 +1,15 @@
 using Hangfire;
 using Hangfire.SqlServer;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Network;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.Authentication;
+using Vigiloom.Infrastructure.Security;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
@@ -15,6 +20,33 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Network;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddVigiloomDataProtection(builder.Configuration);
+builder.Services.AddOptions<IdentityOptions>();
+builder.Services.AddAntiforgery();
+builder.Services.AddVigiloomIdentityCookieClient();
+builder.Services.AddVigiloomIdentityCredentialClient();
+builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
+builder.Services.AddAuthentication().AddVigiloomApiCredentials();
+builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, options =>
+{
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Events.OnValidatePrincipal = context => context.HttpContext.RequestServices.GetRequiredService<IdentityCookieValidator>().ValidateAsync(context);
+    options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return Task.CompletedTask; };
+    options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
+});
+builder.Services.AddAuthorization(options => options.AddVigiloomAccessPolicies());
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("api-client", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Clamp(builder.Configuration.GetValue("Vigiloom:Authentication:ApiRequestsPerMinute", 300), 1, 10000),
+            Window = TimeSpan.FromMinutes(1), QueueLimit = 0
+        }));
+});
 builder.Services.AddModuleSqlServer<NetworkDbContext>(services => services.GetRequiredService<IConfiguration>().GetConnectionString("Network")
     ?? throw new InvalidOperationException("ConnectionStrings:Network is required."), "network", pooled: true);
 builder.Services.AddModuleSqlServer<SchedulingDbContext>(services => services.GetRequiredService<IConfiguration>().GetConnectionString("Network")
@@ -34,6 +66,8 @@ builder.Services.AddScoped<PingStore>();
 builder.Services.AddScoped<IPingProbe, SystemPingProbe>();
 builder.Services.AddScoped<PingRunner>();
 builder.Services.AddScoped<SpeedSettings>();
+builder.Services.AddScoped<SpeedHistory>();
+builder.Services.AddScoped<SpeedRetentionSettings>();
 builder.Services.AddScoped<SpeedQueue>();
 builder.Services.AddScoped<SpeedRunner>();
 builder.Services.AddHttpClient(SpeedtestNetProbe.HttpClientName).ConfigurePrimaryHttpMessageHandler(SpeedtestNetProbe.CreatePrimaryHandler);
@@ -54,6 +88,12 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", true))
     builder.Services.AddHangfireServer(options => { options.Queues = ["network"]; options.IsLightweightServer = true; });
 }
 var app = builder.Build();
+var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
+if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
+app.MapSpeedTestEndpoints();
 app.MapGet("/health/live", () => Results.Ok());
 app.Run();
 
