@@ -72,6 +72,8 @@ public sealed class ObservabilityOtlpErrorsTests(TestContext context)
             });
         });
         using var client = host.CreateClient(new() { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
+        using var telemetry = await client.GetAsync($"/api/v1/service-telemetry/{Guid.CreateVersion7():D}/logs?from=2026-01-01T00:00:00Z&to=2026-01-02T00:00:00Z", context.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, telemetry.StatusCode);
         using var missing = await client.PostAsync("/api/v1/otlp/v1/metrics", new ByteArrayContent([]), context.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, missing.StatusCode);
         Assert.AreEqual("application/x-protobuf", missing.Content.Headers.ContentType?.MediaType);
