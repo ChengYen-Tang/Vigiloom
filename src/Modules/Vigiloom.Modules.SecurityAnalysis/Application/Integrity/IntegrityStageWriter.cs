@@ -6,11 +6,13 @@ using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
+using Vigiloom.Contracts.Events;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 
 /// <summary>Stages and publishes a scope scan inside the authenticated receiver's transaction.</summary>
-public sealed class IntegrityStageWriter : IIntegrityStageWriter
+public sealed class IntegrityStageWriter(IDetectionTimelineWriter? timeline = null) : IIntegrityStageWriter
 {
     public async Task<IntegrityStageResult> StageAsync(DbConnection connection, DbTransaction transaction, IntegrityOwner owner,
         IntegrityChunk chunk, DateTimeOffset databaseNow, CancellationToken token)
@@ -106,7 +108,7 @@ public sealed class IntegrityStageWriter : IIntegrityStageWriter
         Digest = chunk.Digest.ToArray(), StartedAt = now, Status = IntegrityScanStatus.Staging
     };
 
-    private static async Task PublishAsync(SecurityAnalysisDbContext db, IntegrityScopeState state, IntegrityScan scan,
+    private async Task PublishAsync(SecurityAnalysisDbContext db, IntegrityScopeState state, IntegrityScan scan,
         IntegrityOwner owner, IntegrityScope policy, DateTimeOffset now, CancellationToken token)
     {
         var comparer = policy.Kind == IntegrityScopeKind.Registry ? IntegrityChanges.RegistryKeys : StringComparer.Ordinal;
@@ -141,6 +143,10 @@ public sealed class IntegrityStageWriter : IIntegrityStageWriter
                 {
                     db.IntegrityChanges.AddRange(pending);
                     await db.SaveChangesAsync(token);
+                    if (timeline is not null)
+                        await timeline.WriteAsync(db, pending.Select(record => new EventTimelineEntry("integrity", record.ObservedAt, record.DeviceId, "device",
+                            $"完整性變更：{record.Key}", $"範圍 {record.ScopeId:D}；版本 {record.ScopeRevision}；類型 {record.Kind}；Agent {record.AgentId:D}{(record.CoverageGap ? "；採集有缺口" : "")}",
+                            $"/devices/{record.DeviceId:D}")).ToArray(), token);
                     foreach (var entry in pending) db.Entry(entry).State = EntityState.Detached;
                     pending.Clear();
                 }

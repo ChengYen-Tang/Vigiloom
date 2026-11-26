@@ -3,6 +3,7 @@ using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Web.Authentication;
 using Vigiloom.Modules.SecurityAnalysis.Application.Baseline;
+using Vigiloom.Web.HostMonitoring;
 
 namespace Vigiloom.Web.Api;
 
@@ -11,7 +12,7 @@ internal static class BaselineSettingsEndpoints
     public static void MapBaselineSettingsEndpoints(this WebApplication app)
     {
         app.MapPost("/api/v1/admin/devices/{deviceId:guid}/baseline-exceptions", async (Guid deviceId, BaselineExceptionInput input,
-            BaselineExceptions exceptions, HttpContext context, CancellationToken token) =>
+            BaselineAccess exceptions, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             return await ApiMutation.ExecuteAsync(context, async actor => (await exceptions.RecordAsync(deviceId, input.SourceKey,
@@ -26,7 +27,7 @@ internal static class BaselineSettingsEndpoints
             .Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
             .WithSummary("Record an administrator explanation for a baseline revision");
 
-        app.MapGet("/api/v1/devices/{deviceId:guid}/baseline", async (Guid deviceId, BaselineQuery query, HttpContext context, CancellationToken token) =>
+        app.MapGet("/api/v1/devices/{deviceId:guid}/baseline", async (Guid deviceId, BaselineAccess query, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await query.GetAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound();

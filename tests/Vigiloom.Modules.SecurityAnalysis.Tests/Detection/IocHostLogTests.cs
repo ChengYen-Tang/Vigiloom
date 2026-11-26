@@ -6,6 +6,7 @@ using System.Data.Common;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Contracts.Notifications;
+using Vigiloom.Contracts.Events;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
@@ -43,7 +44,8 @@ public sealed class IocHostLogTests(TestContext context)
             var log = new HostLogEntry(agent, id, Guid.CreateVersion7(), AgentLogSourceKind.WindowsEvent, "Sysmon", 1, now, now, xml, null, 3, null, null, null, null);
             var selection = new IocSourceSnapshot(IocSourceAvailability.Ready, source.Id, revision.Id, Convert.ToBase64String(activation.Version), revision.UpstreamVersion, "test", 1, 0);
             var notices = new Notices();
-            var handler = new IocHostLogHandler(new Source(selection), new Logs(log), TimeProvider.System, NullLogger<IocHostLogHandler>.Instance, notices);
+            var timeline = new Timeline();
+            var handler = new IocHostLogHandler(new Source(selection), new Logs(log), TimeProvider.System, NullLogger<IocHostLogHandler>.Instance, notices, timeline);
             var dispatch = new HostLogDispatch(agent, device, 0, [id]);
             await using var connection = new SqlConnection(database.ConnectionString);
             await connection.OpenAsync(token);
@@ -65,6 +67,19 @@ public sealed class IocHostLogTests(TestContext context)
             Assert.AreEqual("ioc", notice.Source);
             Assert.AreEqual(id, notice.EvidenceId);
             Assert.AreEqual(device, notice.ResourceId);
+            var entry = Assert.ContainsSingle(timeline.Items);
+            Assert.AreEqual("ioc", entry.Source);
+            Assert.AreEqual(device, entry.ResourceId);
+            Assert.Contains("192.0.2.1", entry.Summary);
+            Assert.AreEqual(now, entry.Time);
+            await using (var replay = (SqlTransaction)await connection.BeginTransactionAsync(token))
+            {
+                await handler.HandleAsync(new(Guid.CreateVersion7(), HostLogDispatch.IocMessageType, JsonSerializer.Serialize(dispatch)), connection, replay, token);
+                await replay.CommitAsync(token);
+            }
+            Assert.AreEqual(1, await verify.IocDetections.CountAsync(token));
+            Assert.HasCount(1, notices.Items);
+            Assert.HasCount(1, timeline.Items);
             var savedSource = await verify.IntelligenceSources.SingleAsync(token);
             savedSource.IocDetectionEnabled = false;
             await verify.SaveChangesAsync(token);
@@ -95,5 +110,12 @@ public sealed class IocHostLogTests(TestContext context)
         { Items.Add(request); return Task.CompletedTask; }
         public Task WriteBatchAsync(IReadOnlyList<NotificationRequest> requests, DbConnection connection, DbTransaction transaction, CancellationToken token)
         { Items.AddRange(requests); return Task.CompletedTask; }
+    }
+
+    private sealed class Timeline : IDetectionTimelineWriter
+    {
+        public List<EventTimelineEntry> Items { get; } = [];
+        public Task WriteAsync(SecurityAnalysisDbContext db, IReadOnlyList<EventTimelineEntry> entries, CancellationToken token)
+        { Items.AddRange(entries); return Task.CompletedTask; }
     }
 }

@@ -6,8 +6,8 @@
 @using Vigiloom.Modules.SecurityAnalysis.Application.Detection
 @using Vigiloom.Modules.AgentManagement.Application
 @using Vigiloom.Modules.Resources.Application
-@inject SigmaRuleInventory Inventory
-@inject SigmaRuleService Rules
+@inject Vigiloom.Web.HostMonitoring.SigmaRuleAccess Inventory
+@inject Vigiloom.Web.HostMonitoring.SigmaRuleAccess Rules
 @inject IDeviceManagement Devices
 @inject IHostLogHistory Logs
 @inject TimeProvider Clock

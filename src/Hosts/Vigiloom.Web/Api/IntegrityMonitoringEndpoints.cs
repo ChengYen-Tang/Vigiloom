@@ -1,6 +1,7 @@
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
+using Vigiloom.Web.HostMonitoring;
 
 namespace Vigiloom.Web.Api;
 
@@ -11,7 +12,7 @@ internal static class IntegrityMonitoringEndpoints
         var group = app.MapGroup("/api/v1/devices/{deviceId:guid}/integrity")
             .RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
         group.MapGet("", async (Guid deviceId, HttpContext context, IDeviceInventoryAgent ownership,
-            IntegrityQuery query, CancellationToken token) =>
+            IntegrityAccess query, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var resolved = await ownership.ResolveAsync(deviceId, token);
@@ -25,18 +26,18 @@ internal static class IntegrityMonitoringEndpoints
         }).Produces<IntegritySettingsStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
 
         group.MapGet("/changes", async (Guid deviceId, DateTimeOffset from, DateTimeOffset until, Guid? scopeId,
-            string? cursor, HttpContext context, IDeviceInventoryAgent ownership, IntegrityChangeQuery query, CancellationToken token) =>
+            string? cursor, HttpContext context, IDeviceInventoryAgent ownership, IntegrityAccess query, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "private, no-store";
             var resolved = await ownership.ResolveAsync(deviceId, token);
             if (!resolved.Exists) return Results.NotFound();
-            try { return Results.Ok(await query.GetAsync(deviceId, from, until, scopeId, cursor, token)); }
+            try { return Results.Ok(await query.GetChangesAsync(deviceId, from, until, scopeId, cursor, token)); }
             catch (ArgumentException) { return Results.BadRequest(); }
         }).Produces<IntegrityChangePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
 
         group.MapGet("/scopes/{scopeId:guid}/snapshots/{snapshotId:guid}/chunks/{chunkIndex:int}",
             async (Guid deviceId, Guid scopeId, Guid snapshotId, int chunkIndex, HttpContext context,
-                IDeviceInventoryAgent ownership, IntegrityQuery query, CancellationToken token) =>
+                IDeviceInventoryAgent ownership, IntegrityAccess query, CancellationToken token) =>
             {
                 context.Response.Headers.CacheControl = "private, no-store";
                 if (scopeId.Version != 7 || snapshotId.Version != 7 || chunkIndex is < 0 or >= IntegrityChunkCodec.MaximumChunks)

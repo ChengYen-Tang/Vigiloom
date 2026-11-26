@@ -51,6 +51,13 @@ builder.Services.AddScoped<TimelineWriter>();
 builder.Services.AddScoped<TimelineReader>();
 builder.Services.AddScoped<TimelineLogCleanup>();
 builder.Services.AddServiceDiscovery();
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Security:Url"]))
+{
+    builder.Services.AddHttpClient<RemoteSecurityRetention>((services, client) =>
+        client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Security:Url"]!.TrimEnd('/') + "/"))
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+    builder.Services.AddScoped<IAuditRetentionSource>(services => services.GetRequiredService<RemoteSecurityRetention>());
+}
 builder.Services.AddHttpClient("Resources", (services, client) =>
 {
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources").TrimEnd('/') + "/");
@@ -69,6 +76,7 @@ builder.Services.AddScoped<LineDeliveryQueue>();
 builder.Services.AddScoped<LineChannel>();
 builder.Services.AddScoped<LineDeliveryStatus>();
 builder.Services.AddScoped<NotificationReader>();
+builder.Services.AddScoped<BaselineExceptionReader>();
 builder.Services.AddScoped<OperationAuditQueryService>();
 builder.Services.AddSingleton(services =>
 {

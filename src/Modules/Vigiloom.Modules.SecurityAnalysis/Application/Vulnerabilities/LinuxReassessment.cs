@@ -6,12 +6,13 @@ using Vigiloom.Contracts.Notifications;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 
 /// <summary>Reassesses Linux devices when their inventory or selected vendor revision changes.</summary>
 public sealed class LinuxReassessment(IDbContextFactory<SecurityAnalysisDbContext> contexts, IAgentOwnerResolver resolver,
-    IAgentOwnerFence owners, TimeProvider clock, ILogger<LinuxReassessment> logger, INotificationWriter? notifications = null, IDevicePingSource? devices = null)
+    IAgentOwnerFence owners, TimeProvider clock, ILogger<LinuxReassessment> logger, INotificationWriter? notifications = null, IDevicePingSource? devices = null, IDetectionTimelineWriter? timeline = null)
 {
     private const int PageSize = 100;
     private static readonly TimeSpan InventoryMaximumAge = TimeSpan.FromDays(14);
@@ -73,7 +74,7 @@ public sealed class LinuxReassessment(IDbContextFactory<SecurityAnalysisDbContex
                         ? await new DebianPackageEvaluation(contexts, clock).EvaluateAsync(owner, InventoryMaximumAge, token)
                         : await new UbuntuPackageEvaluation(contexts, clock).EvaluateAsync(owner, InventoryMaximumAge, token);
                     if (assessment.Status == LinuxEvaluationStatus.Ready)
-                        await new LinuxAssessmentWriter(contexts, owners, clock, notifications, devices).WriteAsync(owner, assessment, InventoryMaximumAge, token);
+                        await new LinuxAssessmentWriter(contexts, owners, clock, notifications, devices, timeline).WriteAsync(owner, assessment, InventoryMaximumAge, token);
                 }
                 catch (Exception error) when (!token.IsCancellationRequested && error is InvalidDataException or DbException or DbUpdateException)
                 {

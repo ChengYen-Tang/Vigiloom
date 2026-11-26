@@ -10,6 +10,8 @@ internal static class HistoryEndpoints
     internal static void MapHistoryEndpoints(this WebApplication app)
     {
         var history = app.MapGroup("/internal/v1/history");
+        history.MapGet("/devices/{deviceId:guid}/baseline-exceptions", (Guid deviceId, BaselineExceptionReader reader, CancellationToken token) =>
+            reader.GetRecentAsync(deviceId, token));
         history.MapGet("/notifications", async (int? page, string? source, DateOnly? start, DateOnly? end, NotificationReader reader, CancellationToken token) =>
         {
             var query = new NotificationQuery(page ?? 1, source, start, end);

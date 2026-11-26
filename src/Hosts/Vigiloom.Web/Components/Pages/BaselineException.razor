@@ -5,8 +5,8 @@
 @using System.Security.Claims
 @using Vigiloom.Contracts.Agent.Baseline
 @using Vigiloom.Modules.SecurityAnalysis.Application.Baseline
-@inject BaselineQuery Query
-@inject BaselineExceptions Exceptions
+@inject Vigiloom.Web.HostMonitoring.BaselineAccess Query
+@inject Vigiloom.Web.HostMonitoring.BaselineAccess Exceptions
 @inject NavigationManager Navigation
 @inject ILogger<BaselineException> Logger
 

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
+using Vigiloom.Modules.SecurityAnalysis.Tests.Fixtures;
 using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.AlertingOperations.Application;
@@ -178,9 +179,12 @@ public sealed class MsrcDocumentSqlTests(TestContext context)
                     new FinalInventoryExpiryClock(DateTimeOffset.UtcNow), TimeSpan.FromHours(1), token));
                 await transaction.RollbackAsync(token);
             }
-            var writer = new WindowsAssessmentWriter(factory, new OwnerFence(true), TimeProvider.System);
+            var timeline = new RecordingDetectionTimeline();
+            var writer = new WindowsAssessmentWriter(factory, new OwnerFence(true), TimeProvider.System, timeline: timeline);
             Assert.AreEqual(WindowsWriteResult.Written, await writer.WriteAsync(owner, evaluation, TimeSpan.FromDays(14), token));
             Assert.AreEqual(WindowsWriteResult.AlreadyWritten, await writer.WriteAsync(owner, evaluation, TimeSpan.FromDays(14), token));
+            Assert.HasCount(evaluation.Cves!.Count, timeline.Entries);
+            Assert.IsTrue(timeline.Entries.All(x => x.Source == "vulnerability" && x.ResourceId == owner.DeviceId));
             var conflicting = evaluation with { Cves = evaluation.Cves!.Select(x => x with { RebootObserved = !x.RebootObserved }).ToArray() };
             Assert.AreEqual(WindowsWriteResult.Conflict, await writer.WriteAsync(owner, conflicting, TimeSpan.FromDays(14), token));
             var failingOptions = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString,

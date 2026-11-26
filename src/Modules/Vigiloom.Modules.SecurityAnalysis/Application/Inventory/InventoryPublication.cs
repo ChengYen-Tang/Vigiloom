@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
+using Vigiloom.Contracts.Events;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 
@@ -10,7 +12,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 internal static class InventoryPublication
 {
     internal static async Task FinishAsync(SecurityAnalysisDbContext db, InventorySourceState state,
-        InventorySnapshot snapshot, DateTimeOffset now, CancellationToken cancellationToken)
+        InventorySnapshot snapshot, DateTimeOffset now, CancellationToken cancellationToken, IDetectionTimelineWriter? timeline = null)
     {
         if (state.AgentId != snapshot.AgentId || state.Source != snapshot.Source ||
             state.ActiveGeneration != snapshot.Generation || snapshot.Status != InventorySnapshotStatus.Staging ||
@@ -96,6 +98,10 @@ internal static class InventoryPublication
             {
                 db.InventoryChanges.AddRange(batch);
                 await db.SaveChangesAsync(cancellationToken);
+                if (timeline is not null)
+                    await timeline.WriteAsync(db, batch.Select(record => new EventTimelineEntry("inventory", record.ObservedAt, record.DeviceId, "device",
+                        $"資產盤點變更：{record.Key}", $"來源 {record.Source}；類型 {record.Kind}；Agent {record.AgentId:D}；世代 {record.Generation}",
+                        $"/devices/{record.DeviceId:D}")).ToArray(), cancellationToken);
                 foreach (var record in batch) db.Entry(record).State = EntityState.Detached;
                 batch.Clear();
             }

@@ -362,7 +362,14 @@ builder.Services.AddScoped<IAgentVersionDelivery>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<AgentVersionAssignments>()
         : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>());
-builder.Services.AddScoped<YaraScans>();
+builder.Services.AddScoped<Vigiloom.Modules.AgentManagement.Application.YaraScans>();
+builder.Services.AddScoped<Vigiloom.Web.AgentVersions.YaraScanAccess>();
+builder.Services.AddHttpClient("security", (services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Security:Url"] ?? "http://vigiloom-security";
+    client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<AgentPackageAccess>();
 builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentUpdateAccess>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
@@ -434,6 +441,7 @@ builder.Services.AddScoped<IInventoryStageWriter, InventoryStageWriter>();
 builder.Services.AddScoped<IInventoryStatusReader, InventoryStatusReader>();
 builder.Services.AddScoped<IInventorySettingsReader, InventorySettingsReader>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityConfiguration>();
+builder.Services.AddScoped<Vigiloom.Web.AgentVersions.IntegritySettingsAccess>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.Integrity.IIntegritySettingsReader, Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegritySettingsReader>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.Integrity.IIntegrityStageWriter, Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityStageWriter>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.Baseline.IBaselineWriter, Vigiloom.Modules.SecurityAnalysis.Application.Baseline.BaselineWriter>();
@@ -442,6 +450,7 @@ builder.Services.AddScoped<Vigiloom.Contracts.Agent.Integrity.IIntegrityStatusRe
 builder.Services.AddScoped<AgentIntegritySettings>();
 builder.Services.AddScoped<AgentIntegrityStatus>();
 builder.Services.AddScoped<InventoryConfiguration>();
+builder.Services.AddScoped<Vigiloom.Web.AgentVersions.InventorySettingsAccess>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligenceStatus>();
 builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IKevCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.KevCatalog>();
 builder.Services.AddScoped<Vigiloom.Contracts.Intelligence.IAdvisoryCatalog, Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories.AdvisoryCatalog>();
@@ -460,9 +469,10 @@ builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelli
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.IntelligenceRevocation>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.KevOfflineImport>();
 builder.Services.AddScoped<AgentInventorySettings>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.RemoteSecuritySettings>();
 builder.Services.AddScoped<AgentInventorySettingsMonitoring>(services => new(
     services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>(), services.GetRequiredService<IDeviceAgentSource>(),
-    services.GetRequiredService<IInventorySettingsReader>(), services.GetRequiredService<TimeProvider>(),
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Security:Url"]) ? services.GetRequiredService<IInventorySettingsReader>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteSecuritySettings>(), services.GetRequiredService<TimeProvider>(),
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>()));
 builder.Services.AddScoped<AgentInventoryStatus>();
 builder.Services.AddScoped<DeviceInventoryAgent>();
@@ -482,11 +492,24 @@ builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Baselin
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines.CustomBaselineStage>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities.VulnerabilityMonitoring>();
 builder.Services.AddScoped<InventoryQuery>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.InventoryAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.IntegrityAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.DetectionAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.VulnerabilityAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.BaselineAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.IntelligenceStatusAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.IntelligencePublicationAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.IntelligenceSettingsAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.CustomBaselineAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.IntelligenceImportAccess>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.SigmaRuleAccess>();
+builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Detection.SigmaEvidenceReader>();
+builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.SigmaEvidenceAccess>();
 builder.Services.AddScoped<IntegrityQuery>();
 builder.Services.AddScoped<IntegrityChangeQuery>();
 builder.Services.AddScoped<AgentIntegritySettingsMonitoring>(services => new(
     services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>(), services.GetRequiredService<IDeviceAgentSource>(),
-    services.GetRequiredService<Vigiloom.Contracts.Agent.Integrity.IIntegritySettingsReader>(), services.GetRequiredService<TimeProvider>(),
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Security:Url"]) ? services.GetRequiredService<Vigiloom.Contracts.Agent.Integrity.IIntegritySettingsReader>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteSecuritySettings>(), services.GetRequiredService<TimeProvider>(),
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>()));
 builder.Services.AddScoped<InventoryChangeQuery>();
 builder.Services.AddScoped<AgentReceiverMonitoring>();

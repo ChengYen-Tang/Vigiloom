@@ -164,7 +164,8 @@ public sealed class InventoryStageWriterTests
             await connection.OpenAsync(token);
             var now = DateTimeOffset.UtcNow;
             var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
-            var writer = new InventoryStageWriter();
+            var timeline = new Fixtures.RecordingDetectionTimeline();
+            var writer = new InventoryStageWriter(timeline);
             InventoryChunk Chunk(long generation, string version)
             {
                 InventoryEntry[] entries = [new("package", "package", version, "x64")];
@@ -194,6 +195,30 @@ public sealed class InventoryStageWriterTests
             Assert.AreEqual(1, await db.InventoryChunks.CountAsync(token));
             Assert.AreEqual(1, await db.InventorySnapshots.CountAsync(token));
             Assert.AreEqual(0, await db.InventoryChanges.CountAsync(token));
+            Assert.IsEmpty(timeline.Entries);
+            await db.Database.ExecuteSqlRawAsync("DROP TRIGGER [security].[TestFailChangeInsert]", token);
+            await using (var failedTimeline = await connection.BeginTransactionAsync(token))
+            {
+                var failingWriter = new InventoryStageWriter(new Fixtures.FailingDetectionTimeline());
+                await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => failingWriter.StageAsync(connection, failedTimeline, owner, Chunk(2, "2"), now, token));
+                await failedTimeline.RollbackAsync(token);
+            }
+            Assert.AreEqual(0, await db.InventoryChanges.CountAsync(token));
+            await using (var replacement = await connection.BeginTransactionAsync(token))
+            {
+                Assert.AreEqual(InventoryStageResult.Accepted, await writer.StageAsync(connection, replacement, owner, Chunk(2, "2"), now, token));
+                await replacement.CommitAsync(token);
+            }
+            var entry = Assert.ContainsSingle(timeline.Entries);
+            Assert.AreEqual("inventory", entry.Source);
+            Assert.AreEqual(owner.DeviceId, entry.ResourceId);
+            Assert.Contains("package", entry.Summary);
+            await using (var duplicate = await connection.BeginTransactionAsync(token))
+            {
+                Assert.AreEqual(InventoryStageResult.Expired, await writer.StageAsync(connection, duplicate, owner, Chunk(2, "2"), now, token));
+                await duplicate.CommitAsync(token);
+            }
+            Assert.HasCount(1, timeline.Entries);
         }, TestContext.CancellationToken);
 
     [TestMethod]

@@ -79,6 +79,7 @@ public static class WorkerHost
         builder.Services.AddScoped<IAuditRetentionSource, SecurityAuditRetention>();
         builder.Services.AddWindowsService(options => options.ServiceName = "Vigiloom Worker");
         builder.Services.AddSystemd();
+        var securityCutover = SecurityCutover.IsEnabled(builder.Configuration);
         builder.Services.AddVigiloomScheduling(builder.Configuration);
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddScoped<WorkerDiagnosticsStore>();
@@ -195,19 +196,24 @@ public static class WorkerHost
             builder.Services.AddHostedService<PingRetentionSchedule>();
         }
         builder.Services.AddHostedService<AgentInboxRetentionSchedule>();
-        builder.Services.AddHostedService<InventoryExpirySchedule>();
-        builder.Services.AddHostedService<IntelligenceRefreshSchedule>();
-        builder.Services.AddHostedService<DebianRefreshSchedule>();
-        builder.Services.AddHostedService<UbuntuRefreshSchedule>();
-        builder.Services.AddHostedService<MsrcRefreshSchedule>();
-        builder.Services.AddHostedService<EpssRefreshSchedule>();
-        builder.Services.AddHostedService<LinuxReassessmentSchedule>();
-        builder.Services.AddHostedService<WindowsReassessmentSchedule>();
-        builder.Services.AddHostedService<AdvisoryRefreshSchedule>();
-        builder.Services.AddHostedService<SigmaRefreshSchedule>();
-        builder.Services.AddHostedService<SignatureRefreshSchedule>();
-        builder.Services.AddHostedService<BaselineRefreshSchedule>();
-        builder.Services.AddHostedService<IntegrityExpirySchedule>();
+        if (securityCutover)
+            builder.Services.AddHostedService<RetiredSecuritySchedule>();
+        else
+        {
+            builder.Services.AddHostedService<InventoryExpirySchedule>();
+            builder.Services.AddHostedService<IntelligenceRefreshSchedule>();
+            builder.Services.AddHostedService<DebianRefreshSchedule>();
+            builder.Services.AddHostedService<UbuntuRefreshSchedule>();
+            builder.Services.AddHostedService<MsrcRefreshSchedule>();
+            builder.Services.AddHostedService<EpssRefreshSchedule>();
+            builder.Services.AddHostedService<LinuxReassessmentSchedule>();
+            builder.Services.AddHostedService<WindowsReassessmentSchedule>();
+            builder.Services.AddHostedService<AdvisoryRefreshSchedule>();
+            builder.Services.AddHostedService<SigmaRefreshSchedule>();
+            builder.Services.AddHostedService<SignatureRefreshSchedule>();
+            builder.Services.AddHostedService<BaselineRefreshSchedule>();
+            builder.Services.AddHostedService<IntegrityExpirySchedule>();
+        }
         builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
         if (string.IsNullOrWhiteSpace(builder.Configuration["Services:HostMonitoring:Url"]))
         {

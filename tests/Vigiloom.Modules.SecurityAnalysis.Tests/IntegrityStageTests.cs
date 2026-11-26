@@ -136,7 +136,8 @@ public sealed class IntegrityStageTests
             var input = new IntegrityScopeInput(IntegrityScopeKind.Directory, "/srv/app", true,
                 ImmutableArray<string>.Empty, 3600, 1000, 1048576, 10485760, 16);
             var created = (await config.CreateAsync(device, input, actor, token)).Scope!;
-            var writer = new IntegrityStageWriter();
+            var timeline = new Fixtures.RecordingDetectionTimeline();
+            var writer = new IntegrityStageWriter(timeline);
             var now = DateTimeOffset.UtcNow;
             var first = new IntegrityItem(IntegrityKey.Create(IntegrityItemKind.File, ["first"]), IntegrityItemKind.File, new string('a', 64));
             var second = new IntegrityItem(IntegrityKey.Create(IntegrityItemKind.File, ["second"]), IntegrityItemKind.File, new string('b', 64));
@@ -158,6 +159,7 @@ public sealed class IntegrityStageTests
 
             Assert.AreEqual(IntegrityStageResult.Accepted, await Stage(owner, Chunk(1, 1, IntegrityScanOutcome.Complete, [first, second])));
             Assert.AreEqual(0, await db.IntegrityChanges.CountAsync(token));
+            Assert.IsEmpty(timeline.Entries);
             var query = new IntegrityQuery(new Factory(options));
             var current = await query.GetAsync(device, owner.AgentId, token);
             Assert.HasCount(1, current.Scopes);
@@ -177,12 +179,26 @@ public sealed class IntegrityStageTests
             Assert.AreEqual(IntegrityCompletion.Partial, state.LastStatus);
             Assert.AreEqual(IntegrityPartialReason.AccessDenied, state.LastPartialReason);
             Assert.AreEqual(0, await db.IntegrityChanges.CountAsync(token));
+            Assert.IsEmpty(timeline.Entries);
+            await using (var failedTimeline = await db.Database.BeginTransactionAsync(token))
+            {
+                var failing = new IntegrityStageWriter(new Fixtures.FailingDetectionTimeline());
+                await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => failing.StageAsync(db.Database.GetDbConnection(), failedTimeline.GetDbTransaction(), owner,
+                    Chunk(3, 1, IntegrityScanOutcome.Complete, [first], true), now, token));
+                await failedTimeline.RollbackAsync(token);
+            }
+            Assert.AreEqual(0, await db.IntegrityChanges.CountAsync(token));
             Assert.AreEqual(IntegrityStageResult.Accepted, await Stage(owner, Chunk(3, 1, IntegrityScanOutcome.Complete, [first], true)));
             db.ChangeTracker.Clear();
             var removed = await db.IntegrityChanges.SingleAsync(token);
             Assert.AreEqual(3, removed.Kind);
             Assert.AreEqual(second.Key, removed.Key);
             Assert.IsTrue(removed.CoverageGap);
+            var entry = Assert.ContainsSingle(timeline.Entries);
+            Assert.AreEqual("integrity", entry.Source);
+            Assert.AreEqual(device, entry.ResourceId);
+            Assert.Contains(second.Key, entry.Summary);
+            Assert.Contains("採集有缺口", entry.Evidence);
             var history = await new IntegrityChangeQuery(new Factory(options)).GetAsync(device, now.AddMinutes(-1), now.AddMinutes(1), null, null, token);
             Assert.HasCount(1, history.Items);
             Assert.AreEqual(IntegrityChangeType.Removed, history.Items[0].Kind);
@@ -190,6 +206,8 @@ public sealed class IntegrityStageTests
             Assert.IsEmpty((await new IntegrityChangeQuery(new Factory(options)).GetAsync(Guid.CreateVersion7(), now.AddMinutes(-1), now.AddMinutes(1), null, null, token)).Items);
             Assert.IsNull(await query.GetChunkAsync(device, owner.AgentId, created.Scope.Id, baseline.SnapshotId.Value, 0, token));
             Assert.AreEqual(IntegrityStageResult.Expired, await Stage(owner, Chunk(2, 1, IntegrityScanOutcome.Complete, [second])));
+            Assert.AreEqual(IntegrityStageResult.Expired, await Stage(owner, Chunk(3, 1, IntegrityScanOutcome.Complete, [first], true)));
+            Assert.HasCount(1, timeline.Entries);
             Assert.AreEqual(IntegrityStageResult.Conflict, await Stage(owner with { DeviceId = Guid.CreateVersion7() }, Chunk(4, 1, IntegrityScanOutcome.Complete, [first])));
             var updated = (await config.UpdateAsync(device, created.Scope.Id, input with { Root = "/srv/new" }, created.Version, actor, token)).Scope!;
             Assert.AreEqual(IntegrityStageResult.Conflict, await Stage(owner, Chunk(4, 1, IntegrityScanOutcome.Complete, [])));

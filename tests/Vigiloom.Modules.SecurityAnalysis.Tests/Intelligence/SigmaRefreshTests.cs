@@ -12,6 +12,7 @@ using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Events;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Modules.AlertingOperations.Application;
@@ -222,7 +223,8 @@ public sealed class SigmaRefreshTests(TestContext context)
                 await management.SetAsync(sourceId, "rules/example.yml", olderTest.TestId, true, version, actor, token));
             var device = Guid.CreateVersion7();
             var dispatch = new HostLogDispatch(agent, device, 1, [oldMatch.MessageId, newMatch.MessageId]);
-            var handler = new HostLogDispatchHandler(contexts, enabledRules, catalog, reader, clock, new NotificationWriter());
+            var timeline = new DetectionTimeline();
+            var handler = new HostLogDispatchHandler(contexts, enabledRules, catalog, reader, clock, new NotificationWriter(), timeline);
             await using (var connection = new SqlConnection(database.ConnectionString))
             {
                 await connection.OpenAsync(token);
@@ -237,6 +239,10 @@ public sealed class SigmaRefreshTests(TestContext context)
                 Assert.AreEqual(oldMatch.MessageId, result.MessageId);
                 Assert.AreEqual(olderTest.TestId, result.TestId);
             }
+            var timelineEntry = Assert.ContainsSingle(timeline.Items);
+            Assert.AreEqual("sigma", timelineEntry.Source);
+            Assert.AreEqual(device, timelineEntry.ResourceId);
+            Assert.AreEqual($"/events/rules/{olderTest.TestId:D}", timelineEntry.RuleLink);
             await using (var db = new OperationsDbContext(operations))
             {
                 var notification = await db.Set<Notification>().SingleAsync(token);
@@ -525,8 +531,9 @@ public sealed class SigmaRefreshTests(TestContext context)
             var activeVersion = activation.Version.ToArray();
             var enabled = new SigmaEnabledRules(contexts, new SigmaRuleSetLoader(new SigmaCatalog(contexts, clock)));
             Assert.HasCount(1, (await enabled.LoadAsync(token)).Rules.Correlations);
+            var correlationTimeline = new DetectionTimeline();
             var handler = new HostLogDispatchHandler(contexts, enabled, new SigmaCatalog(contexts, clock),
-                new ReplayLogReader([first, second, third, missing]), clock, new NotificationWriter());
+                new ReplayLogReader([first, second, third, missing]), clock, new NotificationWriter(), correlationTimeline);
             var earlierAnchor = new OutboxMessage(Guid.CreateVersion7(), HostLogDispatch.MessageType,
                 JsonSerializer.Serialize(new HostLogDispatch(agent, device, 1, [third.MessageId])));
             var delayedBatch = new OutboxMessage(Guid.CreateVersion7(), HostLogDispatch.MessageType,
@@ -539,11 +546,14 @@ public sealed class SigmaRefreshTests(TestContext context)
                     await handler.HandleAsync(earlierAnchor, connection, transaction, token);
                     await transaction.CommitAsync(token);
                 }
+                var unknown = Assert.ContainsSingle(correlationTimeline.Items.Where(x => x.Evidence.Contains(third.MessageId.ToString("D"))));
+                Assert.Contains("未評估", unknown.Summary);
                 await using (var transaction = (SqlTransaction)await connection.BeginTransactionAsync(token))
                 {
                     await handler.HandleAsync(delayedBatch, connection, transaction, token);
                     await transaction.RollbackAsync(token);
                 }
+                correlationTimeline.Items.Clear();
                 var before = (await db.SigmaDetectionResults.AsNoTracking().Where(x => x.MessageId == third.MessageId).ToArrayAsync(token))
                     .Single(x => x.ActivationVersion.AsSpan().SequenceEqual(activeVersion));
                 Assert.AreEqual((int)SigmaMatch.Unknown, before.Result);
@@ -555,6 +565,9 @@ public sealed class SigmaRefreshTests(TestContext context)
                     await handler.HandleAsync(delayedBatch, connection, transaction, token);
                     await transaction.CommitAsync(token);
                 }
+                var confirmed = Assert.ContainsSingle(correlationTimeline.Items.Where(x => x.Summary.Contains("後續命中") && x.Evidence.Contains(third.MessageId.ToString("D"))));
+                Assert.AreEqual(device, confirmed.ResourceId);
+                Assert.Contains("先前未評估", confirmed.Evidence);
             }
             var after = (await db.SigmaDetectionResults.AsNoTracking().Where(x => x.MessageId == third.MessageId).ToArrayAsync(token))
                 .Single(x => x.ActivationVersion.AsSpan().SequenceEqual(activeVersion));
@@ -980,6 +993,12 @@ public sealed class SigmaRefreshTests(TestContext context)
             if (BeforeReturn is not null) await BeforeReturn(token);
             return Events.Where(x => x.AgentId == agentId && messageIds.Contains(x.MessageId)).ToArray();
         }
+    }
+    private sealed class DetectionTimeline : IDetectionTimelineWriter
+    {
+        public List<EventTimelineEntry> Items { get; } = [];
+        public Task WriteAsync(SecurityAnalysisDbContext db, IReadOnlyList<EventTimelineEntry> entries, CancellationToken token)
+        { Items.AddRange(entries); return Task.CompletedTask; }
     }
     private sealed class TestClock(DateTimeOffset now) : TimeProvider
     { public override DateTimeOffset GetUtcNow() => now; public void Advance(TimeSpan value) => now += value; }

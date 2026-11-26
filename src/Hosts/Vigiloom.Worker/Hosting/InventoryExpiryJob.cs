@@ -4,11 +4,12 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 
 namespace Vigiloom.Worker.Hosting;
 
-public sealed class InventoryExpiryJob(InventoryExpiry expiry, ILogger<InventoryExpiryJob> logger)
+public sealed class InventoryExpiryJob(InventoryExpiry expiry, ILogger<InventoryExpiryJob> logger, IConfiguration configuration)
 {
     [AutomaticRetry(Attempts = 3)]
     public async Task RunAsync(CancellationToken token)
     {
+        if (SecurityCutover.IsEnabled(configuration)) return;
         var count = await expiry.RunAsync(token);
         if (count > 0) logger.LogInformation("Expired {Count} incomplete inventory snapshots", count);
     }

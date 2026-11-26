@@ -4,11 +4,11 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 
 namespace Vigiloom.Worker.Hosting;
 
-public sealed class WindowsReassessmentJob(WindowsReassessment reassessment)
+public sealed class WindowsReassessmentJob(WindowsReassessment reassessment, IConfiguration configuration)
 {
     [DisableConcurrentExecution(120)]
     [AutomaticRetry(Attempts = 0)]
-    public Task RunAsync(CancellationToken token) => reassessment.RunAsync(token);
+    public Task RunAsync(CancellationToken token) => SecurityCutover.IsEnabled(configuration) ? Task.CompletedTask : reassessment.RunAsync(token);
 }
 
 internal sealed class WindowsReassessmentSchedule(IRecurringJobManager jobs) : IHostedService

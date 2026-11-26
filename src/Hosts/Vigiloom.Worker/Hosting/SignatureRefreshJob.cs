@@ -4,12 +4,13 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
 
 namespace Vigiloom.Worker.Hosting;
 
-public sealed class SignatureRefreshJob(SignatureRefresh refresh, ILogger<SignatureRefreshJob> logger)
+public sealed class SignatureRefreshJob(SignatureRefresh refresh, ILogger<SignatureRefreshJob> logger, IConfiguration configuration)
 {
     [DisableConcurrentExecution(120)]
     [AutomaticRetry(Attempts = 0)]
     public async Task RunAsync(CancellationToken token)
     {
+        if (SecurityCutover.IsEnabled(configuration)) return;
         var result = await refresh.RunDueAsync(token);
         if (result == SignatureRefreshResult.Failed) throw new InvalidOperationException("Signature-Base source refresh failed; see source status.");
         if (result == SignatureRefreshResult.Conflict) logger.LogWarning("Signature-Base source refresh ended with {Result}", result);

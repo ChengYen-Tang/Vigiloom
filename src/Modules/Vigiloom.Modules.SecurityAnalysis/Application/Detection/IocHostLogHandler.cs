@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Contracts.Notifications;
+using Vigiloom.Contracts.Events;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.SignatureBase;
@@ -15,7 +16,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 /// <summary>Matches received host events against the selected IOC source.</summary>
 internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, TimeProvider clock,
-    ILogger<IocHostLogHandler> logger, INotificationWriter? notifications = null) : IOutboxHandler
+    ILogger<IocHostLogHandler> logger, INotificationWriter? notifications = null, IDetectionTimelineWriter? timeline = null) : IOutboxHandler
 {
     public string MessageType => HostLogDispatch.IocMessageType;
 
@@ -57,12 +58,19 @@ internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, 
         if (current is null || !current.Enabled || !current.IocDetectionEnabled) return;
         if (active is null || active.RevisionId != revisionId || Convert.ToBase64String(active.Version) != selection.ActivationVersion)
             throw new InvalidOperationException("The active IOC source changed during evaluation.");
+        var messageIds = dispatch.MessageIds.ToArray();
+        var existing = (await db.IocDetections.AsNoTracking()
+            .Where(x => x.AgentId == dispatch.AgentId && x.RevisionId == revisionId && messageIds.Contains(x.MessageId))
+            .Select(x => new { x.MessageId, x.Kind, x.SourceLine, x.Field }).ToArrayAsync(cancellationToken))
+            .Select(x => (x.MessageId, x.Kind, x.SourceLine, x.Field)).ToHashSet();
         var now = clock.GetUtcNow();
         var notices = new List<NotificationRequest>();
+        var timelineEntries = new List<EventTimelineEntry>();
         foreach (var log in events)
         {
             foreach (var match in matcher.Match(HostEventDecoder.Decode(log)).Distinct())
             {
+                if (!existing.Add((log.MessageId, match.Kind, match.SourceLine, match.Field))) continue;
                 db.IocDetections.Add(new IocDetection
                 {
                     AgentId = dispatch.AgentId, DeviceId = dispatch.DeviceId, MessageId = log.MessageId,
@@ -70,6 +78,17 @@ internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, 
                     Field = match.Field, SourceLine = match.SourceLine, OccurredAt = log.OccurredAt,
                     ReceivedAt = log.ReceivedAt, EvaluatedAt = now
                 });
+                if (timeline is not null)
+                {
+                    timelineEntries.Add(new("ioc", log.ReceivedAt, dispatch.DeviceId, "device",
+                        $"IOC 比對線索：{match.Kind} {match.Value}", $"版本 {revisionId:D}；事件 {dispatch.AgentId:D}/{log.MessageId:D}",
+                        $"/devices/{dispatch.DeviceId:D}"));
+                    if (timelineEntries.Count == 8)
+                    {
+                        await timeline.WriteAsync(db, timelineEntries, cancellationToken);
+                        timelineEntries.Clear();
+                    }
+                }
                 if (notifications is not null)
                     notices.Add(new(Guid.CreateVersion7(), "ioc", log.OccurredAt ?? log.ReceivedAt, "IOC match",
                         $"{match.Kind}: {match.Value}; Field: {match.Field}; Intelligence version: {revisionId:D}; Event: {log.AgentId:D}/{log.MessageId:D}. Further investigation is required.",
@@ -77,6 +96,8 @@ internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, 
             }
         }
         await db.SaveChangesAsync(cancellationToken);
+        if (timeline is not null && timelineEntries.Count > 0)
+            await timeline.WriteAsync(db, timelineEntries, cancellationToken);
         if (notifications is not null && notices.Count > 0)
             foreach (var batch in notices.Chunk(200)) await notifications.WriteBatchAsync(batch, connection, transaction, cancellationToken);
 

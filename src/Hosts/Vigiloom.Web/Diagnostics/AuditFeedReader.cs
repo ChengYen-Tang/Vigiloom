@@ -5,11 +5,12 @@ using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.Resources.Application;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using System.Security.Claims;
+using System.Net.Http.Json;
 
 namespace Vigiloom.Web.Diagnostics;
 
 /// <summary>Routes one source at a time to its owning module; existing audit API stays unchanged.</summary>
-internal sealed class AuditFeedReader(IdentityAuditReader identity, DeviceAuditFeed devices, AgentAuditFeed agent, SchedulingAuditFeed scheduling, InventoryAuditFeed inventory, IConfiguration configuration, IServiceProvider services)
+internal sealed class AuditFeedReader(IdentityAuditReader identity, DeviceAuditFeed devices, AgentAuditFeed agent, SchedulingAuditFeed scheduling, InventoryAuditFeed inventory, IConfiguration configuration, IServiceProvider services, IHttpClientFactory clients)
 {
     public static AuditFeedSource? Parse(string? value) => value switch
     {
@@ -40,9 +41,18 @@ internal sealed class AuditFeedReader(IdentityAuditReader identity, DeviceAuditF
                     ? await agent.QueryAsync(source, query, token)
                     : await services.GetRequiredService<RemoteHostAuditFeed>().QueryAsync(source, query, token),
             AuditFeedSource.Scheduling => Map(await scheduling.QueryAsync(query.From, query.To, query.Page, token)),
-            AuditFeedSource.InventorySettings => await inventory.QueryAsync(query, token),
+            AuditFeedSource.InventorySettings => string.IsNullOrWhiteSpace(configuration["Services:Security:Url"])
+                ? await inventory.QueryAsync(query, token) : await SecurityInventoryAsync(query, token),
             _ => throw new ArgumentException("Unsupported audit source.", nameof(source))
         };
+    }
+
+    private async Task<AuditFeedPage> SecurityInventoryAsync(OperationAuditQuery query, CancellationToken token)
+    {
+        using var response = await clients.CreateClient("security").PostAsJsonAsync("internal/v1/inventory-settings/audit", query, token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AuditFeedPage>(cancellationToken: token)
+            ?? throw new InvalidOperationException("Security returned an empty audit page.");
     }
 
     private static AuditFeedPage Map(SchedulingAuditPage page) => new(AuditFeedSource.Scheduling,
