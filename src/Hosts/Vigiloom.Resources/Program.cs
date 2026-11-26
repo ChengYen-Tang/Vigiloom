@@ -122,7 +122,10 @@ internalApi.MapInternalGroupManagement();
 internalApi.MapInternalPackages();
 internalApi.MapInternalAgentRegistration();
 internalApi.MapPost("/application-candidates/observe", async (ApplicationObservation request, ApplicationDiscovery discovery, CancellationToken token) =>
-    Results.Ok(await discovery.ObserveAsync(request, token)));
+{
+    try { return Results.Ok(await discovery.ObserveAsync(request, token)); }
+    catch (ApplicationDiscoveryBusyException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
+});
 internalApi.MapPost("/self-services/register", async (ApplicationObservation request, SelfServiceRegistration registration, CancellationToken token) =>
     await registration.RegisterAsync(request, token) is { } id ? Results.Ok(id) : Results.BadRequest());
 internalApi.MapPost("/application-services/{id:guid}/state", async (Guid id, ApplicationStateChange request, ApplicationLifecycle lifecycle, CancellationToken token) =>
