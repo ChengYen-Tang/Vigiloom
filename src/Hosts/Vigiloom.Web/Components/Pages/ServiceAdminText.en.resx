@@ -416,4 +416,25 @@
   <data name="Metrics 送出失敗" xml:space="preserve"><value>Metrics send failed</value></data>
   <data name="Trace 已送出" xml:space="preserve"><value>Traces sent</value></data>
   <data name="Trace 送出失敗" xml:space="preserve"><value>Trace send failed</value></data>
+  <data name="應用服務資料保存" xml:space="preserve"><value>Application data retention</value></data>
+  <data name="設定服務健康、指標、Logs 與 Traces 的保存期限；Logs 期限也適用於主機日誌。" xml:space="preserve"><value>Set retention periods for service health, metrics, logs and traces. Log retention also applies to host logs.</value></data>
+  <data name="過期資料會定期清理；刪除後，延長期限無法還原資料。主機效能指標不受此設定影響。Logs 期限也適用於 IOC 與 Sigma 偵測紀錄；安全偵測所需的主機日誌與 Sigma 紀錄可能延長保留。" xml:space="preserve"><value>Expired data is cleaned periodically; extending retention cannot restore deleted data. Host performance metrics are unaffected. Log retention also applies to IOC and Sigma detections; host logs and Sigma records needed for security detection may be retained longer.</value></data>
+  <data name="無法讀取保存設定，請重新整理後再試。" xml:space="preserve"><value>Unable to load retention settings. Refresh and try again.</value></data>
+  <data name="應用與主機 Logs 保存天數（1～3650 天）" xml:space="preserve"><value>Application and host log retention (1–3650 days)</value></data>
+  <data name="應用 Traces 保存天數（1～3650 天）" xml:space="preserve"><value>Application trace retention (1–3650 days)</value></data>
+  <data name="應用指標原始資料保存天數（1～3650 天）" xml:space="preserve"><value>Raw application metric retention (1–3650 days)</value></data>
+  <data name="應用指標五分鐘彙總保存天數（不可短於原始資料）" xml:space="preserve"><value>Five-minute application metric rollup retention (not shorter than raw data)</value></data>
+  <data name="服務健康歷史保存天數（1～3650 天）" xml:space="preserve"><value>Service health history retention (1–3650 days)</value></data>
+  <data name="進行中的狀態區間與目前狀態所需的最近檢查會保留。" xml:space="preserve"><value>Ongoing status intervals and the latest check needed for current status are retained.</value></data>
+  <data name="以 {0} 為準，預計有 {1} 筆應用 Logs、{2} 筆主機日誌、{3} 筆安全偵測與關聯資料及 {4} 筆 Trace spans 符合清理條件。安全偵測紀錄依 Log 期限保存；Sigma 關聯資料依關聯所需時間保存。實際數量會隨時間及資料變動。" xml:space="preserve"><value>As of {0}, an estimated {1} application logs, {2} host logs, {3} security detections and related records, and {4} trace spans qualify for cleanup. Security detections follow log retention; Sigma related data is retained as needed for correlations. Actual counts change over time and with data.</value></data>
+  <data name="有 {0} 筆原始指標及 {1} 個指標時段已超過所選期限；實際清理會視彙總狀態進行。" xml:space="preserve"><value>{0} raw metrics and {1} metric windows exceed the selected retention; actual cleanup depends on rollup status.</value></data>
+  <data name="預計清理 {0} 筆健康檢查和 {1} 個已結束的狀態區間。" xml:space="preserve"><value>An estimated {0} health checks and {1} completed status intervals will be cleaned up.</value></data>
+  <data name="確認後將依排程清理；預覽在 5 分鐘內有效。" xml:space="preserve"><value>After confirmation, cleanup follows its schedule. The preview is valid for 5 minutes.</value></data>
+  <data name="確認儲存" xml:space="preserve"><value>Confirm save</value></data>
+  <data name="取消" xml:space="preserve"><value>Cancel</value></data>
+  <data name="預覽變更" xml:space="preserve"><value>Preview changes</value></data>
+  <data name="請輸入有效的保存天數；指標彙總期限不可短於原始資料。" xml:space="preserve"><value>Enter valid retention periods; metric rollup retention cannot be shorter than raw data retention.</value></data>
+  <data name="設定已被其他操作變更，請重新整理後再試。" xml:space="preserve"><value>Settings changed elsewhere. Refresh and try again.</value></data>
+  <data name="保存設定已儲存。" xml:space="preserve"><value>Retention settings saved.</value></data>
+  <data name="預覽已過期或天數已變更，請重新預覽。" xml:space="preserve"><value>The preview expired or the periods changed. Preview again.</value></data>
 </root>
