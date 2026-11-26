@@ -80,6 +80,7 @@ public sealed class SelfTelemetryTests(TestContext context)
             }
             catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
             catch (SocketException) when (stopping.IsCancellationRequested) { }
+            catch (ObjectDisposedException) when (stopping.IsCancellationRequested) { }
         }, CancellationToken.None);
         try
         {
