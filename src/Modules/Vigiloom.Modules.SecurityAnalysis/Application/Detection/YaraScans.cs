@@ -7,7 +7,7 @@ using Vigiloom.Modules.SecurityAnalysis.Persistence;
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 /// <summary>Manages security-owned YARA work for an Agent verified by Resources.</summary>
-public sealed class YaraScans(IDbContextFactory<SecurityAnalysisDbContext> contexts, TimeProvider clock)
+public sealed class YaraScans(IDbContextFactory<SecurityAnalysisDbContext> contexts, TimeProvider clock, IYaraScanNotifier? notifier = null)
 {
     public async Task<YaraScanJob> CreateAsync(RegisteredAgentIdentity identity, YaraScanRequest request, Guid actor, CancellationToken token)
     {
@@ -17,8 +17,11 @@ public sealed class YaraScans(IDbContextFactory<SecurityAnalysisDbContext> conte
             RequestedBy = actor, FilePath = request.FilePath, Rules = request.Rules, MaximumBytes = request.MaximumBytes,
             TimeoutSeconds = request.TimeoutSeconds, RequestedAt = clock.GetUtcNow() };
         await using var db = await contexts.CreateDbContextAsync(token);
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
         db.YaraScans.Add(scan);
         await db.SaveChangesAsync(token);
+        if (notifier is not null) await notifier.NotifyAsync(db, scan.AgentId, token);
+        await transaction.CommitAsync(token);
         return View(scan);
     }
 
@@ -52,10 +55,17 @@ public sealed class YaraScans(IDbContextFactory<SecurityAnalysisDbContext> conte
         if (deviceId.Version != 7 || scanId.Version != 7) throw new ArgumentException("Invalid scan.");
         await using var db = await contexts.CreateDbContextAsync(token);
         var now = clock.GetUtcNow();
-        return await db.YaraScans.Where(x => x.Id == scanId && x.DeviceId == deviceId && x.Outcome == null)
+        await using var transaction = await db.Database.BeginTransactionAsync(token);
+        var agentId = await db.YaraScans.Where(x => x.Id == scanId && x.DeviceId == deviceId && x.Outcome == null)
+            .Select(x => (Guid?)x.AgentId).SingleOrDefaultAsync(token);
+        if (agentId is null) return false;
+        var changed = await db.YaraScans.Where(x => x.Id == scanId && x.DeviceId == deviceId && x.Outcome == null)
             .ExecuteUpdateAsync(update => update.SetProperty(x => x.Outcome, (int)YaraScanOutcome.Cancelled)
                 .SetProperty(x => x.CompletedAt, now).SetProperty(x => x.Output, "").SetProperty(x => x.Error, "")
                 .SetProperty(x => x.OutputTruncated, false), token) == 1;
+        if (changed && notifier is not null) await notifier.NotifyAsync(db, agentId.Value, token);
+        await transaction.CommitAsync(token);
+        return changed;
     }
 
     private static bool Valid(YaraScanRequest? request) => request is not null &&

@@ -7,6 +7,8 @@ using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Infrastructure.Work;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Microsoft.Data.SqlClient;
 using Vigiloom.Migrator.Security;
 using Vigiloom.Modules.SecurityAnalysis.Domain;
 using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
@@ -21,6 +23,50 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests;
 [TestCategory("Database")]
 public sealed class SecurityWorkTests(TestContext context)
 {
+    [TestMethod]
+    public Task FailedNotificationRollsBackScanChange() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            await SecurityDatabaseCommand.RunAsync(database.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var scans = new YaraScans(new Factory(options), TimeProvider.System, new FailingNotifier());
+            var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => scans.CreateAsync(identity,
+                new("/tmp/file", "rule test { condition: true }", 1024, 30), Guid.CreateVersion7(), token));
+            await using var db = new SecurityAnalysisDbContext(options);
+            Assert.AreEqual(0, await db.YaraScans.CountAsync(token));
+        }, context.CancellationToken);
+
+    private sealed class FailingNotifier : IYaraScanNotifier
+    {
+        public Task NotifyAsync(SecurityAnalysisDbContext db, Guid agentId, CancellationToken token) => throw new InvalidOperationException("test failure");
+    }
+
+    [TestMethod]
+    public Task ScanChangesAndNotificationAreCommittedTogether() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            await SecurityDatabaseCommand.RunAsync(database.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
+            var notifier = new YaraScanNotifier(new TemporalWorkWriter(new OutboxWriter([new NoopHandler()])), config);
+            var scans = new YaraScans(new Factory(options), TimeProvider.System, notifier);
+            var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var created = await scans.CreateAsync(identity, new("/tmp/file", "rule test { condition: true }", 1024, 30), Guid.CreateVersion7(), token);
+            Assert.IsTrue(await scans.CancelAsync(identity.DeviceId, created.Id, token));
+            await using var connection = new SqlConnection(database.ConnectionString);
+            await connection.OpenAsync(token);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM scheduling.Outbox WHERE MessageType = 'temporal.service-work' AND Payload LIKE '%YaraScanChanged%'";
+            Assert.AreEqual(2, (int)(await command.ExecuteScalarAsync(token))!);
+        }, context.CancellationToken);
+
+    private sealed class NoopHandler : IOutboxHandler
+    {
+        public string MessageType => TemporalOutboxHandler.Type;
+        public Task HandleAsync(OutboxMessage message, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     [TestMethod]
     public Task SecurityOwnedYaraWorkIsScopedToAgentAndCanBeCancelled() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
