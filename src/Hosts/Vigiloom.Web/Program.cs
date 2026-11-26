@@ -121,6 +121,10 @@ builder.Services.AddHttpClient<Vigiloom.Modules.AlertingOperations.Application.L
 builder.Services.AddScoped<Vigiloom.Infrastructure.Scheduling.Outbox.IOutboxHandler, Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryHandler>();
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryQueue>();
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryStatus>();
+builder.Services.AddScoped<Vigiloom.Web.Operations.LineManagement>();
+builder.Services.AddHttpClient<Vigiloom.Web.Operations.RemoteLine>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Operations:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddVigiloomIdentity();
 builder.Services.AddScoped<AccountLogin>();
 builder.Services.AddScoped<CredentialManagement>();

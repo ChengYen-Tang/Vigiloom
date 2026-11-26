@@ -4,8 +4,7 @@
 @using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
 @using Vigiloom.Modules.AlertingOperations.Application.Line
-@inject LineChannel Channel
-@inject LineDeliveryStatus DeliveryStatus
+@inject Vigiloom.Web.Operations.LineManagement Channel
 @inject NavigationManager Navigation
 @inject ILogger<LineSettings> Logger
 
@@ -25,6 +24,8 @@
                 <InputText id="line-token" type="password" autocomplete="new-password" @bind-Value="Input.AccessToken" />
                 <label for="line-secret">Channel secret <span>@(view.HasChannelSecret ? "已設定" : "尚未設定")</span></label>
                 <InputText id="line-secret" type="password" autocomplete="new-password" @bind-Value="Input.ChannelSecret" />
+                <label for="line-aggregation">異常通知彙整等待時間（0～300 秒）</label>
+                <InputNumber id="line-aggregation" @bind-Value="Input.AggregationSeconds" min="0" max="300" />
                 <label class="line-toggle"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用 LINE 通知</label>
                 <button type="submit">儲存設定</button>
             </EditForm></div>
@@ -102,12 +103,12 @@
         try
         {
             view = await Channel.GetAsync(HttpContext.RequestAborted);
-            recent = await DeliveryStatus.GetRecentAsync(HttpContext.RequestAborted);
-            if (HttpMethods.IsGet(HttpContext.Request.Method)) Input.Enabled = view.Enabled;
-            if (TestId is { } id) test = await DeliveryStatus.GetAsync(id, HttpContext.RequestAborted);
+            recent = await Channel.GetRecentAsync(HttpContext.RequestAborted);
+            if (HttpMethods.IsGet(HttpContext.Request.Method)) { Input.Enabled = view.Enabled; Input.AggregationSeconds = view.AggregationSeconds; }
+            if (TestId is { } id) test = await Channel.GetDeliveryAsync(id, HttpContext.RequestAborted);
             if (Saved is "group" or "channel") message = "設定已儲存。";
         }
-        catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException)
+        catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException or HttpRequestException || ex is OperationCanceledException && !HttpContext.RequestAborted.IsCancellationRequested)
         {
             Logger.LogWarning("Unable to load LINE settings: {ErrorType}", ex.GetType().Name);
             error = "目前無法載入設定，請稍後再試。";
@@ -119,11 +120,11 @@
         try
         {
             if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor)) { error = "登入已失效，請重新登入。"; return; }
-            if (await Channel.SaveAsync(new(Input.Enabled, Input.AccessToken, Input.ChannelSecret), actor, HttpContext.RequestAborted))
+            if (await Channel.SaveAsync(new(Input.Enabled, Input.AccessToken, Input.ChannelSecret, Input.AggregationSeconds), actor, HttpContext.RequestAborted))
             { Navigation.NavigateTo("/settings/line?saved=channel"); return; }
             error = "請先設定 Channel access token 與 Channel secret，再啟用通知。";
         }
-        catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException)
+        catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException or HttpRequestException || ex is OperationCanceledException && !HttpContext.RequestAborted.IsCancellationRequested)
         {
             Logger.LogWarning("Unable to save LINE settings: {ErrorType}", ex.GetType().Name);
             error = "無法儲存設定，請稍後再試。";
@@ -150,6 +151,7 @@
     {
         [StringLength(4096)] public string? AccessToken { get; set; }
         [StringLength(4096)] public string? ChannelSecret { get; set; }
+        [Range(0, 300)] public int AggregationSeconds { get; set; } = 10;
         public bool Enabled { get; set; }
     }
 }
