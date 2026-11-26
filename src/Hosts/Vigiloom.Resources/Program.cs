@@ -58,8 +58,9 @@ builder.Services.AddScoped<SelfServiceRegistration>();
 builder.Services.AddScoped<ApplicationLifecycle>();
 builder.Services.AddScoped<ApplicationCatalog>();
 builder.Services.AddScoped<PackageCatalog>();
-builder.Services.AddHttpClient<IPackageRuntimeUsage, PackageRuntimeUsage>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
-builder.Services.AddHttpClient<IHostAgentVersion, HostAgentVersion>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddServiceDiscovery();
+builder.Services.AddHttpClient<IPackageRuntimeUsage, PackageRuntimeUsage>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<IHostAgentVersion, HostAgentVersion>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<AgentAssignments>();
 builder.Services.AddScoped<AgentPackageAccess>();
 builder.Services.AddScoped<AgentRegistration>();
@@ -86,7 +87,7 @@ builder.Services.AddSingleton<IPackageLibraryTransport>(services =>
 });
 builder.Services.AddHttpClient<ObservationSourceVerifier>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Observability:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IApplicationSourceVerifier>(services => services.GetRequiredService<ObservationSourceVerifier>());
 
 var app = builder.Build();
