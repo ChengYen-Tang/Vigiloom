@@ -312,4 +312,44 @@
   <data name="匯入識別碼：" xml:space="preserve"><value>导入标识符：</value></data>
   <data name="已設定" xml:space="preserve"><value>已设置</value></data>
   <data name="已清除" xml:space="preserve"><value>已清除</value></data>
+  <data name="Agent：" xml:space="preserve"><value>Agent：</value></data>
+  <data name="原套件：" xml:space="preserve"><value>原套件：</value></data>
+  <data name="新套件：" xml:space="preserve"><value>新套件：</value></data>
+  <data name="無" xml:space="preserve"><value>无</value></data>
+  <data name="工作：" xml:space="preserve"><value>工作：</value></data>
+  <data name="閾值 ID：" xml:space="preserve"><value>阈值 ID：</value></data>
+  <data name="指標：" xml:space="preserve"><value>指标：</value></data>
+  <data name="來源：" xml:space="preserve"><value>来源：</value></data>
+  <data name="大於等於" xml:space="preserve"><value>大于等于</value></data>
+  <data name="小於等於" xml:space="preserve"><value>小于等于</value></data>
+  <data name="有效時間 {0} 秒" xml:space="preserve"><value>有效时间 {0} 秒</value></data>
+  <data name="設定版本" xml:space="preserve"><value>设置版本</value></data>
+  <data name="設定：" xml:space="preserve"><value>设置：</value></data>
+  <data name="來源版本" xml:space="preserve"><value>来源版本</value></data>
+  <data name="代次：" xml:space="preserve"><value>代次：</value></data>
+  <data name="有效心跳：{0} 秒" xml:space="preserve"><value>有效心跳：{0} 秒</value></data>
+  <data name="有效設定同步：{0} 秒" xml:space="preserve"><value>有效设置同步：{0} 秒</value></data>
+  <data name="有效批次間隔：{0} 秒" xml:space="preserve"><value>有效批次间隔：{0} 秒</value></data>
+  <data name="設定與版本" xml:space="preserve"><value>设置与版本</value></data>
+  <data name="覆寫：" xml:space="preserve"><value>覆盖：</value></data>
+  <data name="繼承" xml:space="preserve"><value>继承</value></data>
+  <data name="有效版本：" xml:space="preserve"><value>有效版本：</value></data>
+  <data name="有效容量：{0} MiB" xml:space="preserve"><value>有效容量：{0} MiB</value></data>
+  <data name="有效批次上限：" xml:space="preserve"><value>有效批次上限：</value></data>
+  <data name="有效主機採樣：{0} 秒" xml:space="preserve"><value>有效主机采样：{0} 秒</value></data>
+  <data name="有效程序採樣：{0} 秒" xml:space="preserve"><value>有效进程采样：{0} 秒</value></data>
+  <data name="有效採樣 CPU 預算：{0} 毫秒／分鐘" xml:space="preserve"><value>有效采样 CPU 预算：{0} 毫秒／分钟</value></data>
+  <data name="有效 Agent 記憶體門檻：{0} MiB" xml:space="preserve"><value>有效 Agent 内存门槛：{0} MiB</value></data>
+  <data name="有效程序採集時間預算：{0} 毫秒" xml:space="preserve"><value>有效进程采集时间预算：{0} 毫秒</value></data>
+  <data name="有效採樣 I/O 預算：{0} MiB／分鐘" xml:space="preserve"><value>有效采样 I/O 预算：{0} MiB／分钟</value></data>
+  <data name="CPU 預算覆寫：" xml:space="preserve"><value>CPU 预算覆盖：</value></data>
+  <data name="記憶體門檻覆寫：" xml:space="preserve"><value>内存门槛覆盖：</value></data>
+  <data name="程序時間預算覆寫：" xml:space="preserve"><value>进程时间预算覆盖：</value></data>
+  <data name="採樣 I/O 預算覆寫：" xml:space="preserve"><value>采样 I/O 预算覆盖：</value></data>
+  <data name="有效盤點間隔：{0} 秒" xml:space="preserve"><value>有效盘点间隔：{0} 秒</value></data>
+  <data name="程序執行資訊：" xml:space="preserve"><value>进程执行信息：</value></data>
+  <data name="收集路徑，參數遮罩" xml:space="preserve"><value>收集路径，参数遮罩</value></data>
+  <data name="不收集" xml:space="preserve"><value>不收集</value></data>
+  <data name="執行資訊覆寫：" xml:space="preserve"><value>执行信息覆盖：</value></data>
+  <data name="收集路徑" xml:space="preserve"><value>收集路径</value></data>
 </root>
