@@ -570,6 +570,26 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.HostMigrations
                     b.ToTable("HostInboxStates", "agent");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostLogMessageId", b =>
+                {
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("AgentId", "MessageId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("AgentId", "MessageId"));
+
+                    b.HasIndex("ReceivedAt");
+
+                    b.ToTable("HostLogMessageIds", "agent");
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostLogSource", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1008,6 +1028,11 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.HostMigrations
 
                     b.Property<int>("ItemCount")
                         .HasColumnType("int");
+
+                    b.Property<bool>("PendingDelivery")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<DateTimeOffset>("ReceivedAt")
                         .HasColumnType("datetimeoffset");

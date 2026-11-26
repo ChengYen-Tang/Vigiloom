@@ -6,6 +6,7 @@ using Vigiloom.HostMonitoring;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.AgentManagement.Application;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddModuleSqlServer<HostMonitoringDbContext>(services =>
@@ -13,6 +14,14 @@ builder.Services.AddModuleSqlServer<HostMonitoringDbContext>(services =>
         ?? throw new InvalidOperationException("ConnectionStrings:HostMonitoring is required."),
     "agent", pooled: true, migrationHistory: HostMonitoringDbContext.MigrationHistory);
 builder.Services.AddServiceDiscovery();
+builder.Services.AddHttpClient<IHostLogSink, OperationsLogSink>((services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations";
+    client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<HostObservationReceiver>();
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHttpClient("resources", (services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources";

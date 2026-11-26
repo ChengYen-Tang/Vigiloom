@@ -58,6 +58,10 @@ public sealed class HostObservationMigrationTests(TestContext context)
             var logSource = new HostLogSource(device.Id, AgentLogSourceKind.Journal, "System", "local", true, null, settings.UpdatedBy, now);
             var threshold = new HostMetricThreshold { DeviceId = device.Id, AgentId = agent.Id, Kind = AgentMetricKind.CpuTotalPercent,
                 Source = "cpu", SeriesHash = new byte[32], Enabled = true, Comparison = HostMetricComparison.AtLeast, Value = 80, FreshnessSeconds = 60 };
+            var logMessageId = Guid.CreateVersion7();
+            var logBatch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                logSource.Id, AgentLogSourceKind.Journal, "System", 1,
+                [new AgentLogRecord(logMessageId, now, "hello", null, null, null, null, null)]);
             await using (var legacy = new AgentManagementDbContext(legacyOptions))
             {
                 legacy.Agents.Add(agent);
@@ -76,6 +80,7 @@ public sealed class HostObservationMigrationTests(TestContext context)
                 legacy.QueueCapacitySettings.Add(capacity);
                 legacy.HostLogSources.Add(logSource);
                 legacy.HostMetricThresholds.Add(threshold);
+                legacy.HostLogs.Add(new HostLog(agent.Id, logBatch, 0, now));
                 await legacy.SaveChangesAsync(token);
                 legacy.HostLogSourceAudits.Add(new HostLogSourceAudit(logSource, HostLogSourceAction.Created));
                 await legacy.SaveChangesAsync(token);
@@ -88,6 +93,7 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.AreEqual(1L, inbox.DeviceGeneration);
             Assert.AreEqual(1, await copied.ReplayPolicies.CountAsync(token));
             Assert.IsTrue(await copied.ReceivedBatches.AnyAsync(x => x.AgentId == agent.Id && x.BatchId == batchId, token));
+            Assert.IsFalse(await copied.ReceivedBatches.AnyAsync(x => EF.Property<bool>(x, "PendingDelivery"), token));
             Assert.IsTrue(await copied.HostMetrics.AnyAsync(x => x.AgentId == agent.Id && x.MessageId == messageId && x.Value == 42, token));
             var copiedRollup = await copied.HostMetricRollups.SingleAsync(token);
             Assert.AreEqual(42d, copiedRollup.Sum);
@@ -104,5 +110,6 @@ public sealed class HostObservationMigrationTests(TestContext context)
             Assert.AreEqual(logSource.Id, (await copied.Set<HostLogSource>().SingleAsync(token)).Id);
             Assert.AreEqual(logSource.Id, (await copied.Set<HostLogSourceAudit>().SingleAsync(token)).SourceId);
             Assert.AreEqual(80d, (await copied.Set<HostMetricThreshold>().SingleAsync(token)).Value);
+            Assert.IsTrue(await copied.HostLogMessageIds.AnyAsync(x => x.AgentId == agent.Id && x.MessageId == logMessageId, token));
         }, outerToken), context.CancellationToken);
 }
