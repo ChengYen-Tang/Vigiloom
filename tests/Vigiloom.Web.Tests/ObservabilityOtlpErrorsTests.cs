@@ -8,6 +8,7 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Modules.ServiceObservability.Application.Telemetry.Retention;
 using Vigiloom.Modules.ServiceObservability.Application;
+using Vigiloom.Modules.ServiceObservability.Application.Health;
 using Vigiloom.Modules.ServiceObservability.Domain;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
@@ -160,6 +161,26 @@ public sealed class ObservabilityOtlpErrorsTests(TestContext context)
                 db.Services.Add(monitor);
                 await db.SaveChangesAsync(token);
             }
+            var networks = await client.GetFromJsonAsync<HealthNetworkPolicySnapshot>("/internal/v1/health-admin/networks", token);
+            Assert.IsNotNull(networks);
+            using var saveNetworks = await client.PutAsJsonAsync("/internal/v1/health-admin/networks",
+                new UpdateHealthNetworkCommand(new HealthNetworkPolicyInput(["10.0.0.0/8"], networks.Version), actor), token);
+            saveNetworks.EnsureSuccessStatusCode();
+            var savedNetworks = await saveNetworks.Content.ReadFromJsonAsync<HealthNetworkPolicySnapshot>(cancellationToken: token);
+            Assert.Contains("10.0.0.0/8", savedNetworks!.Networks);
+            var targetInput = new HealthTargetInput("https://example.test/health", 30, 5, 3, 2, false, "");
+            using var createTarget = await client.PostAsJsonAsync("/internal/v1/health-admin/targets",
+                new CreateHealthTargetCommand(new CreateHealthTargetInput(monitor.Id, null, targetInput), actor), token);
+            createTarget.EnsureSuccessStatusCode();
+            var healthTarget = await createTarget.Content.ReadFromJsonAsync<HealthTargetResult>(cancellationToken: token);
+            Assert.AreEqual(HealthTargetStatus.Saved, healthTarget!.Status);
+            var healthTargets = await client.GetFromJsonAsync<HealthTargetSnapshot[]>($"/internal/v1/health-admin/targets?serviceId={monitor.Id:D}&page=1", token);
+            Assert.AreEqual(healthTarget.Target!.Id, healthTargets!.Single().Id);
+            var instancePolicy = await client.GetFromJsonAsync<InstancePolicySnapshot>("/internal/v1/instance-admin/policy", token);
+            Assert.IsNotNull(instancePolicy);
+            using var savePolicy = await client.PutAsJsonAsync("/internal/v1/instance-admin/policy",
+                new UpdateInstancePolicyCommand(new InstancePolicyInput(instancePolicy.PerService, instancePolicy.Total, instancePolicy.Version), actor), token);
+            savePolicy.EnsureSuccessStatusCode();
             using var register = await client.PostAsJsonAsync("/internal/v1/collectors", new RegisterCollectorCommand("Collector", monitor.Id, true, actor), token);
             register.EnsureSuccessStatusCode();
             var registered = await register.Content.ReadFromJsonAsync<CollectorChangeResult>(cancellationToken: token);

@@ -36,6 +36,8 @@ builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(services => s
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<SourceCredentials>();
 builder.Services.AddScoped<SourceAdministration>();
+builder.Services.AddScoped<ServiceInstanceAdministration>();
+builder.Services.AddScoped<InstancePolicyAdministration>();
 builder.Services.AddScoped<CollectorAdministration>();
 builder.Services.AddScoped<CollectorObservations>();
 builder.Services.AddScoped<CollectorCounters>();
@@ -103,6 +105,8 @@ builder.Services.AddScoped<TelemetryHistory>();
 builder.Services.AddScoped<ServiceEvidenceReader>();
 builder.Services.AddScoped<ServiceHttpMetricsReader>();
 builder.Services.AddScoped<HealthObservationReader>();
+builder.Services.AddScoped<HealthTargetAdministration>();
+builder.Services.AddScoped<HealthNetworkPolicyAdministration>();
 builder.Services.AddHttpClient<IApplicationLogRetentionCounter, ApplicationLogRetentionCounter>((services, client) =>
     client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
@@ -206,6 +210,8 @@ internalApi.MapGet("/reception", async (ReceptionOverview overview, Cancellation
 internalApi.MapGet("/reception/rejections", async (ReceptionRejectionReader reader, CancellationToken token) => Results.Ok(await reader.ListAsync(token)));
 
 app.MapCollectorEndpoints();
+app.MapHealthAdministration();
+app.MapInstanceAdministration();
 app.Run();
 
 public partial class Program;
