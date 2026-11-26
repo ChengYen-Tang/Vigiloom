@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="正在載入公開範本…" xml:space="preserve"><value>正在加载公开模板…</value></data>
+  <data name="設為預設不會重新指派設備；IP 位址一律不公開。" xml:space="preserve"><value>设为默认不会重新指派设备；IP 地址一律不公开。</value></data>
+  <data name="公開範本" xml:space="preserve"><value>公开模板</value></data>
+  <data name="設定設備可公開的欄位；更換預設不會改變既有設備。" xml:space="preserve"><value>设置设备可公开的字段；更换默认不会改变现有设备。</value></data>
+  <data name="新增範本" xml:space="preserve"><value>新增模板</value></data>
+  <data name="無法讀取範本。" xml:space="preserve"><value>无法读取模板。</value></data>
+  <data name="重試" xml:space="preserve"><value>重试</value></data>
+  <data name="尚無公開範本，可先新增一個。" xml:space="preserve"><value>尚无公开模板，可先新增一个。</value></data>
+  <data name="左右滑動以查看設備數與操作。" xml:space="preserve"><value>左右滑动以查看设备数与操作。</value></data>
+  <data name="公開範本清單，可左右捲動" xml:space="preserve"><value>公开模板列表，可左右滚动</value></data>
+  <data name="範本名稱" xml:space="preserve"><value>模板名称</value></data>
+  <data name="公開欄位" xml:space="preserve"><value>公开字段</value></data>
+  <data name="指派設備" xml:space="preserve"><value>指派设备</value></data>
+  <data name="操作" xml:space="preserve"><value>操作</value></data>
+  <data name="預設" xml:space="preserve"><value>默认</value></data>
+  <data name="名稱、狀態" xml:space="preserve"><value>名称、状态</value></data>
+  <data name="、目前延遲" xml:space="preserve"><value>、当前延迟</value></data>
+  <data name="、觀測時間" xml:space="preserve"><value>、观测时间</value></data>
+  <data name="、歷史平均延遲（{0} 天）" xml:space="preserve"><value>、历史平均延迟（{0} 天）</value></data>
+  <data name="（歷史尚未就緒）" xml:space="preserve"><value>（历史尚未就绪）</value></data>
+  <data name="編輯" xml:space="preserve"><value>编辑</value></data>
+  <data name="設為預設" xml:space="preserve"><value>设为默认</value></data>
+  <data name="刪除" xml:space="preserve"><value>删除</value></data>
+  <data name="載入更多範本" xml:space="preserve"><value>加载更多模板</value></data>
+  <data name="編輯範本" xml:space="preserve"><value>编辑模板</value></data>
+  <data name="已指派 {0} 台設備" xml:space="preserve"><value>已指派 {0} 台设备</value></data>
+  <data name="可公開的設備欄位" xml:space="preserve"><value>可公开的设备字段</value></data>
+  <data name="公開名稱與簡易狀態固定顯示。" xml:space="preserve"><value>公开名称与简易状态固定显示。</value></data>
+  <data name="目前延遲時間" xml:space="preserve"><value>当前延迟时间</value></data>
+  <data name="觀測時間" xml:space="preserve"><value>观测时间</value></data>
+  <data name="歷史平均延遲" xml:space="preserve"><value>历史平均延迟</value></data>
+  <data name="不公開歷史" xml:space="preserve"><value>不公开历史</value></data>
+  <data name="最近 {0} 天" xml:space="preserve"><value>最近 {0} 天</value></data>
+  <data name="歷史平均延遲與目前延遲可分開設定。" xml:space="preserve"><value>历史平均延迟与当前延迟可分别设置。</value></data>
+  <data name="啟用或擴大範圍後，從變更生效時開始顯示。" xml:space="preserve"><value>启用或扩大范围后，从变更生效时开始显示。</value></data>
+  <data name="縮短範圍不重設起點。" xml:space="preserve"><value>缩短范围不重设起点。</value></data>
+  <data name="IP 與主機進階資訊不會公開。" xml:space="preserve"><value>IP 与主机高级信息不会公开。</value></data>
+  <data name="建立範本" xml:space="preserve"><value>创建模板</value></data>
+  <data name="預覽變更" xml:space="preserve"><value>预览更改</value></data>
+  <data name="取消" xml:space="preserve"><value>取消</value></data>
+  <data name="確認變更" xml:space="preserve"><value>确认更改</value></data>
+  <data name="影響 {0} 台指派設備，其中 {1} 台目前公開。" xml:space="preserve"><value>影响 {0} 台指派设备，其中 {1} 台目前公开。</value></data>
+  <data name="延遲時間：{0} → {1}；觀測時間：{2} → {3}。" xml:space="preserve"><value>延迟时间：{0} → {1}；观测时间：{2} → {3}。</value></data>
+  <data name="範本名稱：{0} → {1}" xml:space="preserve"><value>模板名称：{0} → {1}</value></data>
+  <data name="歷史平均延遲：{0} → {1}。" xml:space="preserve"><value>历史平均延迟：{0} → {1}。</value></data>
+  <data name="啟用或擴大歷史範圍後，從變更生效時開始累積可公開資料，不會回填之前的歷史。" xml:space="preserve"><value>启用或扩大历史范围后，从更改生效时开始累积公开数据，不会回填之前的历史。</value></data>
+  <data name="確認儲存" xml:space="preserve"><value>确认保存</value></data>
+  <data name="返回修改" xml:space="preserve"><value>返回修改</value></data>
+  <data name="刪除「{0}」" xml:space="preserve"><value>删除「{0}」</value></data>
+  <data name="使用此範本的設備將停止匿名輸出，不會自動套用其他範本。" xml:space="preserve"><value>使用此模板的设备将停止匿名输出，不会自动应用其他模板。</value></data>
+  <data name="替代預設範本" xml:space="preserve"><value>替代默认模板</value></data>
+  <data name="請選擇" xml:space="preserve"><value>请选择</value></data>
+  <data name="替代預設只影響未指定範本的預選，不會重新指派設備。" xml:space="preserve"><value>替代默认只影响未指定模板的预选，不会重新指派设备。</value></data>
+  <data name="這是最後一個範本，刪除後將清除預設。" xml:space="preserve"><value>这是最后一个模板，删除后将清除默认。</value></data>
+  <data name="預覽影響" xml:space="preserve"><value>预览影响</value></data>
+  <data name="共有 {0} 台設備指派此範本，其中 {1} 台目前公開，刪除後將停止匿名輸出。" xml:space="preserve"><value>共有 {0} 台设备指派此模板，其中 {1} 台目前公开，删除后将停止匿名输出。</value></data>
+  <data name="替代預設：{0}；設備不會自動重新指派。" xml:space="preserve"><value>替代默认：{0}；设备不会自动重新指派。</value></data>
+  <data name="無，將清除預設" xml:space="preserve"><value>无，将清除默认</value></data>
+  <data name="確認刪除" xml:space="preserve"><value>确认删除</value></data>
+  <data name="無法載入公開範本，請重試。" xml:space="preserve"><value>无法加载公开模板，请重试。</value></data>
+  <data name="預設範本已更新。" xml:space="preserve"><value>默认模板已更新。</value></data>
+  <data name="請輸入範本名稱。" xml:space="preserve"><value>请输入模板名称。</value></data>
+  <data name="範本已建立，但歷史尚未就緒；請稍後編輯並重新儲存。" xml:space="preserve"><value>模板已创建，但历史尚未就绪；请稍后编辑并重新保存。</value></data>
+  <data name="範本已建立。" xml:space="preserve"><value>模板已创建。</value></data>
+  <data name="範本已更新，但歷史尚未就緒；請稍後編輯並重新儲存。" xml:space="preserve"><value>模板已更新，但历史尚未就绪；请稍后编辑并重新保存。</value></data>
+  <data name="範本已更新。" xml:space="preserve"><value>模板已更新。</value></data>
+  <data name="範本已刪除。" xml:space="preserve"><value>模板已删除。</value></data>
+  <data name="登入已過期或權限已變更，請重新登入。" xml:space="preserve"><value>登录已过期或权限已更改，请重新登录。</value></data>
+  <data name="無法完成操作，請重新整理後再試。" xml:space="preserve"><value>无法完成操作，请刷新后重试。</value></data>
+  <data name="請檢查輸入或重新預覽。刪除預設範本時，若有其他範本請選擇替代預設。" xml:space="preserve"><value>请检查输入或重新预览。删除默认模板时，如果有其他模板请选择替代默认。</value></data>
+  <data name="範本或受影響設備已變更，請重新整理並預覽。" xml:space="preserve"><value>模板或受影响设备已更改，请刷新并预览。</value></data>
+  <data name="範本不存在或已刪除，請重新整理。" xml:space="preserve"><value>模板不存在或已删除，请刷新。</value></data>
+  <data name="公開" xml:space="preserve"><value>公开</value></data>
+  <data name="不公開" xml:space="preserve"><value>不公开</value></data>
+  <data name="可達" xml:space="preserve"><value>可达</value></data>
+  <data name="不可達" xml:space="preserve"><value>不可达</value></data>
+  <data name="未知或尚無資料" xml:space="preserve"><value>未知或尚无数据</value></data>
+  <data name="範本或受影響設備已變更，請重新預覽。" xml:space="preserve"><value>模板或受影响设备已更改，请重新预览。</value></data>
+  <data name="受影響設備" xml:space="preserve"><value>受影响设备</value></data>
+  <data name="沒有指派設備。" xml:space="preserve"><value>没有指派设备。</value></data>
+  <data name="目前公開" xml:space="preserve"><value>目前公开</value></data>
+  <data name="上一頁" xml:space="preserve"><value>上一页</value></data>
+  <data name="下一頁" xml:space="preserve"><value>下一页</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>第 {0} 页</value></data>
+  <data name="目前這一頁沒有可顯示的公開設備資料。" xml:space="preserve"><value>当前页没有可显示的公开设备数据。</value></data>
+  <data name="變更前" xml:space="preserve"><value>更改前</value></data>
+  <data name="變更後" xml:space="preserve"><value>更改后</value></data>
+  <data name="目前公開的歷史" xml:space="preserve"><value>目前公开的历史</value></data>
+  <data name="目前不公開歷史。" xml:space="preserve"><value>目前不公开历史。</value></data>
+  <data name="目前無法取得可公開的歷史預覽。" xml:space="preserve"><value>目前无法获取可公开的历史预览。</value></data>
+  <data name="目前沒有可顯示的歷史資料。" xml:space="preserve"><value>目前没有可显示的历史数据。</value></data>
+  <data name="無延遲資料" xml:space="preserve"><value>无延迟数据</value></data>
+  <data name="不公開歷史。" xml:space="preserve"><value>不公开历史。</value></data>
+  <data name="最多 {0} 天；從變更生效後開始累積，不公開之前的歷史。" xml:space="preserve"><value>最多 {0} 天；从更改生效后开始累积，不公开之前的历史。</value></data>
+  <data name="此範圍沒有可顯示的歷史資料。" xml:space="preserve"><value>此范围没有可显示的历史数据。</value></data>
+  <data name="顯示已結束的五分鐘平均延遲；資料可能持續彙整。" xml:space="preserve"><value>显示已结束的五分钟平均延迟；数据可能仍在汇总。</value></data>
+</root>
