@@ -114,6 +114,8 @@ app.MapPingEndpoints();
 app.MapPublicPingEndpoints();
 app.MapInternalSpeedAdministration();
 app.MapInternalPingAdministration();
+app.MapGet("/internal/v1/ping/{id:guid}/publication-preview", async (Guid id, PublicPing reader, CancellationToken token) =>
+    await reader.PreviewAsync(id, token) is { } preview ? Results.Ok(preview) : Results.NotFound());
 app.MapPost("/internal/v1/ping/status", async (PingStatusRequest input, PingStore store, CancellationToken token) =>
     Results.Ok(await store.GetStatusAsync(input.DeviceId, input.Targets, input.DeviceVersion, token)));
 app.MapPost("/internal/v1/ping/statuses", async (PingDeviceSnapshot[] inputs, PingStore store, CancellationToken token) =>

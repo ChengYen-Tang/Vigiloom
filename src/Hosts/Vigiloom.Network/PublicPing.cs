@@ -32,16 +32,33 @@ internal sealed class PublicPing(HttpClient resources, PingStore ping, IDbContex
         var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
         var start = new[] { from, publicSince, historySince, now.AddDays(-policy.HistoryDays) }.Max();
         var end = to < now ? to : now;
+        var points = await ReadBucketsAsync(db, id, policy.Target, start, end, token);
+        return policy == await PolicyAsync(id, token) ? new(points, now) : null;
+    }
+
+    public async Task<PublicDeviceHistory?> PreviewAsync(Guid id, CancellationToken token)
+    {
+        var policy = await PolicyAsync(id, token);
+        if (policy?.PublicSince is not { } since) return null;
+        await using var db = await contexts.CreateDbContextAsync(token);
+        var now = await db.Database.SqlQueryRaw<DateTimeOffset>("SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+        var start = since > now.AddDays(-7) ? since : now.AddDays(-7);
+        var points = await ReadBucketsAsync(db, id, policy.Target, start, now, token);
+        return policy == await PolicyAsync(id, token) ? new(points, now) : null;
+    }
+
+    private static async Task<PublicDeviceHistoryPoint[]> ReadBucketsAsync(NetworkDbContext db, Guid id, string target,
+        DateTimeOffset start, DateTimeOffset end, CancellationToken token)
+    {
         var bucket = TimeSpan.FromMinutes(5);
         var remainder = start.UtcTicks % bucket.Ticks;
         if (remainder != 0) start = start.AddTicks(bucket.Ticks - remainder);
         end = end.AddTicks(-(end.UtcTicks % bucket.Ticks));
-        var points = start >= end ? [] : await db.PingRollups.AsNoTracking()
-            .Where(item => item.DeviceId == id && item.Target == policy.Target && item.Location == "central" && item.WindowStart >= start && item.WindowStart < end)
+        return start >= end ? [] : await db.PingRollups.AsNoTracking()
+            .Where(item => item.DeviceId == id && item.Target == target && item.Location == "central" && item.WindowStart >= start && item.WindowStart < end)
             .OrderBy(item => item.WindowStart)
             .Select(item => new PublicDeviceHistoryPoint(item.WindowStart, item.Successes == 0 || item.LatencyOverflow ? null : item.LatencySum / item.Successes))
             .ToArrayAsync(token);
-        return policy == await PolicyAsync(id, token) ? new(points, now) : null;
     }
 
     private async Task<PublishedDevicePolicy?> PolicyAsync(Guid id, CancellationToken token)
