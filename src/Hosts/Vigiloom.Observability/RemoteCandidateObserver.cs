@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.ServiceObservability.Application;
@@ -29,6 +30,7 @@ internal sealed class RemoteCandidateObserver(HttpClient client, IDbContextFacto
     {
         using var response = await client.PostAsJsonAsync("internal/v1/application-candidates/observe",
             new ApplicationObservation(sourceId, serviceKey, environment, displayName, serviceNamespace ?? ""), token);
+        if (response.StatusCode == HttpStatusCode.ServiceUnavailable) return CandidateObservation.Busy;
         response.EnsureSuccessStatusCode();
         var status = await response.Content.ReadFromJsonAsync<ApplicationObservationStatus>(cancellationToken: token);
         return status switch
