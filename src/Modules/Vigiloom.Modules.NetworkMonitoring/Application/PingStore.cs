@@ -38,6 +38,7 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
         var lookup = existing.ToDictionary(x => (x.DeviceId, x.Target));
         var byDevice = existing.ToLookup(x => x.DeviceId);
         var now = clock.GetUtcNow();
+        var unknown = new List<(PingTargetState State, Reachability Previous)>();
         foreach (var device in batch)
         {
             foreach (var target in device.Targets)
@@ -49,6 +50,7 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
                 }
                 else if (!state.Enabled || !state.DeviceVersion.AsSpan().SequenceEqual(device.Version))
                 {
+                    if (state.State != Reachability.Unknown) unknown.Add((state, state.State));
                     state.DeviceVersion = device.Version; state.Enabled = true; state.Generation++;
                     state.LeaseUntil = null; state.DueAt = now; state.State = Reachability.Unknown;
                     state.Successes = state.Failures = 0; state.MeasuredAt = null; state.Outcome = null;
@@ -57,10 +59,30 @@ public sealed class PingStore(IDbContextFactory<NetworkDbContext> contexts, IDev
             }
             foreach (var obsolete in byDevice[device.Id].Where(x => x.Enabled && !device.Targets.Contains(x.Target, StringComparer.Ordinal)))
             {
+                if (obsolete.State != Reachability.Unknown) unknown.Add((obsolete, obsolete.State));
                 obsolete.Enabled = false; obsolete.Generation++; obsolete.LeaseUntil = null;
+                obsolete.State = Reachability.Unknown;
             }
         }
-        try { await db.SaveChangesAsync(token); }
+        try
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(token);
+            foreach (var (state, previous) in unknown)
+            {
+                db.PingStateEvents.Add(new PingStateEvent { DeviceId = state.DeviceId, Target = state.Target, Generation = state.Generation,
+                    OccurredAt = now, Previous = previous, Current = Reachability.Unknown });
+                if (transitionSinks is not null && transitionSinks.Any())
+                {
+                    var context = await devices.GetContextAsync(state.DeviceId, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+                    var transition = new PingTransition(state.DeviceId, state.Target, state.Generation, now, previous, Reachability.Unknown, context, state.LastTransitionGeneration);
+                    foreach (var sink in transitionSinks)
+                        await sink.RecordAsync(transition, db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
+                    state.LastTransitionGeneration = state.Generation;
+                }
+            }
+            await db.SaveChangesAsync(token);
+            await transaction.CommitAsync(token);
+        }
         catch (DbUpdateConcurrencyException) { /* Another worker claimed or reconciled a row; rescan next tick. */ }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 }) { /* Concurrent initialization is retried next tick. */ }
     }
