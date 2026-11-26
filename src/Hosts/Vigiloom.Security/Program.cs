@@ -55,6 +55,7 @@ builder.Services.AddScoped<BaselineRemoteSources>();
 builder.Services.AddScoped<IAgentBaselineSyncReader>(services => services.GetRequiredService<BaselineRemoteSources>());
 builder.Services.AddScoped<IBaselineExceptionReader>(services => services.GetRequiredService<BaselineRemoteSources>());
 builder.Services.AddScoped<BaselineQuery>();
+builder.Services.AddScoped<IntelligenceStatus>();
 if (builder.Configuration.GetValue("Hangfire:Enabled", false))
 {
     if (!builder.Configuration.GetValue("Temporal:Enabled", true))
@@ -148,6 +149,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/internal/v1/yar
         catch (ArgumentException) { context.Response.StatusCode = StatusCodes.Status400BadRequest; }
     }));
 app.MapGet("/health/live", () => Results.Ok());
+app.MapIntelligenceStatusEndpoints();
 app.MapGet("/internal/v1/devices/{deviceId:guid}/baseline", async (Guid deviceId, BaselineQuery query, CancellationToken token) =>
     await query.GetAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound());
 app.MapPost("/internal/v1/devices/{deviceId:guid}/baseline-exceptions", async (Guid deviceId, BaselineExceptionCommand command, IServiceProvider services, CancellationToken token) =>
