@@ -281,7 +281,7 @@ public partial class HostDetails
         {
             var result = await Monitoring.GetIntegrityChunkAsync(DeviceId, scope, snapshot, index, token);
             token.ThrowIfCancellationRequested();
-            if (result is null) { baseline = null; baselineSnapshotId = null; error = "基線已更新，請重新載入最新資料。"; return; }
+            if (result is null) { baseline = null; baselineSnapshotId = null; error = L["基線已更新，請重新載入最新資料。"].Value; return; }
             baseline = result;
         }) : Task.CompletedTask;
     private async Task RunAsync(Func<CancellationToken, Task> action)
@@ -292,7 +292,7 @@ public partial class HostDetails
         try { await action(load.Token); }
         catch (OperationCanceledException) when (load.IsCancellationRequested) { }
         catch (UnauthorizedAccessException) when (!load.IsCancellationRequested) { unauthorized = true; }
-        catch (Exception ex) when (!load.IsCancellationRequested) { Logger.LogWarning("Could not load host monitoring data: {ExceptionType}", ex.GetType().Name); error = "無法讀取此項資料，請稍後重試。"; }
+        catch (Exception ex) when (!load.IsCancellationRequested) { Logger.LogWarning("Could not load host monitoring data: {ExceptionType}", ex.GetType().Name); error = L["無法讀取此項資料，請稍後重試。"].Value; }
         catch (Exception) when (load.IsCancellationRequested) { }
         finally { if (ReferenceEquals(activeLoad, load)) { activeLoad = null; loading = false; } }
     }
