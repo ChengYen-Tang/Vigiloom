@@ -162,6 +162,25 @@ public sealed class NetworkHostTests(TestContext context)
         command.CommandText = "SELECT COUNT(*) FROM scheduling.Outbox";
         Assert.AreEqual(1, (int)(await command.ExecuteScalarAsync(token))!);
         var actor = Guid.CreateVersion7();
+        var pingSettings = await client.GetFromJsonAsync<PingSettingsSnapshot>("/internal/v1/ping/settings", token);
+        Assert.IsNotNull(pingSettings);
+        var pingInput = new PingSettingsInput(pingSettings.IntervalSeconds, pingSettings.TimeoutSeconds, pingSettings.FailureThreshold,
+            pingSettings.SuccessThreshold, pingSettings.MaxConcurrency, pingSettings.Version);
+        using (var response = await client.PostAsJsonAsync("/internal/v1/ping/settings", new PingSettingsCommand(pingInput, actor), token))
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        using (var response = await client.PostAsJsonAsync("/internal/v1/ping/settings", new PingSettingsCommand(pingInput, actor), token))
+            Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);
+        var pingRetention = await client.GetFromJsonAsync<PingRetentionSnapshot>("/internal/v1/ping/retention", token);
+        Assert.IsNotNull(pingRetention);
+        var pingPreviewRequest = new PingRetentionPreviewRequest(1, 1, pingRetention.Version);
+        using (var response = await client.PostAsJsonAsync("/internal/v1/ping/retention/preview", new PingRetentionPreviewCommand(pingPreviewRequest, actor), token))
+        {
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            var preview = await response.Content.ReadFromJsonAsync<PingRetentionPreview>(cancellationToken: token);
+            Assert.IsNotNull(preview);
+            using var update = await client.PostAsJsonAsync("/internal/v1/ping/retention", new PingRetentionCommand(new PingRetentionInput(1, 1, pingRetention.Version, preview.ConfirmationToken), actor), token);
+            Assert.AreEqual(HttpStatusCode.OK, update.StatusCode);
+        }
         var speedSettings = await client.GetFromJsonAsync<SpeedSettingsSnapshot>("/internal/v1/speed/settings", token);
         Assert.IsNotNull(speedSettings);
         var input = new SpeedSettingsInput(false, 6, 2, 40, speedSettings.Version);

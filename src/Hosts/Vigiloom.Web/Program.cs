@@ -373,6 +373,13 @@ builder.Services.AddScoped<PlatformStatus>();
 builder.Services.AddSingleton<AgentTransportConcurrency>();
 builder.Services.AddScoped<PingSettings>();
 builder.Services.AddScoped<PingRetentionSettings>();
+builder.Services.AddHttpClient<Vigiloom.Web.Network.RemotePingAdministration>((services, client) =>
+    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingSettings>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]) ? services.GetRequiredService<PingSettings>() : services.GetRequiredService<Vigiloom.Web.Network.RemotePingAdministration>());
+builder.Services.AddScoped<Vigiloom.Contracts.Network.IPingRetentionSettings>(services =>
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]) ? services.GetRequiredService<PingRetentionSettings>() : services.GetRequiredService<Vigiloom.Web.Network.RemotePingAdministration>());
 builder.Services.AddScoped<PingStore>();
 builder.Services.AddHttpClient<Vigiloom.Web.Network.RemotePingStatusReader>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Network:Url"]!.TrimEnd('/') + "/"))
