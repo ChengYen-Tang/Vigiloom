@@ -7,3 +7,12 @@ public sealed record EventTimelineEntry(string Source, DateTimeOffset Time, Guid
 public sealed record EventTimelinePage(IReadOnlyList<EventTimelineEntry> Items, int Page, bool HasMore, bool LimitReached);
 
 public sealed record EventTimelineQuery(DateTimeOffset From, DateTimeOffset Until, Guid? GroupId = null, string? Source = null, int Page = 1);
+
+/// <summary>One stable event summary delivered to the Operations timeline.</summary>
+public sealed record EventTimelineDelivery(Guid MessageId, EventTimelineEntry Entry);
+
+/// <summary>Temporal work type for a timeline summary.</summary>
+public static class EventTimelineWork
+{
+    public const string Kind = "event-timeline.append.v1";
+}

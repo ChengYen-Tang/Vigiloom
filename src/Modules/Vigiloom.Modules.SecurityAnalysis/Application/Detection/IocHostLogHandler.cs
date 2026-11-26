@@ -71,8 +71,8 @@ internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, 
                     ReceivedAt = log.ReceivedAt, EvaluatedAt = now
                 });
                 if (notifications is not null)
-                    notices.Add(new(Guid.CreateVersion7(), "ioc", log.OccurredAt ?? log.ReceivedAt, "IOC 比對線索",
-                        $"{match.Kind}：{match.Value}；欄位：{match.Field}；情報版本：{revisionId:D}；原始事件：{log.AgentId:D}/{log.MessageId:D}。此結果需要進一步調查。",
+                    notices.Add(new(Guid.CreateVersion7(), "ioc", log.OccurredAt ?? log.ReceivedAt, "IOC match",
+                        $"{match.Kind}: {match.Value}; Field: {match.Field}; Intelligence version: {revisionId:D}; Event: {log.AgentId:D}/{log.MessageId:D}. Further investigation is required.",
                         ResourceId: dispatch.DeviceId, EvidenceOwnerId: log.AgentId, EvidenceId: log.MessageId));
             }
         }

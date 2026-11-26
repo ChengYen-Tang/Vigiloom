@@ -1,4 +1,5 @@
 using Vigiloom.Contracts.Services;
+using Vigiloom.Otlp;
 using OtlpLog = OpenTelemetry.Proto.Logs.V1.LogRecord;
 using OtlpSpan = OpenTelemetry.Proto.Trace.V1.Span;
 

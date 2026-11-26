@@ -1,12 +1,10 @@
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 
 namespace Vigiloom.Infrastructure.Scheduling;
-
-public sealed record WorkEntry(string Name, string Result, DateTimeOffset? OccurredAt, string? Detail, string? Reference = null);
-public sealed record WorkOverview(long Workers, long Queued, long Processing, long Failed, long Succeeded, int PendingMessages, int FailedMessages, IReadOnlyList<WorkEntry> Recent);
 
 public sealed class SchedulingOverview(SchedulingReadStorage storage, IDbContextFactory<SchedulingDbContext> contexts)
 {
