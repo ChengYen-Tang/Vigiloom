@@ -1,0 +1,195 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="監控工作區">
+    <value>Monitoring workspace</value>
+  </data>
+  <data xml:space="preserve" name="正在確認登入狀態…">
+    <value>Checking your session…</value>
+  </data>
+  <data xml:space="preserve" name="暫時無法確認登入狀態">
+    <value>Unable to check your session</value>
+  </data>
+  <data xml:space="preserve" name="請確認連線，再重新嘗試。">
+    <value>Check your connection and try again.</value>
+  </data>
+  <data xml:space="preserve" name="重新嘗試">
+    <value>Try again</value>
+  </data>
+  <data xml:space="preserve" name="登入已過期或權限已變更">
+    <value>Your session expired or your access changed</value>
+  </data>
+  <data xml:space="preserve" name="請重新登入後繼續。">
+    <value>Sign in again to continue.</value>
+  </data>
+  <data xml:space="preserve" name="前往登入">
+    <value>Sign in</value>
+  </data>
+  <data xml:space="preserve" name="角色：">
+    <value>Roles: </value>
+  </data>
+  <data xml:space="preserve" name="重新確認登入狀態">
+    <value>Check session again</value>
+  </data>
+  <data xml:space="preserve" name="設備與應用服務分別監測；狀態依各自來源判斷。">
+    <value>Devices and application services are monitored independently.</value>
+  </data>
+  <data xml:space="preserve" name="重新整理總覽">
+    <value>Refresh overview</value>
+  </data>
+  <data xml:space="preserve" name="總覽讀取時間：">
+    <value>Overview retrieved: </value>
+  </data>
+  <data xml:space="preserve" name="正在載入監控總覽…">
+    <value>Loading monitoring overview…</value>
+  </data>
+  <data xml:space="preserve" name="無法載入總覽，請重新整理。">
+    <value>Unable to load the overview. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="依群組瀏覽">
+    <value>Browse by group</value>
+  </data>
+  <data xml:space="preserve" name="查看所有群組">
+    <value>View all groups</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取群組。">
+    <value>Unable to load groups.</value>
+  </data>
+  <data xml:space="preserve" name="尚無群組。">
+    <value>No groups yet.</value>
+  </data>
+  <data xml:space="preserve" name="設備 Ping">
+    <value>Device Ping</value>
+  </data>
+  <data xml:space="preserve" name="每台設備顯示最需要留意的監測目標。">
+    <value>Each device shows the target requiring the most attention.</value>
+  </data>
+  <data xml:space="preserve" name="尚無設備。">
+    <value>No devices yet.</value>
+  </data>
+  <data xml:space="preserve" name="最後量測">
+    <value>Last measured</value>
+  </data>
+  <data xml:space="preserve" name="查看設備">
+    <value>View devices</value>
+  </data>
+  <data xml:space="preserve" name="主機 Agent">
+    <value>Host Agents</value>
+  </data>
+  <data xml:space="preserve" name="依各 Agent 的心跳與時限判斷連線。">
+    <value>Connection is determined by each Agent heartbeat and timeout.</value>
+  </data>
+  <data xml:space="preserve" name="尚無深入監控設備。">
+    <value>No devices with host monitoring yet.</value>
+  </data>
+  <data xml:space="preserve" name="最後心跳">
+    <value>Last heartbeat</value>
+  </data>
+  <data xml:space="preserve" name="應用服務健康">
+    <value>Application service health</value>
+  </data>
+  <data xml:space="preserve" name="依服務的健康檢查判斷，與設備獨立。">
+    <value>Based on service health checks, independent of devices.</value>
+  </data>
+  <data xml:space="preserve" name="尚無已加入的服務。">
+    <value>No services have been added.</value>
+  </data>
+  <data xml:space="preserve" name="最近檢查">
+    <value>Last checked</value>
+  </data>
+  <data xml:space="preserve" name="依群組查看服務">
+    <value>View services by group</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取此區資料，請稍後重新整理。">
+    <value>Unable to load this section. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="尚無資料">
+    <value>No data yet</value>
+  </data>
+  <data xml:space="preserve" name="共 {0} 筆 · {1} 筆需要留意">
+    <value>Total: {0} · Need attention: {1}</value>
+  </data>
+  <data xml:space="preserve" name="以上顯示優先關注的 {0} 筆。">
+    <value>Showing {0} items requiring the most attention.</value>
+  </data>
+  <data xml:space="preserve" name="Administrator">
+    <value>Administrator</value>
+  </data>
+  <data xml:space="preserve" name="Read only">
+    <value>Read only</value>
+  </data>
+  <data xml:space="preserve" name="已停用">
+    <value>Disabled</value>
+  </data>
+  <data xml:space="preserve" name="連線中">
+    <value>Online</value>
+  </data>
+  <data xml:space="preserve" name="離線">
+    <value>Offline</value>
+  </data>
+  <data xml:space="preserve" name="尚未註冊">
+    <value>Not registered</value>
+  </data>
+  <data xml:space="preserve" name="等待首次心跳">
+    <value>Awaiting first heartbeat</value>
+  </data>
+  <data xml:space="preserve" name="時鐘不確定">
+    <value>Clock uncertain</value>
+  </data>
+  <data xml:space="preserve" name="收集已停止">
+    <value>Collection stopped</value>
+  </data>
+  <data xml:space="preserve" name="來源已撤銷">
+    <value>Source revoked</value>
+  </data>
+  <data xml:space="preserve" name="健康檢查已停用">
+    <value>Health check disabled</value>
+  </data>
+  <data xml:space="preserve" name="正常">
+    <value>Healthy</value>
+  </data>
+  <data xml:space="preserve" name="降級">
+    <value>Degraded</value>
+  </data>
+  <data xml:space="preserve" name="異常">
+    <value>Unhealthy</value>
+  </data>
+  <data xml:space="preserve" name="未知或資料不足">
+    <value>Unknown or insufficient data</value>
+  </data>
+  <data xml:space="preserve" name="尚無量測資料">
+    <value>No measurements yet</value>
+  </data>
+  <data xml:space="preserve" name="資料過期">
+    <value>Data is stale</value>
+  </data>
+  <data xml:space="preserve" name="DNS 解析失敗">
+    <value>DNS resolution failed</value>
+  </data>
+  <data xml:space="preserve" name="監測器權限不足">
+    <value>Monitor permission denied</value>
+  </data>
+  <data xml:space="preserve" name="監測器錯誤">
+    <value>Monitor error</value>
+  </data>
+  <data xml:space="preserve" name="可達">
+    <value>Reachable</value>
+  </data>
+  <data xml:space="preserve" name="不可達">
+    <value>Unreachable</value>
+  </data>
+  <data xml:space="preserve" name="待確認">
+    <value>Pending</value>
+  </data>
+</root>

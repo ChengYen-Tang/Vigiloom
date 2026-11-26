@@ -1,21 +1,22 @@
 @using Vigiloom.Contracts.Workspace
+@inject Microsoft.Extensions.Localization.IStringLocalizer<WorkspaceText> L
 
 <section class="overview-panel" aria-labelledby="@HeadingId">
     <div class="overview-heading"><div><h2 id="@HeadingId">@Title</h2><p>@Description</p></div><a href="@AllHref">@AllLabel</a></div>
-    @if (Section.Unavailable) { <p role="alert">無法讀取此區資料，請稍後重新整理。</p> }
+    @if (Section.Unavailable) { <p role="alert">@L["無法讀取此區資料，請稍後重新整理。"]</p> }
     else if (Section.Total == 0) { <p>@EmptyText</p> }
     else
     {
-        <p>共 @Section.Total 筆 · @Section.Attention 筆需要留意</p>
+        <p>@L["共 {0} 筆 · {1} 筆需要留意", Section.Total, Section.Attention]</p>
         <ul class="overview-list">
         @foreach (var item in Section.Items)
         {
             <li @key="item.Id"><div class="overview-name"><a href="@($"{ItemPath}/{item.Id:D}")">@item.Name</a><span>@item.Detail</span></div>
-                <div class="overview-status"><strong class="@(item.Priority == 0 ? "danger" : item.Priority == 1 ? "attention" : item.Priority == 2 ? "good" : "muted")">@item.State</strong>
-                <span>@TimeLabel：@(item.ObservedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料") @(item.ObservedAt is null ? "" : "UTC")</span></div></li>
+                <div class="overview-status"><strong class="@(item.Priority == 0 ? "danger" : item.Priority == 1 ? "attention" : item.Priority == 2 ? "good" : "muted")">@L[item.State]</strong>
+                <span>@TimeLabel：@(item.ObservedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚無資料"].Value) @(item.ObservedAt is null ? "" : "UTC")</span></div></li>
         }
         </ul>
-        @if (Section.Total > Section.Items.Count) { <p>以上顯示優先關注的 @Section.Items.Count 筆。</p> }
+        @if (Section.Total > Section.Items.Count) { <p>@L["以上顯示優先關注的 {0} 筆。", Section.Items.Count]</p> }
     }
 </section>
 

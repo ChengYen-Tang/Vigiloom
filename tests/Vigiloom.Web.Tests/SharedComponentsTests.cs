@@ -7,12 +7,47 @@ using MudBlazor.Services;
 using Vigiloom.Web.Client.Components;
 using Vigiloom.Web.Client.Components.PublicStatus;
 using Vigiloom.Contracts.Publishing;
+using Vigiloom.Contracts.Workspace;
+using Vigiloom.Web.Client.Components.Workspace;
 
 namespace Vigiloom.Web.Tests;
 
 [TestClass]
 public sealed class SharedComponentsTests
 {
+    [TestMethod]
+    [DataRow("en", "Offline", "Total: 1 · Need attention: 1")]
+    [DataRow("zh-Hant", "離線", "共 1 筆 · 1 筆需要留意")]
+    [DataRow("zh-Hans", "离线", "共 1 项 · 1 项需要注意")]
+    public async Task WorkspaceSummary_LocalizesStateAndPreservesNames(string culture, string state, string count)
+    {
+        var previous = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = new(culture);
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddLocalization();
+            await using var provider = services.BuildServiceProvider();
+            await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+            await renderer.Dispatcher.InvokeAsync(async () =>
+            {
+                var section = new WorkspaceSection(1, 1, [new(Guid.CreateVersion7(), "Custom server", "server.example", "離線", null, 0)]);
+                var panel = await renderer.RenderComponentAsync<WorkspaceSectionPanel>(ParameterView.FromDictionary(new Dictionary<string, object?>
+                {
+                    [nameof(WorkspaceSectionPanel.Section)] = section, [nameof(WorkspaceSectionPanel.Title)] = "Custom title",
+                    [nameof(WorkspaceSectionPanel.HeadingId)] = "heading", [nameof(WorkspaceSectionPanel.TimeLabel)] = "Last"
+                }));
+                var html = System.Net.WebUtility.HtmlDecode(panel.ToHtmlString());
+                Assert.Contains("Custom server", html);
+                Assert.Contains("server.example", html);
+                Assert.Contains(state, html);
+                Assert.Contains(count, html);
+            });
+        }
+        finally { System.Globalization.CultureInfo.CurrentUICulture = previous; }
+    }
+
     [TestMethod]
     [DataRow("2026-11-01T00:00:00+00:00", 24, "2026-11-01T00:00:00+00:00", 1, 1)]
     [DataRow("2026-11-01T23:00:00+00:00", 2, "2026-11-02T00:00:00+00:00", 2, 2)]
