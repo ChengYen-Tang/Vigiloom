@@ -73,4 +73,37 @@
   <data name="服務已停收。" xml:space="preserve"><value>Service collection stopped.</value></data>
   <data name="服務已恢復授權。" xml:space="preserve"><value>Service authorization restored.</value></data>
   <data name="來源已撤銷，無法恢復收集。" xml:space="preserve"><value>The source was revoked; collection cannot be resumed.</value></data>
+  <data name="部署關聯" xml:space="preserve"><value>Deployment relationships</value></data>
+  <data name="依已核實的部署資料，為應用執行個體建立選配的主機導覽。" xml:space="preserve"><value>Create optional host navigation for application instances based on verified deployment data.</value></data>
+  <data name="返回 {0}" xml:space="preserve"><value>Back to {0}</value></data>
+  <data name="目前關聯" xml:space="preserve"><value>Current relationships</value></data>
+  <data name="關聯不代表即時部署狀態，也不改變服務或設備的公開設定。請勿在確認依據中輸入密碼或憑證。" xml:space="preserve"><value>Relationships do not represent live deployment status or change service or device public settings. Do not enter passwords or credentials as evidence.</value></data>
+  <data name="無法載入關聯。" xml:space="preserve"><value>Unable to load relationships.</value></data>
+  <data name="此頁沒有尚未解除的關聯。" xml:space="preserve"><value>There are no active relationships on this page.</value></data>
+  <data name="左右滑動查看完整關聯資訊。" xml:space="preserve"><value>Scroll horizontally to view all relationship details.</value></data>
+  <data name="部署關聯，可左右捲動" xml:space="preserve"><value>Deployment relationships, scroll horizontally</value></data>
+  <data name="主機" xml:space="preserve"><value>Host</value></data>
+  <data name="確認依據" xml:space="preserve"><value>Evidence</value></data>
+  <data name="來源或資源已停用，請檢查" xml:space="preserve"><value>Source or resource disabled; check relationship</value></data>
+  <data name="未解除" xml:space="preserve"><value>Active</value></data>
+  <data name="要結束的關聯" xml:space="preserve"><value>Relationship to end</value></data>
+  <data name="請選擇" xml:space="preserve"><value>Select</value></data>
+  <data name="結束關聯" xml:space="preserve"><value>End relationship</value></data>
+  <data name="關聯分頁" xml:space="preserve"><value>Relationship pagination</value></data>
+  <data name="建立關聯" xml:space="preserve"><value>Create relationship</value></data>
+  <data name="主機設備" xml:space="preserve"><value>Host device</value></data>
+  <data name="主機設備分頁" xml:space="preserve"><value>Host device pagination</value></data>
+  <data name="服務執行個體分頁" xml:space="preserve"><value>Service instance pagination</value></data>
+  <data name="設備：" xml:space="preserve"><value>Devices: </value></data>
+  <data name="執行個體：" xml:space="preserve"><value>Instances: </value></data>
+  <data name="請從服務詳情選擇服務。" xml:space="preserve"><value>Select a service from its details page.</value></data>
+  <data name="找不到選取的服務。" xml:space="preserve"><value>The selected service was not found.</value></data>
+  <data name="無法讀取部署關聯，請稍後再試。" xml:space="preserve"><value>Unable to load deployment relationships. Please try again later.</value></data>
+  <data name="請選擇主機與執行個體。" xml:space="preserve"><value>Select a host and an instance.</value></data>
+  <data name="部署關聯已建立。" xml:space="preserve"><value>Deployment relationship created.</value></data>
+  <data name="請選擇要結束的關聯。" xml:space="preserve"><value>Select a relationship to end.</value></data>
+  <data name="部署關聯已結束。" xml:space="preserve"><value>Deployment relationship ended.</value></data>
+  <data name="請提供有效的主機、執行個體與確認依據（最多 512 字）。" xml:space="preserve"><value>Provide a valid host, instance and evidence (at most 512 characters).</value></data>
+  <data name="找不到設備或執行個體，請重新整理。" xml:space="preserve"><value>Device or instance not found. Refresh and try again.</value></data>
+  <data name="關聯或資源狀態已變更，請重新整理並確認。" xml:space="preserve"><value>The relationship or resource status has changed. Refresh and check.</value></data>
 </root>
