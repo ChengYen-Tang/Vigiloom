@@ -10,17 +10,21 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Compares desired integrity policy with the latest ordered worker report.</summary>
 public sealed class AgentIntegritySettingsMonitoring(IDbContextFactory<AgentManagementDbContext> contexts,
-    IDeviceAgentSource devices, IIntegritySettingsReader reader, TimeProvider clock)
+    IDeviceAgentSource devices, IIntegritySettingsReader reader, TimeProvider clock, IHostSecurityObservationReader? remote = null)
 {
     public async Task<IntegritySettingsStatus?> GetAsync(Guid deviceId, CancellationToken token)
     {
-        var device = await devices.GetAsync(deviceId, token);
+        var observation = remote is null ? null : await remote.GetAsync(deviceId, token);
+        var device = remote is null ? await devices.GetAsync(deviceId, token) : observation?.Device;
         if (device is null) return null;
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
-        var agent = await db.Agents.AsNoTracking().Where(x => x.DeviceId == deviceId && x.DeviceGeneration == device.Generation && x.RevokedAt == null)
-            .Select(x => new { x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds, x.QueueReportEpoch, x.QueueReportSequence,
-                x.IntegrityConfigurationEpoch, x.IntegrityConfigurationSequence, x.IntegrityConfigurationReportedAt, x.IntegrityConfigurationJson })
+        var agent = remote is not null ? observation!.Agent : await db.Agents.AsNoTracking()
+            .Where(x => x.DeviceId == deviceId && x.DeviceGeneration == device.Generation && x.RevokedAt == null)
+            .Select(x => new SecurityAgentObservation(x.Id, x.CreatedAt, x.LastHeartbeatAt, x.HeartbeatSafetyIntervalSeconds,
+                x.QueueReportEpoch, x.QueueReportSequence, x.InventoryConfigurationEpoch, x.InventoryConfigurationSequence,
+                x.InventoryConfigurationReportedAt, x.InventoryConfigurationJson, x.IntegrityConfigurationEpoch, x.IntegrityConfigurationSequence,
+                x.IntegrityConfigurationReportedAt, x.IntegrityConfigurationJson, x.BaselineConfigurationReportedAt, x.BaselineConfigurationJson))
             .SingleOrDefaultAsync(token);
         var desired = await reader.ReadAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), deviceId, token);
         if (!device.Eligible) return Empty(AgentSettingsApplyState.Disabled);

@@ -164,10 +164,15 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             }
             var queue = new AgentQueueSnapshot(0, 0, 0, capacity.Capacity.PayloadBytes, capacity.Capacity.BatchCount);
             var capacityReport = new AgentQueueCapacityReport(capacity, DateTimeOffset.UtcNow, null);
-            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, queue, CapacityConfiguration: capacityReport, LogStatus: new(logRevision, false, []), Runtime: new("1.2.3", "win-x64")), token))
+            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, queue, CapacityConfiguration: capacityReport, LogStatus: new(logRevision, false, []), InventoryConfiguration: new(null, null, null), IntegrityConfiguration: new(null, null, null, null), BaselineConfiguration: new(null, null, DateTimeOffset.UtcNow, null), Runtime: new("1.2.3", "win-x64")), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
             var logStatus = await client.GetFromJsonAsync<HostLogStatusView>($"/internal/v1/devices/{identity.DeviceId:D}/agent-log-status", token);
             Assert.AreEqual(logRevision, logStatus!.Report.Revision);
+            var securityStatus = await client.GetFromJsonAsync<SecurityObservation>($"/internal/v1/devices/{identity.DeviceId:D}/agent-security-observation", token);
+            Assert.AreEqual(identity.AgentId, securityStatus!.Agent!.Id);
+            Assert.AreEqual(epoch, securityStatus.Agent.InventoryConfigurationEpoch);
+            Assert.AreEqual(epoch, securityStatus.Agent.IntegrityConfigurationEpoch);
+            Assert.IsNotNull(securityStatus.Agent.BaselineConfigurationJson);
             using (var usage = await client.PostAsJsonAsync("/internal/v1/agent-package-usage", new AgentPackageUsageRequest("1.2.3", "win-x64"), token))
                 Assert.IsTrue((await usage.Content.ReadFromJsonAsync<AgentPackageUsageResponse>(cancellationToken: token))!.InUse);
             using (var usage = await client.PostAsJsonAsync("/internal/v1/agent-package-usage", new AgentPackageUsageRequest("9.9.9", "win-x64"), token))
