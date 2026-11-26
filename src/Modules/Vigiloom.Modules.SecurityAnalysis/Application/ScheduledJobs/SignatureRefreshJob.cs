@@ -17,4 +17,3 @@ public sealed class SignatureRefreshJob(SignatureRefresh refresh, ILogger<Signat
         if (result == SignatureRefreshResult.Conflict) logger.LogWarning("Signature-Base source refresh ended with {Result}", result);
     }
 }
-

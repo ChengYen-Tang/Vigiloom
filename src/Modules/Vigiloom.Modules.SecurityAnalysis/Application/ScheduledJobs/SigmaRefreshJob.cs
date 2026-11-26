@@ -17,4 +17,3 @@ public sealed class SigmaRefreshJob(SigmaRefresh refresh, ILogger<SigmaRefreshJo
         if (result == SigmaRefreshResult.Conflict) logger.LogWarning("Sigma source refresh ended with {Result}", result);
     }
 }
-

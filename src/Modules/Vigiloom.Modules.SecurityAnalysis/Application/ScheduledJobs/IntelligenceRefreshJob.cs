@@ -19,4 +19,3 @@ public sealed class IntelligenceRefreshJob(IntelligenceRefresh refresh, ILogger<
             logger.LogWarning("Intelligence source refresh ended with {Result}", result);
     }
 }
-

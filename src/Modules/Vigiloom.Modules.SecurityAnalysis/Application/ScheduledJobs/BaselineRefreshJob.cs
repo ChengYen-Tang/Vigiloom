@@ -20,4 +20,3 @@ public sealed class BaselineRefreshJob(BaselineRefresh refresh, ILogger<Baseline
         }
     }
 }
-
