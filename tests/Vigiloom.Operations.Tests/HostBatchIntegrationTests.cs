@@ -47,6 +47,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 policy.InitializeFresh(now);
                 policy.BeginCleanupCutover(now);
                 db.ReplayPolicies.Add(policy);
+                db.Set<AgentSetting>().Add(new AgentSetting { HeartbeatSeconds = 120, UpdatedBy = Guid.CreateVersion7(), UpdatedAt = now });
                 await db.SaveChangesAsync(token);
             }
             var services = new ServiceCollection();
@@ -90,6 +91,16 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             using (var unauthorizedHeartbeat = await client.PostAsync("/api/v1/agent/heartbeat", null, token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, unauthorizedHeartbeat.StatusCode);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid");
+            using (var settings = await client.GetAsync("/api/v1/agent/settings", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, settings.StatusCode);
+                var snapshot = await settings.Content.ReadFromJsonAsync<AgentSettingsSnapshot>(cancellationToken: token);
+                Assert.AreEqual(120, snapshot!.Settings.HeartbeatSeconds);
+                using var unchangedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/settings");
+                unchangedRequest.Headers.IfNoneMatch.Add(settings.Headers.ETag!);
+                using var unchanged = await client.SendAsync(unchangedRequest, token);
+                Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
+            }
             var epoch = Guid.CreateVersion7();
             using (var session = await client.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
@@ -124,6 +135,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             await using var logs = await provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await logs.HostLogs.CountAsync(token));
             await using var check = new HostMonitoringDbContext(hostOptions);
+            Assert.AreEqual(120, (await check.AgentStatuses.SingleAsync(token)).HeartbeatSafetyIntervalSeconds);
             Assert.IsFalse(await check.ReceivedBatches.AnyAsync(x => EF.Property<bool>(x, "PendingDelivery"), token));
             Assert.AreEqual(1, await check.HostMetrics.CountAsync(token));
             Assert.AreEqual(2, sink.Calls);
