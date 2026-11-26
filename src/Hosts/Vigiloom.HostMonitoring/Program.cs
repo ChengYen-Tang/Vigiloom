@@ -63,6 +63,7 @@ builder.Services.AddScoped<HostHeartbeat>();
 builder.Services.AddScoped<HostAgentConfiguration>();
 builder.Services.AddScoped<HostQueueCapacity>();
 builder.Services.AddScoped<HostAgentMonitoring>();
+builder.Services.AddScoped<HostUpdateResults>();
 builder.Services.AddScoped<HostInboxCleanup>();
 builder.Services.AddScoped<HostLogIdentityCleanup>();
 builder.Services.AddScoped<HostWorkRetention>();
@@ -78,6 +79,11 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", true))
     builder.Services.AddHangfireServer(options => { options.Queues = ["host"]; options.IsLightweightServer = true; });
 }
 builder.Services.AddHttpClient("resources", (services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources";
+    client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<IRecordedAgentTargetReader, RecordedAgentTargets>((services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources";
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
@@ -106,6 +112,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/ch
     context.Request.Path.StartsWithSegments("/api/v1/agent/heartbeat") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-capacity") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/update-results") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/settings"), agent => agent.UseMiddleware<AgentAccess>());
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
 app.MapAgentBatchEndpoints();
@@ -114,6 +121,10 @@ app.MapHostQueueCapacityEndpoints();
 app.MapHostAgentStatusEndpoints();
 app.MapPost("/api/v1/agent/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes));
+app.MapPost("/api/v1/agent/update-results", AgentUpdateResultEndpoint.ReceiveAsync)
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentUpdateResultEndpoint.MaximumBytes));
+app.MapGet("/internal/v1/agents/{id:guid}/update-status", async (Guid id, HostUpdateResults results, CancellationToken token) =>
+    await results.GetAsync(id, token) is { } status ? Results.Ok(status) : Results.NotFound());
 app.MapGet("/api/v1/agent/queue-session", async (HttpContext context, HostHeartbeat service, CancellationToken token) =>
 {
     var session = await service.GetSessionAsync((RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!, token);

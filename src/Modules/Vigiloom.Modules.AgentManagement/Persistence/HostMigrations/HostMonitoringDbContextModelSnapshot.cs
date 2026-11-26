@@ -505,6 +505,59 @@ namespace Vigiloom.Modules.AgentManagement.Persistence.HostMigrations
                     b.ToTable("SettingAudits", "agent");
                 });
 
+            modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.AgentUpdateReceipt", b =>
+                {
+                    b.Property<long>("RowId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("RowId"));
+
+                    b.Property<Guid>("AgentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("Failure")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Result")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RetryAllowed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UpdateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RowId");
+
+                    SqlServerKeyBuilderExtensions.IsClustered(b.HasKey("RowId"));
+
+                    b.HasIndex("AgentId", "MessageId")
+                        .IsUnique();
+
+                    b.HasIndex("UpdateId", "Sequence")
+                        .IsUnique();
+
+                    b.HasIndex("AgentId", "ReceivedAt", "RowId");
+
+                    b.ToTable("UpdateReceipts", "agent", t =>
+                        {
+                            t.HasCheckConstraint("CK_UpdateReceipts_Result", "[Sequence] > 0 AND [Result] IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10) AND ([Failure] IS NULL OR [Failure] IN (1, 2, 3)) AND ([Result] IN (2, 3, 10) OR ([RetryAllowed] = 0 AND [Failure] IS NULL))");
+                        });
+                });
+
             modelBuilder.Entity("Vigiloom.Modules.AgentManagement.Domain.HostAgentStatus", b =>
                 {
                     b.Property<Guid>("Id")
