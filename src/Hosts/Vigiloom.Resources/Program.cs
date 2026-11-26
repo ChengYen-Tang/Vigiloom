@@ -34,12 +34,11 @@ builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.Applic
     options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
 });
 builder.Services.AddAuthorization(options => options.AddVigiloomAccessPolicies());
-var resourceDatabase = builder.Configuration.GetConnectionString("Resources")
-    ?? throw new InvalidOperationException("ConnectionStrings:Resources is required.");
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
     builder.Configuration["Temporal:Namespace"] ?? "default");
 builder.Services.AddScoped<ResourceWork>();
-builder.Services.AddScoped(provider => new OutboxDispatcher(resourceDatabase, provider.GetServices<IOutboxHandler>(),
+builder.Services.AddScoped(provider => new OutboxDispatcher(provider.GetRequiredService<IConfiguration>().GetConnectionString("Resources")
+    ?? throw new InvalidOperationException("ConnectionStrings:Resources is required."), provider.GetServices<IOutboxHandler>(),
     provider.GetRequiredService<ILogger<OutboxDispatcher>>()));
 builder.Services.AddHostedService<WorkDispatcher>();
 builder.Services.AddModuleSqlServer<ResourcesDbContext>(

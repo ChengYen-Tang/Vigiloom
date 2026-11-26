@@ -16,9 +16,8 @@ using Vigiloom.Observability.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Observability");
-var database = builder.Configuration.GetConnectionString("Observability")
-    ?? throw new InvalidOperationException("ConnectionStrings:Observability is required.");
-builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(_ => database, "service", pooled: true);
+builder.Services.AddModuleSqlServer<ServiceObservabilityDbContext>(services => services.GetRequiredService<IConfiguration>().GetConnectionString("Observability")
+    ?? throw new InvalidOperationException("ConnectionStrings:Observability is required."), "service", pooled: true);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<SourceCredentials>();
 builder.Services.AddScoped<SelfSourceProvider>();
@@ -57,7 +56,8 @@ builder.Services.AddSingleton<IHealthTransitionSink, HealthTransitionDispatcher>
 builder.Services.AddSingleton<HealthRunner>();
 builder.Services.AddScoped<HealthStatusReader>();
 builder.Services.AddScoped<HealthHistoryReader>();
-builder.Services.AddScoped(provider => new OutboxDispatcher(database, provider.GetServices<IOutboxHandler>(),
+builder.Services.AddScoped(provider => new OutboxDispatcher(provider.GetRequiredService<IConfiguration>().GetConnectionString("Observability")
+    ?? throw new InvalidOperationException("ConnectionStrings:Observability is required."), provider.GetServices<IOutboxHandler>(),
     provider.GetRequiredService<ILogger<OutboxDispatcher>>()));
 builder.Services.AddHostedService<HealthWorker>();
 builder.Services.AddHostedService<HealthPolicyWorker>();
