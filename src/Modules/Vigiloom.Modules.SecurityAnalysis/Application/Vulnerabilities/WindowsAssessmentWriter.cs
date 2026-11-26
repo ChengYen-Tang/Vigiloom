@@ -8,6 +8,8 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Notifications;
 using Vigiloom.Contracts.Resources;
+using Vigiloom.Contracts.Events;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Vulnerabilities;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 
@@ -17,7 +19,7 @@ internal enum WindowsWriteResult { Written, AlreadyWritten, Conflict, Changed }
 
 /// <summary>Publishes product candidates and their observed update evidence atomically.</summary>
 internal sealed class WindowsAssessmentWriter(IDbContextFactory<SecurityAnalysisDbContext> contexts, IAgentOwnerFence owners, TimeProvider clock,
-    INotificationWriter? notifications = null, IDevicePingSource? devices = null)
+    INotificationWriter? notifications = null, IDevicePingSource? devices = null, IDetectionTimelineWriter? timeline = null)
 {
     internal const string MatcherVersion = "windows-msrc-v5";
 
@@ -56,6 +58,7 @@ internal sealed class WindowsAssessmentWriter(IDbContextFactory<SecurityAnalysis
         await db.SaveChangesAsync(token);
         foreach (var batch in ordered.Chunk(128))
         {
+            var timelineEntries = timeline is null ? null : new List<EventTimelineEntry>();
             var identities = batch.Select(x => FindingIdentity.Hash(product, x.Cve)).ToArray();
             var parameter = Expression.Parameter(typeof(VulnerabilityFinding), "finding");
             Expression predicate = Expression.Constant(false);
@@ -91,8 +94,11 @@ internal sealed class WindowsAssessmentWriter(IDbContextFactory<SecurityAnalysis
                     RevisionId = revisionId, AgentId = owner.AgentId, DeviceGeneration = owner.DeviceGeneration, HostSnapshotId = hostId,
                     EvaluatedAt = now, MatcherVersion = MatcherVersion, Ecosystem = product, Architecture = architecture,
                     State = (int)state, Origin = (int)PackageOrigin.Unknown, Reason = 3, WindowsEvidence = detail });
+                timelineEntries?.Add(new("vulnerability", now, owner.DeviceId, "device", $"漏洞評估：{cve.Cve}",
+                    $"情報版本 {revisionId:D}；狀態 {(int)state}", $"/devices/{owner.DeviceId:D}?tab=vulnerabilities&search={Uri.EscapeDataString(cve.Cve)}"));
             }
             await db.SaveChangesAsync(token);
+            if (timeline is not null && timelineEntries is { Count: > 0 }) await timeline.WriteAsync(db, timelineEntries, token);
             db.ChangeTracker.Clear();
         }
         var coverage = await db.VulnerabilityCoverage.SingleOrDefaultAsync(x => x.DeviceId == owner.DeviceId && x.SourceId == sourceId, token);

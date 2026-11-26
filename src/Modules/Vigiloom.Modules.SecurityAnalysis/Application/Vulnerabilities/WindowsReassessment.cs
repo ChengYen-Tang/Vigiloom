@@ -6,13 +6,14 @@ using Vigiloom.Contracts.Notifications;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 namespace Vigiloom.Modules.SecurityAnalysis.Application.Vulnerabilities;
 
 /// <summary>Reassesses supported Windows hosts when inventory or selected MSRC evidence changes.</summary>
 public sealed class WindowsReassessment(IDbContextFactory<SecurityAnalysisDbContext> contexts, IAgentOwnerResolver resolver,
     IAgentOwnerFence owners, TimeProvider clock, ILogger<WindowsReassessment> logger, MicrosoftCatalogCache? catalog = null,
-    INotificationWriter? notifications = null, IDevicePingSource? devices = null)
+    INotificationWriter? notifications = null, IDevicePingSource? devices = null, IDetectionTimelineWriter? timeline = null)
 {
     private const int PageSize = 100;
     private static readonly TimeSpan MaximumAge = TimeSpan.FromDays(14);
@@ -71,7 +72,7 @@ public sealed class WindowsReassessment(IDbContextFactory<SecurityAnalysisDbCont
                     var assessment = await new WindowsProductEvaluation(contexts, clock, catalog, budget).EvaluateAsync(owner, MaximumAge, token);
                     if (!rotationSaved && catalog is not null && budget.Exhausted) { catalog.NextHostCursor = item.RowId; rotationSaved = true; }
                     if (assessment.Status == WindowsEvaluationStatus.Ready)
-                        await new WindowsAssessmentWriter(contexts, owners, clock, notifications, devices).WriteAsync(owner, assessment, MaximumAge, token);
+                        await new WindowsAssessmentWriter(contexts, owners, clock, notifications, devices, timeline).WriteAsync(owner, assessment, MaximumAge, token);
                 }
                 catch (Exception error) when (!token.IsCancellationRequested && error is InvalidDataException or DbException or DbUpdateException)
                 {
