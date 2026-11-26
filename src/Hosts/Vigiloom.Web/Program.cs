@@ -64,8 +64,9 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Resources:Url"]))
 {
     builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
         builder.Configuration["Temporal:Namespace"] ?? "default");
-    builder.Services.AddVigiloomTemporalWorker<Vigiloom.Web.Services.ApplicationEventHandler>(
-        builder.Configuration["Work:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Observability:Url"]))
+        builder.Services.AddVigiloomTemporalWorker<Vigiloom.Web.Services.ApplicationEventHandler>(
+            builder.Configuration["Work:ObservabilityQueue"] ?? "vigiloom.observability.catalog");
 }
 
 // Keep malformed minimal-API requests as 400 responses in Development as well as Production.
