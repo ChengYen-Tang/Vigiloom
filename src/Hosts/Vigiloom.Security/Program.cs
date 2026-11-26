@@ -14,6 +14,8 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
+using Vigiloom.Contracts.Agent.Integrity;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Security");
@@ -26,6 +28,7 @@ builder.Services.AddScoped<YaraScans>();
 builder.Services.AddScoped<AgentSecuritySettings>();
 builder.Services.AddScoped<IBaselineSource, BaselineSource>();
 builder.Services.AddScoped<InventoryConfiguration>();
+builder.Services.AddScoped<IntegrityConfiguration>();
 builder.Services.AddHttpClient<IDeviceAgentSource, ResourceDevices>((services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://vigiloom-resources";
@@ -83,6 +86,24 @@ app.MapPut("/internal/v1/inventory-settings", async (Guid? deviceId, InventorySe
     return await settings.UpdateAsync(deviceId, command.Update!, command.ActorId, token) is { } saved
         ? Results.Ok(saved) : Results.Conflict();
 });
+var integrity = app.MapGroup("/internal/v1/devices/{deviceId:guid}/integrity-scopes");
+integrity.MapGet("/", async (Guid deviceId, IntegrityConfiguration settings, CancellationToken token) =>
+    await settings.ListAsync(deviceId, token) is { } scopes ? Results.Ok(scopes) : Results.NotFound());
+integrity.MapPost("/", async (Guid deviceId, IntegrityCreateCommand command, IntegrityConfiguration settings, CancellationToken token) =>
+{
+    try { return Results.Ok(await settings.CreateAsync(deviceId, command.Policy, command.ActorId, token)); }
+    catch (ArgumentException) { return Results.BadRequest(); }
+});
+integrity.MapPut("/{scopeId:guid}", async (Guid deviceId, Guid scopeId, IntegrityUpdateCommand command, IntegrityConfiguration settings, CancellationToken token) =>
+{
+    try { return Results.Ok(await settings.UpdateAsync(deviceId, scopeId, command.Policy, command.Version, command.ActorId, token)); }
+    catch (ArgumentException) { return Results.BadRequest(); }
+});
+integrity.MapPost("/{scopeId:guid}/retire", async (Guid deviceId, Guid scopeId, IntegrityRetireCommand command, IntegrityConfiguration settings, CancellationToken token) =>
+{
+    try { return Results.Ok(await settings.RetireAsync(deviceId, scopeId, command.Version, command.ActorId, token)); }
+    catch (ArgumentException) { return Results.BadRequest(); }
+});
 var yara = app.MapGroup("/internal/v1/yara-scans");
 yara.MapPost("/create", async (YaraCreateCommand command, YaraScans scans, CancellationToken token) =>
     Results.Ok(await scans.CreateAsync(command.Identity, command.Request, command.ActorId, token)));
@@ -99,3 +120,6 @@ app.Run();
 public partial class Program;
 
 internal sealed record InventorySettingsCommand(InventorySettingsUpdate Update, Guid ActorId);
+internal sealed record IntegrityCreateCommand(IntegrityScopeInput Policy, Guid ActorId);
+internal sealed record IntegrityUpdateCommand(IntegrityScopeInput Policy, string? Version, Guid ActorId);
+internal sealed record IntegrityRetireCommand(string? Version, Guid ActorId);

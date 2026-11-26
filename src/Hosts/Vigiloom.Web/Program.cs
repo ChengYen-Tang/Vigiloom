@@ -441,6 +441,7 @@ builder.Services.AddScoped<IInventoryStageWriter, InventoryStageWriter>();
 builder.Services.AddScoped<IInventoryStatusReader, InventoryStatusReader>();
 builder.Services.AddScoped<IInventorySettingsReader, InventorySettingsReader>();
 builder.Services.AddScoped<Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityConfiguration>();
+builder.Services.AddScoped<Vigiloom.Web.AgentVersions.IntegritySettingsAccess>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.Integrity.IIntegritySettingsReader, Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegritySettingsReader>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.Integrity.IIntegrityStageWriter, Vigiloom.Modules.SecurityAnalysis.Application.Integrity.IntegrityStageWriter>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.Baseline.IBaselineWriter, Vigiloom.Modules.SecurityAnalysis.Application.Baseline.BaselineWriter>();

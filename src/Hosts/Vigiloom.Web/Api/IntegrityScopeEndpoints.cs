@@ -3,6 +3,7 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Web.Authentication;
 using Microsoft.Net.Http.Headers;
+using Vigiloom.Web.AgentVersions;
 
 namespace Vigiloom.Web.Api;
 
@@ -12,18 +13,18 @@ internal static class IntegrityScopeEndpoints
     {
         var admin = app.MapGroup("/api/v1/agent-management/devices/{deviceId:guid}/integrity-scopes")
             .RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
-        admin.MapGet("/", async (Guid deviceId, IntegrityConfiguration settings, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/", async (Guid deviceId, IntegritySettingsAccess settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await settings.ListAsync(deviceId, token) is { } scopes ? Results.Ok(scopes) : Results.NotFound();
         }).Produces<IReadOnlyList<IntegrityScopeView>>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
-        admin.MapGet("/{scopeId:guid}", async (Guid deviceId, Guid scopeId, IntegrityConfiguration settings, HttpContext context, CancellationToken token) =>
+        admin.MapGet("/{scopeId:guid}", async (Guid deviceId, Guid scopeId, IntegritySettingsAccess settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             var scopes = await settings.ListAsync(deviceId, token);
             return scopes?.FirstOrDefault(x => x.Scope.Id == scopeId) is { } scope ? Results.Ok(scope) : Results.NotFound();
         }).Produces<IntegrityScopeView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
-        admin.MapPost("/", async (Guid deviceId, IntegrityScopeInput input, IntegrityConfiguration settings, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/", async (Guid deviceId, IntegrityScopeInput input, IntegritySettingsAccess settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await ApiMutation.ExecuteAsync(context, async actor =>
@@ -32,7 +33,7 @@ internal static class IntegrityScopeEndpoints
                 catch (ArgumentException) { return Invalid(); }
             }, allowApiCredential: false);
         }).Produces<IntegrityScopeView>(201).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429);
-        admin.MapPut("/{scopeId:guid}", async (Guid deviceId, Guid scopeId, IntegrityScopeUpdate input, IntegrityConfiguration settings, HttpContext context, CancellationToken token) =>
+        admin.MapPut("/{scopeId:guid}", async (Guid deviceId, Guid scopeId, IntegrityScopeUpdate input, IntegritySettingsAccess settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await ApiMutation.ExecuteAsync(context, async actor =>
@@ -41,7 +42,7 @@ internal static class IntegrityScopeEndpoints
                 catch (ArgumentException) { return Invalid(); }
             }, allowApiCredential: false);
         }).Produces<IntegrityScopeView>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429);
-        admin.MapPost("/{scopeId:guid}/retire", async (Guid deviceId, Guid scopeId, IntegrityScopeRetire input, IntegrityConfiguration settings, HttpContext context, CancellationToken token) =>
+        admin.MapPost("/{scopeId:guid}/retire", async (Guid deviceId, Guid scopeId, IntegrityScopeRetire input, IntegritySettingsAccess settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             return await ApiMutation.ExecuteAsync(context, async actor =>
