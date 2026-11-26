@@ -65,6 +65,13 @@ public sealed class IocHostLogTests(TestContext context)
             Assert.AreEqual("ioc", notice.Source);
             Assert.AreEqual(id, notice.EvidenceId);
             Assert.AreEqual(device, notice.ResourceId);
+            await using (var replay = (SqlTransaction)await connection.BeginTransactionAsync(token))
+            {
+                await handler.HandleAsync(new(Guid.CreateVersion7(), HostLogDispatch.IocMessageType, JsonSerializer.Serialize(dispatch)), connection, replay, token);
+                await replay.CommitAsync(token);
+            }
+            Assert.AreEqual(1, await verify.IocDetections.CountAsync(token));
+            Assert.HasCount(1, notices.Items);
             var savedSource = await verify.IntelligenceSources.SingleAsync(token);
             savedSource.IocDetectionEnabled = false;
             await verify.SaveChangesAsync(token);

@@ -57,12 +57,18 @@ internal sealed class IocHostLogHandler(IIocSource source, IHostLogReader logs, 
         if (current is null || !current.Enabled || !current.IocDetectionEnabled) return;
         if (active is null || active.RevisionId != revisionId || Convert.ToBase64String(active.Version) != selection.ActivationVersion)
             throw new InvalidOperationException("The active IOC source changed during evaluation.");
+        var messageIds = dispatch.MessageIds.ToArray();
+        var existing = (await db.IocDetections.AsNoTracking()
+            .Where(x => x.AgentId == dispatch.AgentId && x.RevisionId == revisionId && messageIds.Contains(x.MessageId))
+            .Select(x => new { x.MessageId, x.Kind, x.SourceLine, x.Field }).ToArrayAsync(cancellationToken))
+            .Select(x => (x.MessageId, x.Kind, x.SourceLine, x.Field)).ToHashSet();
         var now = clock.GetUtcNow();
         var notices = new List<NotificationRequest>();
         foreach (var log in events)
         {
             foreach (var match in matcher.Match(HostEventDecoder.Decode(log)).Distinct())
             {
+                if (!existing.Add((log.MessageId, match.Kind, match.SourceLine, match.Field))) continue;
                 db.IocDetections.Add(new IocDetection
                 {
                     AgentId = dispatch.AgentId, DeviceId = dispatch.DeviceId, MessageId = log.MessageId,

@@ -2,6 +2,9 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Agent.Inventory;
@@ -23,6 +26,62 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests;
 [TestCategory("Database")]
 public sealed class SecurityWorkTests(TestContext context)
 {
+    [TestMethod]
+    public void SecurityDetectionHandlersCanBeResolved()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IDbContextFactory<SecurityAnalysisDbContext>>(new Factory(new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer("Server=localhost;Database=unused").Options));
+        services.AddSingleton<IHostLogReader, EmptyLogReader>();
+        services.AddScoped<ISigmaCatalog, SigmaCatalog>();
+        services.AddHostDetection();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var handlers = scope.ServiceProvider.GetServices<IOutboxHandler>().ToArray();
+        Assert.IsTrue(handlers.Any(x => x.MessageType == HostLogDispatch.MessageType));
+        Assert.IsTrue(handlers.Any(x => x.MessageType == HostLogDispatch.IocMessageType));
+    }
+
+    private sealed class EmptyLogReader : IHostLogReader
+    {
+        public Task<IReadOnlyList<HostLogEntry>> ReadAsync(Guid agentId, IReadOnlyCollection<Guid> messageIds, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<HostLogEntry>>([]);
+    }
+
+    [TestMethod]
+    public Task HostLogDeliveryRunsBothAnalysersOnce() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            await SecurityDatabaseCommand.RunAsync(database.ConnectionString, null, token);
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = database.ConnectionString }).Build();
+            using var http = new HttpClient(new HostHandler([])) { BaseAddress = new Uri("http://host/") };
+            var sigma = new RecordingHandler(HostLogDispatch.MessageType);
+            var ioc = new RecordingHandler(HostLogDispatch.IocMessageType);
+            var consumer = new SecurityWorkHandler(config, new TestClients(http), [sigma, ioc]);
+            var dispatch = new HostLogDispatch(Guid.CreateVersion7(), Guid.CreateVersion7(), 1, [Guid.CreateVersion7()]);
+            var work = new ServiceWork(HostLogDispatch.CombinedMessageType, JsonSerializer.Serialize(dispatch), Guid.CreateVersion7().ToString());
+            await consumer.ExecuteAsync(work, token);
+            await consumer.ExecuteAsync(work, token);
+            Assert.AreEqual(1, sigma.Calls);
+            Assert.AreEqual(1, ioc.Calls);
+            var legacyIoc = new ServiceWork(HostLogDispatch.IocMessageType, work.Payload, Guid.CreateVersion7().ToString());
+            await consumer.ExecuteAsync(legacyIoc, token);
+            Assert.AreEqual(1, sigma.Calls);
+            Assert.AreEqual(2, ioc.Calls);
+        }, context.CancellationToken);
+
+    private sealed class RecordingHandler(string type) : IOutboxHandler
+    {
+        public string MessageType => type;
+        public int Calls { get; private set; }
+        public Task HandleAsync(OutboxMessage message, SqlConnection connection, SqlTransaction transaction, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.CompletedTask;
+        }
+    }
+
     [TestMethod]
     public Task FailedNotificationRollsBackScanChange() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>

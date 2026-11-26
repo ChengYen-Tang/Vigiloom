@@ -7,6 +7,9 @@ using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
+using Vigiloom.Contracts.Notifications;
+using Vigiloom.Contracts.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Sigma;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Security");
@@ -22,11 +25,21 @@ builder.Services.AddHttpClient("host", (services, client) =>
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(30);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient<IHostLogReader, OperationsHostLogs>((services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations";
+    client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 if (builder.Configuration.GetValue("Temporal:Enabled", true))
 {
     builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
         builder.Configuration["Temporal:Namespace"] ?? "default");
+    builder.Services.AddScoped<ISigmaCatalog, SigmaCatalog>();
+    builder.Services.AddHostDetection();
+    builder.Services.AddScoped<INotificationWriter, TemporalNotificationWriter>();
     builder.Services.AddVigiloomTemporalWorker<SecurityWorkHandler>(builder.Configuration["Work:SecurityQueue"] ?? "vigiloom.security.agent");
+    builder.Services.AddVigiloomTemporalWorker<SecurityWorkHandler>(builder.Configuration["Work:SecurityLogQueue"] ?? "vigiloom.security.logs");
     builder.Services.AddScoped<IYaraScanNotifier, YaraScanNotifier>();
     builder.Services.AddScoped(provider => new OutboxDispatcher(provider.GetRequiredService<IConfiguration>().GetConnectionString("Security")
         ?? throw new InvalidOperationException("ConnectionStrings:Security is required."), provider.GetServices<IOutboxHandler>(),

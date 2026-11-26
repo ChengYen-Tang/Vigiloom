@@ -13,14 +13,32 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Baseline;
 using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Infrastructure.Scheduling.Outbox;
 
 namespace Vigiloom.Security;
 
 /// <summary>Consumes Host batches and commits security effects with the delivery receipt.</summary>
-public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClientFactory clients) : IServiceWorkHandler
+public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClientFactory clients, IEnumerable<IOutboxHandler>? handlers = null) : IServiceWorkHandler
 {
     public async Task<string?> ExecuteAsync(ServiceWork work, CancellationToken cancellationToken)
     {
+        if (work.Kind is HostLogDispatch.MessageType or HostLogDispatch.IocMessageType or HostLogDispatch.CombinedMessageType)
+        {
+            var connectionString = configuration.GetConnectionString("Security") ?? throw new InvalidOperationException("ConnectionStrings:Security is required.");
+            var registered = (handlers ?? []).ToDictionary(handler => handler.MessageType, StringComparer.Ordinal);
+            var consumer = new TransactionalWorkHandler(connectionString, async (item, sql, transaction, token) =>
+            {
+                var kinds = item.Kind is HostLogDispatch.CombinedMessageType or HostLogDispatch.MessageType
+                    ? new[] { HostLogDispatch.MessageType, HostLogDispatch.IocMessageType } : [item.Kind];
+                foreach (var kind in kinds)
+                {
+                    if (!registered.TryGetValue(kind, out var handler)) throw new InvalidOperationException("Security log handler is missing.");
+                    await handler.HandleAsync(new OutboxMessage(Guid.Parse(item.DeliveryId!), kind, item.Payload), sql, transaction, token);
+                }
+                return null;
+            });
+            return await consumer.ExecuteAsync(work, cancellationToken);
+        }
         if (work.Kind != nameof(HostSecurityBatchReady)) throw new InvalidOperationException("Unknown security work type.");
         var batch = JsonSerializer.Deserialize<HostSecurityBatchReady>(work.Payload) ?? throw new InvalidOperationException("Missing security batch.");
         var path = $"internal/v1/security-batches/{batch.AgentId:D}/{batch.BatchId:D}";

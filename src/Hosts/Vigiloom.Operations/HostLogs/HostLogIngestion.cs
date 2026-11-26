@@ -70,7 +70,7 @@ public sealed class HostLogIngestion(IDbContextFactory<CentralLogsDbContext> con
         await timeline.AppendLocalAsync(entries.Select(item => (item.Entry, item.Log.RowId)), db.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
         var dispatch = new HostLogDispatch(submission.AgentId, submission.DeviceId, submission.DeviceGeneration, newIds);
         await work.WriteAsync(db, configuration["Work:SecurityLogQueue"] ?? "vigiloom.security.logs",
-            new ServiceWork(HostLogDispatch.MessageType, JsonSerializer.Serialize(dispatch)), token);
+            new ServiceWork(HostLogDispatch.CombinedMessageType, JsonSerializer.Serialize(dispatch)), token);
         await transaction.CommitAsync(token);
         return new(LogReceiptStatus.Accepted);
     }
