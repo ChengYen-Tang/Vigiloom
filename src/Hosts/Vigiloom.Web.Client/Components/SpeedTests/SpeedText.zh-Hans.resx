@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="網路測速" xml:space="preserve"><value>网络测速</value></data>
+  <data name="中央位置的對外路徑品質，與單台設備 Ping／應用服務健康分開。" xml:space="preserve"><value>中央位置的对外路径质量，与单台设备 Ping／应用服务健康分开。</value></data>
+  <data name="測速設定" xml:space="preserve"><value>测速设置</value></data>
+  <data name="開啟目前篩選的連結" xml:space="preserve"><value>打开当前筛选的链接</value></data>
+  <data name="日期範圍須在 31 天內，頁碼與排序須有效。" xml:space="preserve"><value>日期范围须在 31 天内，页码与排序须有效。</value></data>
+  <data name="登入已過期或權限已變更" xml:space="preserve"><value>登录已过期或权限已变更</value></data>
+  <data name="請重新登入後繼續。" xml:space="preserve"><value>请重新登录后继续。</value></data>
+  <data name="前往登入" xml:space="preserve"><value>前往登录</value></data>
+  <data name="暫時無法載入測速紀錄" xml:space="preserve"><value>暂时无法加载测速记录</value></data>
+  <data name="請確認連線後重新嘗試。" xml:space="preserve"><value>请确认连接后重新尝试。</value></data>
+  <data name="重新嘗試" xml:space="preserve"><value>重新尝试</value></data>
+  <data name="正在更新…" xml:space="preserve"><value>正在更新…</value></data>
+  <data name="上下傳趨勢" xml:space="preserve"><value>上下行趋势</value></data>
+  <data name="測速紀錄" xml:space="preserve"><value>测速记录</value></data>
+  <data name="這段時間沒有符合條件的測速紀錄。系統會依排程自動測速。" xml:space="preserve"><value>这段时间没有符合条件的测速记录。系统会依排程自动测速。</value></data>
+  <data name="非完成狀態的數值是已觀測的部分結果；缺資料顯示「—」，不代表 0 Mbps。" xml:space="preserve"><value>非完成状态的数值是已观察的部分结果；缺数据显示「—」，不代表 0 Mbps。</value></data>
+  <data name="目前最早可用紀錄（UTC）：{0}" xml:space="preserve"><value>当前最早可用记录（UTC）：{0}</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>尚无数据</value></data>
+  <data name="測速紀錄保存期限：{0} 天。逾期資料在排程清理前可能仍可查詢。" xml:space="preserve"><value>测速记录保存期限：{0} 天。过期数据在排程清理前可能仍可查询。</value></data>
+  <data name="正在載入測速紀錄…" xml:space="preserve"><value>正在加载测速记录…</value></data>
+  <data name="開始日期（UTC）" xml:space="preserve"><value>开始日期（UTC）</value></data>
+  <data name="結束日期（UTC，含當日）" xml:space="preserve"><value>结束日期（UTC，含当日）</value></data>
+  <data name="服務端" xml:space="preserve"><value>服务端</value></data>
+  <data name="服務端名稱" xml:space="preserve"><value>服务端名称</value></data>
+  <data name="排序" xml:space="preserve"><value>排序</value></data>
+  <data name="時間" xml:space="preserve"><value>时间</value></data>
+  <data name="下載" xml:space="preserve"><value>下载</value></data>
+  <data name="上傳" xml:space="preserve"><value>上传</value></data>
+  <data name="由大到小" xml:space="preserve"><value>由大到小</value></data>
+  <data name="套用篩選" xml:space="preserve"><value>应用筛选</value></data>
+  <data name="請選擇最多 31 天的有效日期範圍。" xml:space="preserve"><value>请选择最多 31 天的有效日期范围。</value></data>
+  <data name="共 {0} 筆紀錄 · 第 {1} 頁" xml:space="preserve"><value>共 {0} 笔记录 · 第 {1} 页</value></data>
+  <data name="時間（UTC）" xml:space="preserve"><value>时间（UTC）</value></data>
+  <data name="狀態" xml:space="preserve"><value>状态</value></data>
+  <data name="延遲" xml:space="preserve"><value>延迟</value></data>
+  <data name="自動" xml:space="preserve"><value>自动</value></data>
+  <data name="手動" xml:space="preserve"><value>手动</value></data>
+  <data name="未選定" xml:space="preserve"><value>未选定</value></data>
+  <data name="查看結果" xml:space="preserve"><value>查看结果</value></data>
+  <data name="測速分頁" xml:space="preserve"><value>测速分页</value></data>
+  <data name="上一頁" xml:space="preserve"><value>上一页</value></data>
+  <data name="下一頁" xml:space="preserve"><value>下一页</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>第 {0} 页</value></data>
+  <data name="下載趨勢" xml:space="preserve"><value>下载趋势</value></data>
+  <data name="上傳趨勢" xml:space="preserve"><value>上传趋势</value></data>
+  <data name="時間為 UTC、速率為十進位 Mbps；只有完成的測試連入趨勢，失敗／取消／部分結果留空，不補成 0。" xml:space="preserve"><value>时间为 UTC、速率为十进位 Mbps；只有完成的测试连入趋势，失败／取消／部分结果留空，不补成 0。</value></data>
+  <data name="目前顯示篩選範圍內最早 1,000 筆趨勢，請縮小日期範圍查看其餘資料。" xml:space="preserve"><value>当前显示筛选范围内最早 1,000 笔趋势，请缩小日期范围查看其余数据。</value></data>
+  <data name="等待執行" xml:space="preserve"><value>等待执行</value></data>
+  <data name="測試中" xml:space="preserve"><value>测试中</value></data>
+  <data name="完成" xml:space="preserve"><value>完成</value></data>
+  <data name="部分結果" xml:space="preserve"><value>部分结果</value></data>
+  <data name="達流量上限" xml:space="preserve"><value>达流量上限</value></data>
+  <data name="逾時" xml:space="preserve"><value>超时</value></data>
+  <data name="已取消" xml:space="preserve"><value>已取消</value></data>
+  <data name="執行中斷" xml:space="preserve"><value>执行中断</value></data>
+  <data name="無可用服務端" xml:space="preserve"><value>无可用服务端</value></data>
+  <data name="測速工具不可用" xml:space="preserve"><value>测速工具不可用</value></data>
+  <data name="失敗" xml:space="preserve"><value>失败</value></data>
+  <data name="測速結果" xml:space="preserve"><value>测速结果</value></data>
+  <data name="← 返回測速紀錄" xml:space="preserve"><value>← 返回测速记录</value></data>
+  <data name="無法載入測速結果，請稍後重新整理。" xml:space="preserve"><value>无法加载测速结果，请稍后刷新。</value></data>
+  <data name="找不到測速結果" xml:space="preserve"><value>找不到测速结果</value></data>
+  <data name="此筆紀錄不存在。" xml:space="preserve"><value>此笔记录不存在。</value></data>
+  <data name="測試尚未完成，請重新整理查看最新狀態。" xml:space="preserve"><value>测试尚未完成，请刷新查看最新状态。</value></data>
+  <data name="此測試未完整完成；已觀測數值僅代表部分結果，缺資料不代表 0。" xml:space="preserve"><value>此测试未完整完成；已观察数值仅代表部分结果，缺数据不代表 0。</value></data>
+  <data name="測試時間不足以取得完整結果；請檢查網路與測速限制。" xml:space="preserve"><value>测试时间不足以取得完整结果；请检查网络与测速限制。</value></data>
+  <data name="其中一個方向的測試逾時，結果可能不完整。" xml:space="preserve"><value>其中一个方向的测试超时，结果可能不完整。</value></data>
+  <data name="已要求取消，Worker 正在停止測試。" xml:space="preserve"><value>已要求取消，Worker 正在停止测试。</value></data>
+  <data name="量測數據" xml:space="preserve"><value>测量数据</value></data>
+  <data name="服務端 HTTP 延遲" xml:space="preserve"><value>服务端 HTTP 延迟</value></data>
+  <data name="已計量內容流量" xml:space="preserve"><value>已计量内容流量</value></data>
+  <data name="未知" xml:space="preserve"><value>未知</value></data>
+  <data name="測試開始（UTC）" xml:space="preserve"><value>测试开始（UTC）</value></data>
+  <data name="尚未開始" xml:space="preserve"><value>尚未开始</value></data>
+  <data name="完成／中止（UTC）" xml:space="preserve"><value>完成／中止（UTC）</value></data>
+  <data name="尚未完成" xml:space="preserve"><value>尚未完成</value></data>
+  <data name="十進位 Mbps；參考預算 {0} MiB，最長 {1} 秒。內容流量不含所有通訊開銷。下載可能使用多個測速伺服器；此紀錄僅保存主要伺服器的資訊。" xml:space="preserve"><value>十进位 Mbps；参考预算 {0} MiB，最长 {1} 秒。内容流量不含所有通信开销。下载可能使用多个测速服务器；此记录仅保存主要服务器的信息。</value></data>
+  <data name="服務端與來源" xml:space="preserve"><value>服务端与来源</value></data>
+  <data name="測速服務" xml:space="preserve"><value>测速服务</value></data>
+  <data name="主要測速伺服器" xml:space="preserve"><value>主要测速服务器</value></data>
+  <data name="測速端 ISP" xml:space="preserve"><value>测速端 ISP</value></data>
+  <data name="目前無資料" xml:space="preserve"><value>当前无数据</value></data>
+  <data name="伺服器位置" xml:space="preserve"><value>服务器位置</value></data>
+  <data name="伺服器座標" xml:space="preserve"><value>服务器坐标</value></data>
+  <data name="診斷代碼" xml:space="preserve"><value>诊断代码</value></data>
+  <data name="無" xml:space="preserve"><value>无</value></data>
+  <data name="ISP 僅顯示 Speedtest.net 提供的測速端資料；伺服器業者不一定是測速端 ISP。" xml:space="preserve"><value>ISP 仅显示 Speedtest.net 提供的测速端数据；服务器业者不一定是测速端 ISP。</value></data>
+  <data name="取消測試" xml:space="preserve"><value>取消测试</value></data>
+  <data name="已使用的流量無法退回。" xml:space="preserve"><value>已使用的流量无法退回。</value></data>
+  <data name="我了解取消的影響" xml:space="preserve"><value>我了解取消的影响</value></data>
+  <data name="取消這筆測試" xml:space="preserve"><value>取消这笔测试</value></data>
+  <data name="請先確認取消影響。" xml:space="preserve"><value>请先确认取消影响。</value></data>
+  <data name="無法確認取消結果，請重新整理檢查。" xml:space="preserve"><value>无法确认取消结果，请刷新检查。</value></data>
+</root>

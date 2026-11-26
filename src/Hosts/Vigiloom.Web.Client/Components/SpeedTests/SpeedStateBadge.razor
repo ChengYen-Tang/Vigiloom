@@ -1,5 +1,6 @@
+@inject Microsoft.Extensions.Localization.IStringLocalizer<Vigiloom.Web.Client.Components.SpeedTests.SpeedText> L
 @using Vigiloom.Contracts.SpeedTests
-<StatusBadge Text="@SpeedPresentation.State(State)" Tone="@Tone" />
+<StatusBadge Text="@L[SpeedPresentation.State(State)].Value" Tone="@Tone" />
 @code {
     [Parameter] public SpeedTestState State { get; set; }
     private StatusTone Tone => State switch
