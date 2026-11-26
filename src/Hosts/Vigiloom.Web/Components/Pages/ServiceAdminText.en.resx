@@ -565,4 +565,34 @@
   <data name="以 {0} 為準，預計有 {1} 筆原始樣本及 {2} 筆彙總符合清理條件。實際數量會隨時間及資料變動。" xml:space="preserve"><value>As of {0}, an estimated {1} raw samples and {2} aggregates qualify for cleanup. Actual counts change with time and data.</value></data>
   <data name="返回 Agent 設定" xml:space="preserve"><value>Back to Agent settings</value></data>
   <data name="請輸入有效的保存天數；彙總保存天數不能少於原始樣本。" xml:space="preserve"><value>Enter valid retention periods; aggregate retention cannot be shorter than raw sample retention.</value></data>
+  <data name="Agent 收據保存與清理" xml:space="preserve"><value>Agent receipt retention and cleanup</value></data>
+  <data name="平台保留收據以辨識重送的批次。符合條件的收據每小時分批清理；清理不會刪除 Agent 已提交的觀測資料。" xml:space="preserve"><value>The platform retains receipts to recognize retried batches. Eligible receipts are cleaned up in batches hourly; cleanup does not delete submitted observation data.</value></data>
+  <data name="目前重送期限：{0} 秒；收據保存：{1} 天。已清理 {2} 筆收據。" xml:space="preserve"><value>Current replay deadline: {0} seconds; receipt retention: {1} days. {2} receipts cleaned up.</value></data>
+  <data name="最近一次清理資料（UTC）：{0}。" xml:space="preserve"><value>Last cleanup (UTC): {0}.</value></data>
+  <data name="尚無紀錄" xml:space="preserve"><value>No record yet</value></data>
+  <data name="失敗紀錄可至" xml:space="preserve"><value>Failure records are available in </value></data>
+  <data name="背景工作" xml:space="preserve"><value>background jobs</value></data>
+  <data name="查詢。" xml:space="preserve"><value>.</value></data>
+  <data name="目前尚未啟用收據清理。" xml:space="preserve"><value>Receipt cleanup is not enabled.</value></data>
+  <data name="請先完成上方的補送期限啟用。" xml:space="preserve"><value>First enable the replay deadline above.</value></data>
+  <data name="啟用前必須停止所有舊版接收節點，並等待進行中的接收工作結束；啟用後不可讓舊節點重新加入。系統不會自動停止或偵測這些節點。" xml:space="preserve"><value>Before enabling, stop all old reception nodes and wait for in-progress reception work to finish. Do not rejoin old nodes afterwards. The system does not stop or detect them automatically.</value></data>
+  <data name="我已確認舊接收節點及其進行中的工作均已停止，且不會重新加入" xml:space="preserve"><value>I confirm that old reception nodes and their in-progress work have stopped and will not rejoin</value></data>
+  <data name="啟用收據清理" xml:space="preserve"><value>Enable receipt cleanup</value></data>
+  <data name="狀態：清理已啟用。延長期限無法恢復已清除的收據，也不會重新接受已清理範圍內的舊批次。" xml:space="preserve"><value>Status: cleanup enabled. Extending the deadline cannot restore deleted receipts or reaccept old batches within the cleaned range.</value></data>
+  <data name="重送期限（秒）" xml:space="preserve"><value>Replay deadline (seconds)</value></data>
+  <data name="收據保存期限（天）" xml:space="preserve"><value>Receipt retention (days)</value></data>
+  <data name="保存期限須涵蓋重送期限及 5 分鐘的時間誤差。已接收收據保留原有期限；縮短重送期限時，原期限有過渡保護。" xml:space="preserve"><value>Retention must cover the replay deadline plus 5 minutes of clock skew. Existing receipts retain their original deadline; a grace period protects the previous deadline when shortened.</value></data>
+  <data name="由 {0} 秒／{1} 天改為 {2} 秒／{3} 天。" xml:space="preserve"><value>Change from {0} seconds / {1} days to {2} seconds / {3} days.</value></data>
+  <data name="預覽時共有 {0} 筆收據，以及 {1} 個已有清理邊界的 Agent。這不是預計刪除筆數，數量可能變動；確認有效期為 5 分鐘。" xml:space="preserve"><value>At preview there are {0} receipts and {1} Agents with cleanup boundaries. These are not deletion estimates and may change; confirmation is valid for 5 minutes.</value></data>
+  <data name="無法更新畫面，請重新整理。" xml:space="preserve"><value>Unable to refresh the page. Reload it.</value></data>
+  <data name="畫面未能更新，請重新整理。" xml:space="preserve"><value>The page could not be refreshed. Reload it.</value></data>
+  <data name="請確認舊接收節點及工作已停止，並先啟用補送期限。" xml:space="preserve"><value>Confirm old reception nodes and their work have stopped, and enable the replay deadline first.</value></data>
+  <data name="收據清理已啟用。舊收據仍受保護期限約束。" xml:space="preserve"><value>Receipt cleanup enabled. Existing receipts remain protected by their retention deadlines.</value></data>
+  <data name="狀態已變更，或補送期限尚未啟用；請重新整理。" xml:space="preserve"><value>The status changed or the replay deadline is not enabled. Refresh the page.</value></data>
+  <data name="無法確認啟用結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm activation. Refresh and check.</value></data>
+  <data name="請檢查重送與保存期限，保存期限須涵蓋重送期限及 5 分鐘。" xml:space="preserve"><value>Check the replay and retention deadlines; retention must cover the replay deadline plus 5 minutes.</value></data>
+  <data name="設定已變更或清理尚未啟用，請重新整理。" xml:space="preserve"><value>Settings changed or cleanup is not enabled. Refresh the page.</value></data>
+  <data name="設定已變更，請重新整理。" xml:space="preserve"><value>Settings changed. Refresh the page.</value></data>
+  <data name="預覽已過期或設定已變更，請重新預覽。" xml:space="preserve"><value>The preview expired or settings changed. Preview again.</value></data>
+  <data name="清理尚未就緒或系統時間異常，請重新整理並檢查。" xml:space="preserve"><value>Cleanup is not ready or the system time is invalid. Refresh and check.</value></data>
 </root>

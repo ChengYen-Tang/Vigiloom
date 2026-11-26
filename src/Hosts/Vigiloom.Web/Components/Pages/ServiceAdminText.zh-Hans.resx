@@ -565,4 +565,34 @@
   <data name="以 {0} 為準，預計有 {1} 筆原始樣本及 {2} 筆彙總符合清理條件。實際數量會隨時間及資料變動。" xml:space="preserve"><value>截至 {0}，预计有 {1} 条原始样本及 {2} 条汇总符合清理条件。实际数量会随时间及数据变化。</value></data>
   <data name="返回 Agent 設定" xml:space="preserve"><value>返回 Agent 设置</value></data>
   <data name="請輸入有效的保存天數；彙總保存天數不能少於原始樣本。" xml:space="preserve"><value>请输入有效的保留天数；汇总保留天数不能少于原始样本。</value></data>
+  <data name="Agent 收據保存與清理" xml:space="preserve"><value>Agent 收据保留与清理</value></data>
+  <data name="平台保留收據以辨識重送的批次。符合條件的收據每小時分批清理；清理不會刪除 Agent 已提交的觀測資料。" xml:space="preserve"><value>平台保留收据以辨识重传的批次。符合条件的收据每小时分批清理；清理不会删除 Agent 已提交的观测数据。</value></data>
+  <data name="目前重送期限：{0} 秒；收據保存：{1} 天。已清理 {2} 筆收據。" xml:space="preserve"><value>当前重传期限：{0} 秒；收据保留：{1} 天。已清理 {2} 条收据。</value></data>
+  <data name="最近一次清理資料（UTC）：{0}。" xml:space="preserve"><value>最近一次清理数据（UTC）：{0}。</value></data>
+  <data name="尚無紀錄" xml:space="preserve"><value>尚无记录</value></data>
+  <data name="失敗紀錄可至" xml:space="preserve"><value>失败记录可至</value></data>
+  <data name="背景工作" xml:space="preserve"><value>后台任务</value></data>
+  <data name="查詢。" xml:space="preserve"><value>查询。</value></data>
+  <data name="目前尚未啟用收據清理。" xml:space="preserve"><value>目前尚未启用收据清理。</value></data>
+  <data name="請先完成上方的補送期限啟用。" xml:space="preserve"><value>请先完成上方的补传期限启用。</value></data>
+  <data name="啟用前必須停止所有舊版接收節點，並等待進行中的接收工作結束；啟用後不可讓舊節點重新加入。系統不會自動停止或偵測這些節點。" xml:space="preserve"><value>启用前必须停止所有旧版接收节点，并等待进行中的接收工作结束；启用后不可让旧节点重新加入。系统不会自动停止或检测这些节点。</value></data>
+  <data name="我已確認舊接收節點及其進行中的工作均已停止，且不會重新加入" xml:space="preserve"><value>我已确认旧接收节点及其进行中的工作均已停止，且不会重新加入</value></data>
+  <data name="啟用收據清理" xml:space="preserve"><value>启用收据清理</value></data>
+  <data name="狀態：清理已啟用。延長期限無法恢復已清除的收據，也不會重新接受已清理範圍內的舊批次。" xml:space="preserve"><value>状态：清理已启用。延长期限无法恢复已清除的收据，也不会重新接受已清理范围内的旧批次。</value></data>
+  <data name="重送期限（秒）" xml:space="preserve"><value>重传期限（秒）</value></data>
+  <data name="收據保存期限（天）" xml:space="preserve"><value>收据保留期限（天）</value></data>
+  <data name="保存期限須涵蓋重送期限及 5 分鐘的時間誤差。已接收收據保留原有期限；縮短重送期限時，原期限有過渡保護。" xml:space="preserve"><value>保留期限须涵盖重传期限及 5 分钟的时间误差。已接收收据保留原有期限；缩短重传期限时，原期限有过渡保护。</value></data>
+  <data name="由 {0} 秒／{1} 天改為 {2} 秒／{3} 天。" xml:space="preserve"><value>由 {0} 秒／{1} 天改为 {2} 秒／{3} 天。</value></data>
+  <data name="預覽時共有 {0} 筆收據，以及 {1} 個已有清理邊界的 Agent。這不是預計刪除筆數，數量可能變動；確認有效期為 5 分鐘。" xml:space="preserve"><value>预览时共有 {0} 条收据，以及 {1} 个已有清理边界的 Agent。这不是预计删除条数，数量可能变化；确认有效期为 5 分钟。</value></data>
+  <data name="無法更新畫面，請重新整理。" xml:space="preserve"><value>无法更新画面，请刷新。</value></data>
+  <data name="畫面未能更新，請重新整理。" xml:space="preserve"><value>画面未能更新，请刷新。</value></data>
+  <data name="請確認舊接收節點及工作已停止，並先啟用補送期限。" xml:space="preserve"><value>请确认旧接收节点及工作已停止，并先启用补传期限。</value></data>
+  <data name="收據清理已啟用。舊收據仍受保護期限約束。" xml:space="preserve"><value>收据清理已启用。旧收据仍受保护期限约束。</value></data>
+  <data name="狀態已變更，或補送期限尚未啟用；請重新整理。" xml:space="preserve"><value>状态已更改，或补传期限尚未启用；请刷新。</value></data>
+  <data name="無法確認啟用結果，請重新整理後檢查。" xml:space="preserve"><value>无法确认启用结果，请刷新后检查。</value></data>
+  <data name="請檢查重送與保存期限，保存期限須涵蓋重送期限及 5 分鐘。" xml:space="preserve"><value>请检查重传与保留期限，保留期限须涵盖重传期限及 5 分钟。</value></data>
+  <data name="設定已變更或清理尚未啟用，請重新整理。" xml:space="preserve"><value>设置已更改或清理尚未启用，请刷新。</value></data>
+  <data name="設定已變更，請重新整理。" xml:space="preserve"><value>设置已更改，请刷新。</value></data>
+  <data name="預覽已過期或設定已變更，請重新預覽。" xml:space="preserve"><value>预览已过期或设置已更改，请重新预览。</value></data>
+  <data name="清理尚未就緒或系統時間異常，請重新整理並檢查。" xml:space="preserve"><value>清理尚未就绪或系统时间异常，请刷新并检查。</value></data>
 </root>

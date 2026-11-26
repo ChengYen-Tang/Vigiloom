@@ -115,6 +115,18 @@ public sealed class SpeedHttpTests
             Assert.Contains("86400 → 3600 秒", auditText);
             Assert.Contains("7 → 2 天", auditText);
         }
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var english = await admin.GetAsync("/settings/agents", token))
+        {
+            var text = await TextAsync(english, token);
+            Assert.Contains("Agent receipt retention and cleanup", text);
+            Assert.Contains("Current replay deadline: 3600 seconds", text);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplified = await admin.GetAsync("/settings/agents", token))
+            Assert.Contains("Agent 收据保留与清理", await TextAsync(simplified, token));
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var settingsPage = await admin.GetAsync("/settings/agents", token);
         var form = await FormAsync(settingsPage, "agent-inbox-retention", token);
         Assert.AreEqual("Input.ReplaySeconds", form.QuerySelector("#inbox-replay")?.GetAttribute("name"));
