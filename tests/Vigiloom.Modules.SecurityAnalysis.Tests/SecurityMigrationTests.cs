@@ -23,12 +23,13 @@ public sealed class SecurityMigrationTests(TestContext context)
             var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(source.ConnectionString,
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "security")).Options;
             var owner = new InventoryOwner(Guid.CreateVersion7(), Guid.CreateVersion7(), 2);
+            var scanId = Guid.CreateVersion7();
             Guid sourceId;
             Guid revisionId;
             await using (var db = new SecurityAnalysisDbContext(options))
             {
                 var mapped = db.Model.GetEntityTypes().Select(x => x.GetTableName()).Where(x => x is not null).Distinct().Order().ToArray();
-                CollectionAssert.AreEqual(mapped, SecurityDatabaseCommand.Tables.Order().ToArray());
+                CollectionAssert.AreEqual(mapped, SecurityDatabaseCommand.Tables.Append("YaraScans").Order().ToArray());
                 var feed = new IntelligenceSource { Key = "migration-test", Enabled = true };
                 sourceId = feed.Id;
                 db.IntelligenceSources.Add(feed);
@@ -39,6 +40,12 @@ public sealed class SecurityMigrationTests(TestContext context)
                 db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = sourceId, RevisionId = revisionId, ActivatedAt = DateTimeOffset.UtcNow });
                 db.InventorySources.Add(new InventorySourceState(owner, InventorySource.HostSystem));
                 await db.SaveChangesAsync(token);
+                await db.Database.ExecuteSqlRawAsync("CREATE SCHEMA agent", token);
+                await db.Database.ExecuteSqlRawAsync("SELECT TOP (0) * INTO agent.YaraScans FROM security.YaraScans", token);
+                var filePath = "/tmp/test";
+                var rules = "rule test { condition: true }";
+                var output = "match";
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO agent.YaraScans (Id, AgentId, DeviceId, RequestedBy, FilePath, Rules, MaximumBytes, TimeoutSeconds, RequestedAt, Outcome, Output, CompletedAt) VALUES ({scanId}, {owner.AgentId}, {owner.DeviceId}, {Guid.CreateVersion7()}, {filePath}, {rules}, {1024L}, {30}, {DateTimeOffset.UtcNow}, {1}, {output}, {DateTimeOffset.UtcNow})", token);
             }
             await SecurityDatabaseCommand.RunAsync(target.ConnectionString, source.ConnectionString, token);
             var targetOptions = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(target.ConnectionString,
@@ -48,6 +55,7 @@ public sealed class SecurityMigrationTests(TestContext context)
                 Assert.IsTrue(await db.IntelligenceSources.AnyAsync(x => x.Id == sourceId && x.Key == "migration-test", token));
                 Assert.IsTrue(await db.IntelligenceActivations.AnyAsync(x => x.SourceId == sourceId && x.RevisionId == revisionId, token));
                 Assert.IsTrue(await db.InventorySources.AnyAsync(x => x.AgentId == owner.AgentId && x.DeviceId == owner.DeviceId && x.DeviceGeneration == 2, token));
+                Assert.IsTrue(await db.YaraScans.AnyAsync(x => x.Id == scanId && x.AgentId == owner.AgentId && x.DeviceId == owner.DeviceId && x.Output == "match", token));
             }
             await Assert.ThrowsAsync<InvalidOperationException>(() => SecurityDatabaseCommand.RunAsync(target.ConnectionString, source.ConnectionString, token));
         }, outer), context.CancellationToken);
