@@ -269,6 +269,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             {
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+                using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/integrity", token))
+                    Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/vulnerabilities", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/sigma-detections?from={Uri.EscapeDataString(nowUtc.AddMinutes(-1).ToString("O"))}&until={Uri.EscapeDataString(nowUtc.AddMinutes(1).ToString("O"))}", token))
@@ -416,6 +418,30 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(1L, (await db.IntegrityScopeStates.SingleAsync(x => x.ScopeId == scopeId, token)).CurrentGeneration);
             }
             await using (var db = new HostMonitoringDbContext(hostOptions)) Assert.IsFalse(await db.HostSecurityBatches.AnyAsync(x => x.BatchId == integrity.BatchId, token));
+
+            using (var securityApi = security.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") }))
+            {
+                securityApi.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
+                var path = $"/api/v1/devices/{identity.DeviceId:D}/integrity";
+                var view = await securityApi.GetFromJsonAsync<DeviceIntegrityView>(path, token);
+                Assert.AreEqual(integrity.SnapshotId, view!.Scopes.Single(x => x.ScopeId == scopeId).SnapshotId);
+                var chunkPath = $"{path}/scopes/{scopeId:D}/snapshots/{integrity.SnapshotId:D}/chunks/0";
+                var savedChunk = await securityApi.GetFromJsonAsync<IntegritySnapshotChunkView>(chunkPath, token);
+                Assert.AreEqual(item.Key, savedChunk!.Items.Single().Key);
+                using var wrongDevice = await securityApi.GetAsync(chunkPath.Replace(identity.DeviceId.ToString("D"), Guid.CreateVersion7().ToString("D")), token);
+                Assert.AreEqual(HttpStatusCode.NotFound, wrongDevice.StatusCode);
+                securityApi.DefaultRequestHeaders.Authorization = null;
+                sessionHandler.Role = "Read only";
+                var cookieOptions = security.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
+                var claims = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, sessionHandler.AccountId.ToString("D")),
+                    new Claim("AspNet.Identity.SecurityStamp", "stamp")], IdentityConstants.ApplicationScheme);
+                var cookie = cookieOptions.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(claims), IdentityConstants.ApplicationScheme));
+                securityApi.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={cookie}");
+                var readerView = await securityApi.GetFromJsonAsync<DeviceIntegrityView>(path, token);
+                Assert.AreEqual(integrity.SnapshotId, readerView!.Scopes.Single(x => x.ScopeId == scopeId).SnapshotId);
+                var readerChunk = await securityApi.GetFromJsonAsync<IntegritySnapshotChunkView>(chunkPath, token);
+                Assert.AreEqual(item.Key, readerChunk!.Items.Single().Key);
+            }
 
             var scanId = Guid.CreateVersion7();
             await using (var db = new SecurityAnalysisDbContext(securityOptions))

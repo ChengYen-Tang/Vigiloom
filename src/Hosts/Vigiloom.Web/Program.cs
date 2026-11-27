@@ -804,7 +804,6 @@ app.MapDeviceEndpoints();
 app.MapPublicationEndpoints();
 app.MapGroupEndpoints();
 app.MapAgentEndpoints();
-app.MapIntegrityMonitoringEndpoints();
 app.MapAgentPackageEndpoints();
 app.MapAgentUpdateDownloadEndpoints();
 app.MapAgentPackageUiEndpoints();
