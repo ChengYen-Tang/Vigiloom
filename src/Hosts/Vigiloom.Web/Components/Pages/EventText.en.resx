@@ -95,4 +95,17 @@
   <data name="行為規則未評估" xml:space="preserve"><value>Behavior rule not evaluated</value></data>
   <data name="安全基準檢查" xml:space="preserve"><value>Security baseline check</value></data>
   <data name="IOC 比對線索" xml:space="preserve"><value>IOC match lead</value></data>
+  <data name="未指定" xml:space="preserve"><value>Unspecified</value></data>
+  <data name="解析版本 {0}；{1}/{2}；原文：{3}" xml:space="preserve"><value>Parser version {0}; {1}/{2}; Original: {3}</value></data>
+  <data name="解析版本 {0}；{1}/{2}" xml:space="preserve"><value>Parser version {0}; {1}/{2}</value></data>
+  <data name="服務實例 {0}" xml:space="preserve"><value>Service instance {0}</value></data>
+  <data name="檢查 {0}" xml:space="preserve"><value>Check {0}</value></data>
+  <data name="掃描 {0}；結果 {1}" xml:space="preserve"><value>Scan {0}; Result {1}</value></data>
+  <data name="來源 {0}；類型 {1}；Agent {2}；世代 {3}" xml:space="preserve"><value>Source {0}; Type {1}; Agent {2}; Generation {3}</value></data>
+  <data name="範圍 {0}；版本 {1}；類型 {2}；Agent {3}；採集有缺口" xml:space="preserve"><value>Scope {0}; Version {1}; Type {2}; Agent {3}; Collection gap</value></data>
+  <data name="範圍 {0}；版本 {1}；類型 {2}；Agent {3}" xml:space="preserve"><value>Scope {0}; Version {1}; Type {2}; Agent {3}</value></data>
+  <data name="先前未評估；版本 {0}；事件 {1}/{2}" xml:space="preserve"><value>Previously unevaluated; Version {0}; Event {1}/{2}</value></data>
+  <data name="版本 {0}；事件 {1}/{2}" xml:space="preserve"><value>Version {0}; Event {1}/{2}</value></data>
+  <data name="情報版本 {0}；狀態 {1}" xml:space="preserve"><value>Intelligence version {0}; Status {1}</value></data>
+  <data name="版本 {0}；結果 {1}" xml:space="preserve"><value>Version {0}; Result {1}</value></data>
 </root>
