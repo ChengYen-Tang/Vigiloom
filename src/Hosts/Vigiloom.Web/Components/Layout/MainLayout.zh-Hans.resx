@@ -111,4 +111,13 @@
   <data xml:space="preserve" name="Reload">
     <value>重新加载</value>
   </data>
+  <data name="連線已中斷，正在重新連線。畫面資料可能不是最新狀態。" xml:space="preserve"><value>连接已中断，正在重新连接。画面数据可能不是最新状态。</value></data>
+  <data name="重新連線失敗，將在 " xml:space="preserve"><value>重新连接失败，将在 </value></data>
+  <data name=" 秒後重試。" xml:space="preserve"><value> 秒后重试。</value></data>
+  <data name="無法重新連線。" xml:space="preserve"><value>无法重新连接。</value></data>
+  <data name="請重試或重新整理頁面。" xml:space="preserve"><value>请重试或刷新页面。</value></data>
+  <data name="重試" xml:space="preserve"><value>重试</value></data>
+  <data name="伺服器已暫停此工作階段。" xml:space="preserve"><value>服务器已暂停此会话。</value></data>
+  <data name="無法恢復工作階段。" xml:space="preserve"><value>无法恢复会话。</value></data>
+  <data name="恢復" xml:space="preserve"><value>恢复</value></data>
 </root>

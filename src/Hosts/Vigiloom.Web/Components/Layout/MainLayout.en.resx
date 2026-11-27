@@ -111,4 +111,13 @@
   <data xml:space="preserve" name="Reload">
     <value>Reload</value>
   </data>
+  <data name="連線已中斷，正在重新連線。畫面資料可能不是最新狀態。" xml:space="preserve"><value>Connection lost. Reconnecting; the displayed data may be out of date.</value></data>
+  <data name="重新連線失敗，將在 " xml:space="preserve"><value>Reconnection failed. Retrying in </value></data>
+  <data name=" 秒後重試。" xml:space="preserve"><value> seconds.</value></data>
+  <data name="無法重新連線。" xml:space="preserve"><value>Unable to reconnect.</value></data>
+  <data name="請重試或重新整理頁面。" xml:space="preserve"><value>Retry or reload the page.</value></data>
+  <data name="重試" xml:space="preserve"><value>Retry</value></data>
+  <data name="伺服器已暫停此工作階段。" xml:space="preserve"><value>The server paused this session.</value></data>
+  <data name="無法恢復工作階段。" xml:space="preserve"><value>Unable to resume the session.</value></data>
+  <data name="恢復" xml:space="preserve"><value>Resume</value></data>
 </root>

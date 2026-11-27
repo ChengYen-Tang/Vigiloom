@@ -32,6 +32,14 @@ public sealed class LocalizationTests(TestContext context)
         Assert.Contains(title, document.Body!.TextContent);
         Assert.Contains(search, document.Body.TextContent);
         Assert.Contains(title, document.Title ?? "");
+        var reconnect = document.QuerySelector("#components-reconnect-modal");
+        Assert.IsNotNull(reconnect);
+        Assert.Contains(culture switch
+        {
+            "en" => "Connection lost. Reconnecting",
+            "zh-Hans" => "连接已中断，正在重新连接",
+            _ => "連線已中斷，正在重新連線"
+        }, reconnect.TextContent);
     }
 
     [TestMethod]
