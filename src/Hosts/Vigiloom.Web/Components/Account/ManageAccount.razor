@@ -34,7 +34,7 @@
         <section class="management-panel"><h2>@L["角色"]</h2>
             <EditForm Model="RoleInput" FormName="change-role" method="post" OnValidSubmit="ChangeRoleAsync">
                 <label for="account-role">@L["角色"]</label>
-                <InputSelect id="account-role" @bind-Value="RoleInput.Role"><option value="@BuiltInRoles.ReadOnly">Read only</option><option value="@BuiltInRoles.Administrator">Administrator</option></InputSelect>
+                <InputSelect id="account-role" @bind-Value="RoleInput.Role"><option value="@BuiltInRoles.ReadOnly">@L["唯讀"]</option><option value="@BuiltInRoles.Administrator">@L["管理員"]</option></InputSelect>
                 <button class="management-button" type="submit">@L["儲存角色"]</button>
             </EditForm>
         </section>
