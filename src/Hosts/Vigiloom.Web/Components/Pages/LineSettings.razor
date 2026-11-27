@@ -150,9 +150,9 @@
 
     private sealed class ChannelForm
     {
-        [StringLength(4096)] public string? AccessToken { get; set; }
-        [StringLength(4096)] public string? ChannelSecret { get; set; }
-        [Range(0, 300)] public int AggregationSeconds { get; set; } = 10;
+        [StringLength(4096, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.StringLength))] public string? AccessToken { get; set; }
+        [StringLength(4096, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.StringLength))] public string? ChannelSecret { get; set; }
+        [Range(0, 300, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int AggregationSeconds { get; set; } = 10;
         public bool Enabled { get; set; }
     }
 }

@@ -67,5 +67,5 @@
         }
     }
 
-    private sealed class ExceptionForm { [Required, StringLength(200)] public string Reason { get; set; } = ""; }
+    private sealed class ExceptionForm { [Required(ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Required)), StringLength(200, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.StringLength))] public string Reason { get; set; } = ""; }
 }

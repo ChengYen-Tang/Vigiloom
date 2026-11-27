@@ -4,12 +4,33 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.WebUtilities;
 using AngleSharp.Html.Parser;
+using System.ComponentModel.DataAnnotations;
+using System.Globalization;
+using System.Reflection;
+using Vigiloom.Web.Components.Pages;
 
 namespace Vigiloom.Web.Tests;
 
 [TestClass]
 public sealed class LocalizationTests(TestContext context)
 {
+    [TestMethod]
+    [DataRow("en", "Enter a value from 10 to 300.")]
+    [DataRow("zh-Hant", "請輸入 10 到 300 之間的數值。")]
+    [DataRow("zh-Hans", "请输入 10 到 300 之间的数值。")]
+    public void AgentSettingsRangeValidationUsesSelectedLanguage(string culture, string expected)
+    {
+        var form = typeof(AgentSettingsPage).GetNestedType("SettingsForm", BindingFlags.NonPublic)!;
+        var range = form.GetProperty("HeartbeatSeconds")!.GetCustomAttribute<RangeAttribute>()!;
+        var previous = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(culture);
+            Assert.AreEqual(expected, range.FormatErrorMessage("HeartbeatSeconds"));
+        }
+        finally { CultureInfo.CurrentUICulture = previous; }
+    }
+
     [TestMethod]
     [DataRow("en", "Public status", "Search public names")]
     [DataRow("zh-Hant", "公開監測狀態", "搜尋公開名稱")]
