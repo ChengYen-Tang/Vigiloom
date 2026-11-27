@@ -755,6 +755,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 {
                     configured.AddHttpClient("resources").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
                     configured.AddHttpClient<IdentityCookieValidator>().ConfigurePrimaryHttpMessageHandler(() => thresholdSession);
+                    configured.AddHttpClient("security").ConfigurePrimaryHttpMessageHandler(() => new IntegritySettingsHandler());
                     configured.RemoveAll<IApiCredentialValidation>();
                     configured.AddSingleton<IApiCredentialValidation, CredentialValidation>();
                 });
@@ -771,6 +772,15 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, settingsStatus!.State);
             var capacityStatus = await proxyClient.GetFromJsonAsync<AgentQueueCapacityStatus>($"/api/v1/devices/{identity.DeviceId:D}/agent-queue-capacity-status", token);
             Assert.AreEqual(AgentSettingsApplyState.Applied, capacityStatus!.State);
+            using (var integrityResponse = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/integrity/settings-status", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, integrityResponse.StatusCode);
+                Assert.IsTrue(integrityResponse.Headers.CacheControl?.NoStore);
+                var integrity = await integrityResponse.Content.ReadFromJsonAsync<IntegritySettingsStatus>(cancellationToken: token);
+                Assert.IsNotNull(integrity);
+                Assert.AreEqual(identity.DeviceId, integrity.DeviceId);
+                Assert.AreEqual(IntegritySettingsSnapshot.Create([], 0).Revision, integrity.DesiredRevision);
+            }
             var publicMetrics = await proxyClient.GetFromJsonAsync<HostMetricPage>($"/api/v1/devices/{identity.DeviceId:D}/host-metrics?from={from}&until={until}", token);
             Assert.IsNotNull(publicMetrics);
             var publicThreshold = await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>($"/api/v1/devices/{identity.DeviceId:D}/host-metric-threshold?agentId={identity.AgentId:D}&kind=CpuTotalPercent&source=cpu", token);
@@ -934,6 +944,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var command = await request.Content!.ReadFromJsonAsync<AgentCredentialCommand>(cancellationToken: token);
             return command?.Credential == "valid" ? new(HttpStatusCode.OK) { Content = JsonContent.Create(identity) } : new(HttpStatusCode.Unauthorized);
         }
+    }
+
+    private sealed class IntegritySettingsHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(IntegritySettingsSnapshot.Create([], 0)) });
     }
 
     private sealed class RetentionHandler(int days = 14) : HttpMessageHandler

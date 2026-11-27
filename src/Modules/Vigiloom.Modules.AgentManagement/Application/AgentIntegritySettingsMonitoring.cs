@@ -39,6 +39,12 @@ public sealed class AgentIntegritySettingsMonitoring(IDbContextFactory<AgentMana
             desired = await reader.ReadAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), deviceId, token);
             await transaction.CommitAsync(token);
         }
+        return Evaluate(deviceId, device, agent, desired, clock.GetUtcNow());
+    }
+
+    public static IntegritySettingsStatus Evaluate(Guid deviceId, DeviceAgentState device, SecurityAgentObservation? agent,
+        IntegritySettingsSnapshot desired, DateTimeOffset now)
+    {
         if (!device.Eligible) return Empty(AgentSettingsApplyState.Disabled);
         if (agent is null) return Empty(AgentSettingsApplyState.NotRegistered);
         var matching = agent.QueueReportEpoch is not null && agent.QueueReportSequence is not null &&
@@ -51,7 +57,6 @@ public sealed class AgentIntegritySettingsMonitoring(IDbContextFactory<AgentMana
             if (report is not null && !report.IsValid()) report = null;
         }
         var reportedAt = report is null ? null : agent.IntegrityConfigurationReportedAt;
-        var now = clock.GetUtcNow();
         var basis = agent.LastHeartbeatAt ?? agent.CreatedAt;
         var offlineAfter = Math.Max(AgentMonitoring.OfflineAfterSeconds, agent.HeartbeatSafetyIntervalSeconds * 3);
         var state = basis > now ? AgentSettingsApplyState.ClockUncertain
