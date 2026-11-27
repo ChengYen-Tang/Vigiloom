@@ -347,13 +347,12 @@
   <data name="也可以透過共用 Collector：應用使用該信任範圍的 Collector 入口憑證，Collector 再以對應的 Vigiloom 來源憑證傳送。這兩種憑證不同，不能互換。" xml:space="preserve"><value>也可以通过共用 Collector：应用使用该信任范围的 Collector 入口凭证，Collector 再以对应的 Vigiloom 来源凭证传送。这两种凭证不同，不能互换。</value></data>
   <data name="服務識別名稱、命名空間與環境必須與來源回報一致；每個執行個體使用穩定且互不重複的 " xml:space="preserve"><value>服务标识名称、命名空间与环境必须与来源回报一致；每个实例使用稳定且互不重复的 </value></data>
   <data name="，不要用 IP 推定身分。" xml:space="preserve"><value>，不要用 IP 推定身份。</value></data>
-  <data name="查看 .NET 10 範例與設定說明" xml:space="preserve"><value>查看 .NET 10 范例与设置说明</value></data>
-  <data name="核准服務並確認正式資料" xml:space="preserve"><value>核准服务并确认正式数据</value></data>
+<data name="核准服務並確認正式資料" xml:space="preserve"><value>核准服务并确认正式数据</value></data>
   <data name="應用開始回報後，最近三分鐘仍有訊號的未加入服務會出現在待加入清單。管理員核准後才開始保存正式觀測資料；核准前的內容不會補成歷史。" xml:space="preserve"><value>应用开始回报后，最近三分钟仍有信号的未加入服务会出现在待加入清单。管理员核准后才开始保存正式观测数据；核准前的内容不会补成历史。</value></data>
-  <data name="核准後讓應用持續處理請求，再回服務詳情查看最後接收時間、日誌與追蹤。範例預設使用 10% 根追蹤抽樣，沒有每次請求的 Trace 不代表失敗。" xml:space="preserve"><value>核准后让应用持续处理请求，再回服务详情查看最后接收时间、日志与追踪。范例默认使用 10% 根追踪采样，没有每次请求的 Trace 不代表失败。</value></data>
+  <data name="核准後讓應用持續處理請求，再回服務詳情查看最後接收時間、日誌與追蹤。Trace 是否出現取決於應用的抽樣設定。" xml:space="preserve"><value>核准后让应用持续处理请求，再回服务详情查看最后接收时间、日志与追踪。Trace 是否出现取决于应用的采样设置。</value></data>
   <data name="查看來源與 Collector 接收診斷" xml:space="preserve"><value>查看来源与 Collector 接收诊断</value></data>
   <data name="設定獨立健康檢查" xml:space="preserve"><value>设置独立健康检查</value></data>
-  <data name="Health Checks 與 OTLP 是不同訊號：應用需提供可由中央平台到達的健康端點，管理員先允許必要的目的網段，再為已核准服務設定端點與檢查頻率。範例僅示範基本存活檢查；如需確認資料庫等相依服務，應用端須另外註冊對應檢查。" xml:space="preserve"><value>Health Checks 与 OTLP 是不同信号：应用需提供可由中央平台访问的健康端点，管理员先允许必要的目标网段，再为已核准服务设置端点与检查频率。范例仅示范基本存活检查；如需确认数据库等依赖服务，应用端须另外注册对应检查。</value></data>
+  <data name="Health Checks 與 OTLP 是不同訊號：應用需提供可由中央平台到達的健康端點，管理員先允許必要的目的網段，再為已核准服務設定端點與檢查頻率。如需確認資料庫等相依服務，應用端須另外註冊對應檢查。" xml:space="preserve"><value>Health Checks 与 OTLP 是不同信号：应用需提供可由中央平台访问的健康端点，管理员先允许必要的目标网段，再为已核准服务设置端点与检查频率。如需确认数据库等依赖服务，应用端须另外注册对应检查。</value></data>
   <data name="狀態過期、沒有檢查或停止收集都不會自動顯示正常；健康結果不由主機 Ping 或 Collector 連線推定。" xml:space="preserve"><value>状态过期、没有检查或停止收集都不会自动显示正常；健康结果不由主机 Ping 或 Collector 连接推定。</value></data>
   <data name="設定服務健康檢查" xml:space="preserve"><value>设置服务健康检查</value></data>
 </root>

@@ -18,7 +18,6 @@
     <ProjectReference Include="../../src/Updater/Vigiloom.Updater.Core/Vigiloom.Updater.Core.csproj" />
     <ProjectReference Include="../Vigiloom.Testing.SqlServer/Vigiloom.Testing.SqlServer.csproj" />
     <ProjectReference Include="../../tools/Vigiloom.Testing.AgentHost/Vigiloom.Testing.AgentHost.csproj" Aliases="AgentHarness" />
-    <ProjectReference Include="../../samples/Vigiloom.Sample.AspNetCore/Vigiloom.Sample.AspNetCore.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Respawn" />

@@ -61,7 +61,6 @@ and versions for a test rather than assuming the defaults are still active.
 | Logs admission | Per source 20 records/s, burst 100; global 1,000/s, burst 2,000 | `LogQuotaValues.Default` |
 | Trace admission | Per source 200 spans/s, burst 1,000; global 2,000/s, burst 4,000 | `LogQuotaValues.TraceDefault` |
 | OTLP Log / Trace record | Up to 256 KiB per record and 4 MiB per request | `LogIngestion`, `TraceIngestion`, exporters |
-| Application sample traces | Parent-based; 10% of root traces unless SDK configuration overrides it | `Vigiloom.Sample.AspNetCore` |
 | Raw / rolled-up Ping | 30 / 365 days | `PingSetting` |
 | Application logs / traces | 14 / 7 days | `TelemetryRetentionSetting` |
 | Application metrics raw / rollup and health | 30 / 365 / 365 days | `TelemetryRetentionSetting` |
@@ -92,7 +91,7 @@ one application log and, when sampled, one server span. It also emits ten OTLP
 metric series every 60 s and receives a health check every 30 s. Use 512-byte
 average Log bodies, 1 KiB per span and 100-byte metric points; each application
 metric series has five labels. These sizes are input payload assumptions, not
-SQL row sizes. Exercise the sample's 10% root sampling with no upstream
+SQL row sizes. Configure the test application for 10% root sampling with no upstream
 sampling override. Use the implemented retention defaults above.
 
 | Devices / Agents | Services | Ping checks/s | Host metric points/s | Host logs/s | Application logs/s | Sampled spans/s | Concurrent UI readers |

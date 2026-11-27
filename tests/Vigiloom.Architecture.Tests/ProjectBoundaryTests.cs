@@ -134,7 +134,7 @@ public sealed class ProjectBoundaryTests
 
     private static string[]? AllowedReferences(string name, string[] modules) => name switch
     {
-        "Vigiloom.BuildingBlocks" or "Vigiloom.Contracts" or "Vigiloom.Otlp" or "Vigiloom.UpdateSecurity" or "Vigiloom.Sample.AspNetCore" => [],
+        "Vigiloom.BuildingBlocks" or "Vigiloom.Contracts" or "Vigiloom.Otlp" or "Vigiloom.UpdateSecurity" => [],
         "Vigiloom.Infrastructure" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts"],
         "Vigiloom.Gateway" => ["Vigiloom.Infrastructure"],
         "Vigiloom.Identity" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.IdentityAccess"],
@@ -164,7 +164,7 @@ public sealed class ProjectBoundaryTests
     };
 
     private static Dictionary<string, ProjectDescription> ReadProjects() =>
-        new[] { "src", "tests", "tools", "samples" }
+        new[] { "src", "tests", "tools" }
             .SelectMany(folder => Directory.EnumerateFiles(Path.Combine(Root, folder), "*.csproj", SearchOption.AllDirectories))
             .Select(path =>
             {
