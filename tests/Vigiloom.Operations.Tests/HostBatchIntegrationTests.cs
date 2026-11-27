@@ -181,6 +181,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 securityApi.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
+                using (var denied = await securityApi.GetAsync($"/api/v1/agent-management/devices/{identity.DeviceId:D}/integrity-scopes", token))
+                    Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 var inventory = await securityApi.GetFromJsonAsync<DeviceInventoryView>($"/api/v1/devices/{identity.DeviceId:D}/inventory", token);
                 Assert.AreEqual(identity.AgentId, inventory!.AgentId);
                 Assert.IsTrue(inventory.Sources.Any(source => source.Source == InventorySource.LinuxDpkg));

@@ -192,6 +192,7 @@ app.UseAuthorization();
 app.UseRateLimiter();
 app.MapPublicInventory();
 app.MapPublicIntegrity();
+app.MapPublicIntegrityScopes();
 app.MapPublicBaseline();
 app.MapPublicVulnerabilities();
 app.MapPublicDetections();
