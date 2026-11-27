@@ -30,6 +30,7 @@ using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Contracts.Agent.Baseline;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Identity;
 using Vigiloom.Contracts.Intelligence;
@@ -41,11 +42,13 @@ using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Work;
+using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Application.Baseline;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
@@ -107,6 +110,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 { ["ConnectionStrings:Security"] = securityDb.ConnectionString, ["Temporal:Address"] = temporalAddress, ["Work:SecurityQueue"] = queue }));
                 web.ConfigureTestServices(services =>
                 {
+                    if (temporalAddress is null)
+                    {
+                        services.AddScoped<IOperationAuditWriter<OperationAudit>, TemporalAuditWriter>();
+                        services.AddScoped(_ => new OutboxWriter([new TestOutboxHandler()]));
+                        services.AddScoped<BaselineExceptions>();
+                    }
                     services.AddHttpClient("ResourceDevices").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
                     services.AddHttpClient("observability").ConfigurePrimaryHttpMessageHandler(() => new RetentionHandler(21));
                     services.AddHttpClient("operations").ConfigurePrimaryHttpMessageHandler(() => auditHandler);
@@ -248,6 +257,17 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var process = new InventoryChunk(5, Guid.CreateVersion7(), nowUtc, Guid.CreateVersion7(), 1, InventorySource.HostProcesses,
                 nowUtc, InventoryOutcome.Complete, 0, 1, 1, processMeasured.Bytes, InventoryDigest.Combine([processMeasured.Digest]), processItems);
             await PublishInventoryAsync(process);
+            const string baselineCommit = "033b1b8672802ffa6bd555c373e2c73c32d25f5d";
+            const string baselinePath = "linux_os/guide/system/permissions/files/permissions_important_account_files/file_permissions_etc_shadow/rule.yml";
+            var baselineCheck = new BaselineCheck(BaselineSources.LinuxShadowCheck, "/etc/shadow permissions", "linux",
+                ["ubuntu:22.04", "ubuntu:24.04", "debian:12"], BaselineSources.LinuxShadowOperation,
+                BaselineSources.LinuxShadowTarget, "0640-or-stricter", $"https://github.com/ComplianceAsCode/content/blob/{baselineCommit}/{baselinePath}", "BSD-3-Clause");
+            var baselineArtifact = JsonSerializer.SerializeToUtf8Bytes(baselineCheck);
+            var baselineSource = new IntelligenceSource { Key = BaselineSources.LinuxShadow, Enabled = true, LastSuccessfulCheckAt = nowUtc };
+            var baselineRevision = new IntelligenceRevision { SourceId = baselineSource.Id, UpstreamVersion = baselineCommit, RetrievedAt = nowUtc,
+                Artifact = baselineArtifact, Digest = System.Security.Cryptography.SHA256.HashData(baselineArtifact),
+                SchemaVersion = "baseline-check-v1", MappingVersion = "baseline-reviewed-v1",
+                LicenseEvidence = $"ComplianceAsCode BSD-3-Clause; ComplianceAsCode/content@{baselineCommit}", RecordCount = 1, Normalized = true };
             await using (var db = new SecurityAnalysisDbContext(securityOptions))
             {
                 var feed = new IntelligenceSource { Key = "private-detection-source", Enabled = true };
@@ -263,6 +283,11 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     DeviceGeneration = identity.DeviceGeneration, MessageId = Guid.CreateVersion7(), ActivationId = activation.Id,
                     TestId = rule.Id, ActivationVersion = new byte[8], Result = (int)SigmaExpectedOutcome.Match,
                     OccurredAt = nowUtc, ReceivedAt = nowUtc, EvaluatedAt = nowUtc });
+                db.IntelligenceSources.Add(baselineSource);
+                db.IntelligenceRevisions.Add(baselineRevision);
+                await db.SaveChangesAsync(token);
+                db.IntelligenceActivations.Add(new IntelligenceActivation { SourceId = baselineSource.Id, RevisionId = baselineRevision.Id, ActivatedAt = nowUtc });
+                db.IntelligenceActivationEvents.Add(new IntelligenceActivationEvent { SourceId = baselineSource.Id, RevisionId = baselineRevision.Id, OccurredAt = nowUtc, Scheduled = true });
                 await db.SaveChangesAsync(token);
             }
             using (var securityApi = security.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") }))
@@ -271,6 +296,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/integrity", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+                using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/baseline", token))
+                    Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/vulnerabilities", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/sigma-detections?from={Uri.EscapeDataString(nowUtc.AddMinutes(-1).ToString("O"))}&until={Uri.EscapeDataString(nowUtc.AddMinutes(1).ToString("O"))}", token))
@@ -278,6 +305,10 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory/{(int)process.Source}/snapshots/{process.SnapshotId:D}/chunks/0", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 securityApi.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
+                var exceptionPath = $"/api/v1/admin/devices/{identity.DeviceId:D}/baseline-exceptions";
+                var exceptionInput = new BaselineExceptionInput(BaselineSources.LinuxShadow, baselineRevision.Id, "reason");
+                using (var denied = await securityApi.PostAsJsonAsync(exceptionPath, exceptionInput, token))
+                    Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 using (var denied = await securityApi.GetAsync($"/api/v1/agent-management/devices/{identity.DeviceId:D}/integrity-scopes", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 using (var denied = await securityApi.GetAsync("/api/v1/admin/intelligence/sources", token))
@@ -348,6 +379,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     ImmutableArray<string>.Empty, 3600, 1000, 1048576, 10485760, 16);
                 using (var missingCsrf = await securityApi.PostAsJsonAsync(policyPath, policy, token))
                     Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+                using (var missingCsrf = await securityApi.PostAsJsonAsync(exceptionPath, exceptionInput, token))
+                    Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
                 var adminPrincipal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, sessionHandler.AccountId.ToString("D")),
                     new Claim(ClaimTypes.Role, "Administrator")], IdentityConstants.ApplicationScheme));
                 var antiContext = new DefaultHttpContext { RequestServices = security.Services, User = adminPrincipal };
@@ -367,8 +400,23 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
                     Assert.IsNotNull(await created.Content.ReadFromJsonAsync<IntegrityScopeView>(cancellationToken: token));
                 }
+                using (var recorded = await securityApi.PostAsJsonAsync(exceptionPath, exceptionInput, token))
+                    Assert.AreEqual(HttpStatusCode.NoContent, recorded.StatusCode);
+                using (var stale = await securityApi.PostAsJsonAsync(exceptionPath, exceptionInput with { RevisionId = Guid.CreateVersion7() }, token))
+                    Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
+                if (temporalAddress is null)
+                {
+                    await using var connection = new SqlConnection(securityDb.ConnectionString);
+                    await connection.OpenAsync(token);
+                    await using var command = new SqlCommand("SELECT Payload FROM scheduling.Outbox WHERE Payload LIKE '%reason%'", connection);
+                    var auditPayload = (string?)await command.ExecuteScalarAsync(token);
+                    Assert.IsNotNull(auditPayload);
+                    Assert.Contains(sessionHandler.AccountId.ToString("D"), auditPayload);
+                }
                 securityApi.DefaultRequestHeaders.Remove("RequestVerificationToken");
                 sessionHandler.Role = "Read only";
+                using (var denied = await securityApi.PostAsJsonAsync(exceptionPath, exceptionInput, token))
+                    Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
                 using (var denied = await securityApi.GetAsync(policyPath, token))
                     Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
                 using (var readerInventory = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory", token))

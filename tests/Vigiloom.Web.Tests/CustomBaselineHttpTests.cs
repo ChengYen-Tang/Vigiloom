@@ -13,6 +13,7 @@ using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Baselines;
+using Vigiloom.Modules.SecurityAnalysis.Application.Baseline;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application;
 using Vigiloom.Web.Tests.Fixtures;
@@ -85,6 +86,8 @@ public sealed class CustomBaselineHttpTests(TestContext context)
             admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             await using var serviceScope = factory.Services.CreateAsyncScope();
             var stage = serviceScope.ServiceProvider.GetRequiredService<CustomBaselineStage>();
+            var baselineQuery = serviceScope.ServiceProvider.GetRequiredService<BaselineQuery>();
+            var baselineExceptions = serviceScope.ServiceProvider.GetRequiredService<BaselineExceptions>();
             var sources = serviceScope.ServiceProvider.GetRequiredService<IBaselineSource>();
             var page = await stage.SourcePageAsync(sourceId, token);
             using (var review = await admin.GetAsync($"/settings/intelligence?source={sourceId:D}&sourcePage={page}", token))
@@ -101,9 +104,8 @@ public sealed class CustomBaselineHttpTests(TestContext context)
                 var settings = await response.Content.ReadFromJsonAsync<BaselineSettingsSnapshot>(cancellationToken: token);
                 Assert.IsFalse(settings!.Checks.Any(x => x.SourceId == sourceId));
             }
-            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
             {
-                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var view = await baselineQuery.GetAsync(device.Id, token);
                 Assert.IsFalse(view!.Checks.Any(x => x.SourceKey == $"{BaselineSources.LocalPrefix}{sourceId:D}"));
             }
             var activation = $"/api/v1/admin/intelligence/sources/{sourceId:D}/activation";
@@ -138,19 +140,14 @@ public sealed class CustomBaselineHttpTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
             }
             await SendObservation(observation);
-            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
             {
-                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var view = await baselineQuery.GetAsync(device.Id, token);
                 Assert.IsTrue(view!.Checks.Single(x => x.SourceKey == $"{BaselineSources.LocalPrefix}{sourceId:D}").Latest!.Current);
             }
-            var noteUrl = $"/api/v1/admin/devices/{device.Id:D}/baseline-exceptions";
             var note = new BaselineExceptionInput($"{BaselineSources.LocalPrefix}{sourceId:D}", firstRevision, "Approved temporary operational exception");
-            using (var denied = await reader.PostAsJsonAsync(noteUrl, note, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
-            using (var denied = await anonymous.PostAsJsonAsync(noteUrl, note, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
-            using (var response = await admin.PostAsJsonAsync(noteUrl, note, token)) Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
-            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
+            Assert.AreEqual(BaselineExceptionStatus.Recorded, await baselineExceptions.RecordAsync(device.Id, note.SourceKey, note.RevisionId, note.Reason, Guid.CreateVersion7(), token));
             {
-                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var view = await baselineQuery.GetAsync(device.Id, token);
                 var check = view!.Checks.Single(x => x.SourceKey == note.SourceKey);
                 Assert.AreEqual(BaselineOutcome.Fail, check.Latest!.Outcome);
                 Assert.AreEqual(note.Reason, check.Notes!.Single().Reason);
@@ -177,9 +174,8 @@ public sealed class CustomBaselineHttpTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
             var second = await sources.GetActiveAsync($"{BaselineSources.LocalPrefix}{sourceId:D}", token);
             Assert.AreEqual("0640", second.Check!.Expected);
-            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
             {
-                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var view = await baselineQuery.GetAsync(device.Id, token);
                 var check = view!.Checks.Single(x => x.SourceKey == $"{BaselineSources.LocalPrefix}{sourceId:D}");
                 Assert.IsFalse(check.Latest!.Current);
                 Assert.AreEqual("0600", check.Latest.Definition!.Expected);
@@ -187,7 +183,7 @@ public sealed class CustomBaselineHttpTests(TestContext context)
                 Assert.AreEqual(firstRevision, check.Notes!.Single().RevisionId);
                 Assert.AreEqual(secondRevision, check.ActiveRevisionId);
             }
-            using (var response = await admin.PostAsJsonAsync(noteUrl, note, token)) Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.AreEqual(BaselineExceptionStatus.VersionChanged, await baselineExceptions.RecordAsync(device.Id, note.SourceKey, note.RevisionId, note.Reason, Guid.CreateVersion7(), token));
             using (var response = await admin.PostAsJsonAsync(activation, new IntelligenceActivationRequest(firstRevision, secondRevision, second.ActivationVersion!, false), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
             var restored = await sources.GetActiveAsync($"{BaselineSources.LocalPrefix}{sourceId:D}", token);
@@ -200,15 +196,13 @@ public sealed class CustomBaselineHttpTests(TestContext context)
                 Assert.HasCount(3, approvals);
                 Assert.IsTrue(approvals.All(x => !x.Scheduled && x.ActorId is not null));
             }
-            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
             {
-                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var view = await baselineQuery.GetAsync(device.Id, token);
                 Assert.IsFalse(view!.Checks.Single(x => x.SourceKey == $"{BaselineSources.LocalPrefix}{sourceId:D}").Latest!.Current);
             }
             await SendObservation(observation with { ActivationVersion = restored.ActivationVersion!, ObservedAt = DateTimeOffset.UtcNow });
-            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
             {
-                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var view = await baselineQuery.GetAsync(device.Id, token);
                 Assert.IsTrue(view!.Checks.Single(x => x.SourceKey == $"{BaselineSources.LocalPrefix}{sourceId:D}").Latest!.Current);
             }
         }, context.CancellationToken);

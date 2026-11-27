@@ -17,6 +17,7 @@ using Vigiloom.Modules.SecurityAnalysis.Domain.Baseline;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Application.Inventory;
+using Vigiloom.Modules.SecurityAnalysis.Application.Baseline;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
 using Vigiloom.Web.Tests.Fixtures;
@@ -34,6 +35,8 @@ public sealed class BaselineHttpTests(TestContext context)
         {
             using var factory = PingTestSite.CreateFactory(database.ConnectionString);
             await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
+            await using var baselineScope = factory.Services.CreateAsyncScope();
+            var baselineQuery = baselineScope.ServiceProvider.GetRequiredService<BaselineQuery>();
             var device = new Device("baseline host", "127.0.0.1", true, DateTimeOffset.UtcNow);
             await using (var resources = await factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
             {
@@ -53,8 +56,6 @@ public sealed class BaselineHttpTests(TestContext context)
             }
             using var client = PingTestSite.Client(factory);
             using (var denied = await client.GetAsync("/api/v1/agent/baseline-settings", token))
-                Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
-            using (var denied = await client.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
             using (var response = await client.GetAsync("/api/v1/agent/baseline-settings", token))
@@ -194,10 +195,8 @@ public sealed class BaselineHttpTests(TestContext context)
                 Assert.Contains("0640", text);
                 Assert.Contains("建議", text);
             }
-            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
             {
-                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var view = await baselineQuery.GetAsync(device.Id, token);
                 Assert.IsNotNull(view);
                 var result = view.Checks.Single(x => x.SourceKey == BaselineSources.LinuxShadow);
                 Assert.AreEqual(BaselineSyncState.Applied, view.Sync!.State);
@@ -209,9 +208,8 @@ public sealed class BaselineHttpTests(TestContext context)
             using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, null,
                 BaselineConfiguration: report with { Failure = AgentConfigurationFailure.Unavailable }), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
-            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
             {
-                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var view = await baselineQuery.GetAsync(device.Id, token);
                 Assert.AreEqual(BaselineSyncState.Failed, view!.Sync!.State);
                 Assert.AreEqual(now, view.Sync.LastSyncedAt);
             }
@@ -227,9 +225,8 @@ public sealed class BaselineHttpTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
             }
             Assert.AreEqual(2, await db.Set<BaselineObservation>().CountAsync(token));
-            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
             {
-                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var view = await baselineQuery.GetAsync(device.Id, token);
                 var result = view!.Checks.Single(x => x.SourceKey == BaselineSources.LinuxShadow);
                 Assert.AreEqual(BaselineSyncState.Pending, view.Sync!.State);
                 Assert.AreEqual(BaselineSourceAvailability.NoActiveRevision, result.SourceAvailability);
@@ -250,9 +247,8 @@ public sealed class BaselineHttpTests(TestContext context)
                 reactivated = policy!.Checks.Single();
                 Assert.AreNotEqual(selected.ActivationVersion, reactivated.ActivationVersion);
             }
-            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
             {
-                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var view = await baselineQuery.GetAsync(device.Id, token);
                 Assert.IsFalse(view!.Checks.Single(x => x.SourceKey == BaselineSources.LinuxShadow).Latest!.Current);
             }
             var latest = batch with { BatchId = Guid.CreateVersion7(), Items = [batch.Items[0] with
@@ -263,9 +259,8 @@ public sealed class BaselineHttpTests(TestContext context)
                 using var response = await client.SendAsync(request, token);
                 Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
             }
-            using (var response = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/baseline", token))
             {
-                var view = await response.Content.ReadFromJsonAsync<DeviceBaselineView>(cancellationToken: token);
+                var view = await baselineQuery.GetAsync(device.Id, token);
                 var observation = view!.Checks.Single(x => x.SourceKey == BaselineSources.LinuxShadow).Latest!;
                 Assert.IsTrue(observation.Current);
                 Assert.AreEqual(BaselineOutcome.Pass, observation.Outcome);
