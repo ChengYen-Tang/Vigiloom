@@ -75,7 +75,7 @@ public sealed class LineEndpointTests(TestContext context)
                 """);
             async Task<HttpStatusCode> SendWebhookAsync(string signature)
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, "/internal/v1/line/webhook");
+                using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/line/webhook");
                 request.Content = new ByteArrayContent(body);
                 request.Headers.Add("x-line-signature", signature);
                 using var received = await client.SendAsync(request, token);
@@ -84,6 +84,15 @@ public sealed class LineEndpointTests(TestContext context)
             Assert.AreEqual(HttpStatusCode.Unauthorized, await SendWebhookAsync("invalid"));
             var signature = Convert.ToBase64String(HMACSHA256.HashData(Encoding.UTF8.GetBytes("secret"), body));
             Assert.AreEqual(HttpStatusCode.OK, await SendWebhookAsync(signature));
+            Assert.AreEqual(HttpStatusCode.OK, await SendWebhookAsync(signature));
+            var malformed = Encoding.UTF8.GetBytes("{\"events\":[");
+            using (var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/line/webhook"))
+            {
+                request.Content = new ByteArrayContent(malformed);
+                request.Headers.Add("x-line-signature", Convert.ToBase64String(HMACSHA256.HashData(Encoding.UTF8.GetBytes("secret"), malformed)));
+                using var rejected = await client.SendAsync(request, token);
+                Assert.AreEqual(HttpStatusCode.BadRequest, rejected.StatusCode);
+            }
             settings = await client.GetFromJsonAsync<LineChannelInfo>("/internal/v1/line", token);
             Assert.IsFalse(settings!.Groups.Single(item => item.ExternalId == "Cnew").Approved);
             using var invalid = await client.PutAsJsonAsync("/internal/v1/line", new LineChannelChange(Guid.Empty, true, null, null, 15), token);

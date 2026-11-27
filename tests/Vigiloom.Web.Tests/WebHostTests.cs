@@ -172,7 +172,6 @@ public sealed class WebHostTests(TestContext testContext)
         var lineWrite = linePath.GetProperty("put").GetProperty("security")[0];
         Assert.IsTrue(lineWrite.TryGetProperty("BrowserSession", out _));
         Assert.IsTrue(lineWrite.TryGetProperty("Antiforgery", out _));
-        Assert.IsTrue(paths.GetProperty("/api/v1/line/webhook").GetProperty("post").GetProperty("security")[0].TryGetProperty("LineSignature", out _));
         Assert.IsTrue(paths.GetProperty("/api/v1/operations/audit/line").GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         var publicSecurity = paths.GetProperty("/api/v1/public/devices").GetProperty("get").GetProperty("security");
         Assert.AreEqual(0, publicSecurity.GetArrayLength());

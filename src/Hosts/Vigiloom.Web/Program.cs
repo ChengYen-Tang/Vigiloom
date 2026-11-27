@@ -824,7 +824,6 @@ app.MapAgentReplayPolicyEndpoints();
 app.MapAgentInboxSettingsEndpoints();
 app.MapAgentBatchEndpoints();
 app.MapServiceDiscoveryEndpoints();
-app.MapLineWebhookEndpoints();
 app.MapLineSettingsEndpoints();
 app.MapGet("/internal/v1/observation-sources/{id:guid}/active", async (Guid id, IDbContextFactory<ServiceObservabilityDbContext> contexts, CancellationToken token) =>
 {

@@ -18,6 +18,7 @@ public sealed class PublicApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions
         document.Components.SecuritySchemes["ServiceSourceBearer"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "Vigiloom service source credential" };
         document.Components.SecuritySchemes["BrowserSession"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.ApiKey, In = ParameterLocation.Cookie, Name = cookies.Get(IdentityConstants.ApplicationScheme).Cookie.Name };
         document.Components.SecuritySchemes["Antiforgery"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.ApiKey, In = ParameterLocation.Header, Name = "RequestVerificationToken" };
+        document.Components.SecuritySchemes["LineSignature"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.ApiKey, In = ParameterLocation.Header, Name = "x-line-signature" };
         return Task.CompletedTask;
     }
 }
@@ -28,7 +29,9 @@ public sealed class PublicApiOpenApiOperation : IOpenApiOperationTransformer
     {
         var policies = context.Description.ActionDescriptor.EndpointMetadata.OfType<IAuthorizeData>().Select(x => x.Policy).ToArray();
         var document = context.Document;
-        if (policies.Contains("ServiceSource"))
+        if (context.Description.RelativePath?.Equals("api/v1/line/webhook", StringComparison.OrdinalIgnoreCase) == true)
+            operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("LineSignature", document)] = [] }];
+        else if (policies.Contains("ServiceSource"))
             operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ServiceSourceBearer", document)] = [] }];
         else if (policies.Contains("Administrator"))
         {

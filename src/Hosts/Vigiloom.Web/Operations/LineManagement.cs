@@ -16,9 +16,6 @@ internal sealed class LineManagement(LineChannel local, LineDeliveryStatus deliv
     public Task<Guid?> EnqueueTestAsync(Guid id, CancellationToken token) => Remote is { } remote ? remote.EnqueueTestAsync(id, token) : queue.EnqueueTestAsync(id, token);
     public Task<IReadOnlyList<LineDeliverySummary>> GetRecentAsync(CancellationToken token) => Remote is { } remote ? remote.GetRecentAsync(token) : deliveries.GetRecentAsync(token);
     public Task<LineDeliveryView?> GetDeliveryAsync(Guid id, CancellationToken token) => Remote is { } remote ? remote.GetDeliveryAsync(id, token) : deliveries.GetAsync(id, token);
-    public Task<int> ReceiveAsync(HttpRequest request, CancellationToken token) => Remote is { } remote
-        ? remote.ReceiveAsync(request, token)
-        : new LineWebhookReceiver(local).ReceiveAsync(request.Body, request.ContentLength, request.Headers["x-line-signature"].ToString(), token);
 }
 
 internal sealed class RemoteLine(HttpClient client)
@@ -63,15 +60,5 @@ internal sealed class RemoteLine(HttpClient client)
         var item = await response.Content.ReadFromJsonAsync<LineDeliveryInfo>(cancellationToken: token)
             ?? throw new InvalidOperationException("Operations service returned an empty LINE delivery.");
         return new(item.Id, item.Status, item.FailureCode, item.CreatedAt, item.CompletedAt);
-    }
-    public async Task<int> ReceiveAsync(HttpRequest request, CancellationToken token)
-    {
-        using var message = new HttpRequestMessage(HttpMethod.Post, "internal/v1/line/webhook");
-        message.Content = new StreamContent(request.Body);
-        if (request.ContentLength is { } length) message.Content.Headers.ContentLength = length;
-        message.Headers.TryAddWithoutValidation("x-line-signature", request.Headers["x-line-signature"].ToString());
-        try { using var response = await client.SendAsync(message, token); return (int)response.StatusCode; }
-        catch (HttpRequestException) { return StatusCodes.Status503ServiceUnavailable; }
-        catch (OperationCanceledException) when (!token.IsCancellationRequested) { return StatusCodes.Status503ServiceUnavailable; }
     }
 }

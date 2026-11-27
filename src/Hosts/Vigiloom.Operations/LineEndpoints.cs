@@ -7,11 +7,12 @@ internal static class LineEndpoints
 {
     internal static void MapLineEndpoints(this WebApplication app)
     {
-        var line = app.MapGroup("/internal/v1/line");
-        line.MapPost("/webhook", async (HttpRequest request, LineChannel channel, CancellationToken token) =>
+        app.MapPost("/api/v1/line/webhook", async (HttpRequest request, LineChannel channel, CancellationToken token) =>
             Results.StatusCode(await new LineWebhookReceiver(channel).ReceiveAsync(request.Body, request.ContentLength,
                 request.Headers["x-line-signature"].ToString(), token)))
-            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LineWebhookReceiver.MaximumBytes));
+            .AllowAnonymous().WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LineWebhookReceiver.MaximumBytes))
+            .Produces(200).ProducesProblem(400).ProducesProblem(401).ProducesProblem(413).ProducesProblem(503);
+        var line = app.MapGroup("/internal/v1/line");
         line.MapGet("/", async (HttpContext context, LineChannel channel, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";

@@ -38,11 +38,6 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             Type = SecuritySchemeType.ApiKey, In = ParameterLocation.Header, Name = "RequestVerificationToken",
             Description = "Required together with the session and antiforgery cookies on browser-session writes."
         };
-        document.Components.SecuritySchemes["LineSignature"] = new OpenApiSecurityScheme
-        {
-            Type = SecuritySchemeType.ApiKey, In = ParameterLocation.Header, Name = "x-line-signature",
-            Description = "LINE webhook signature verified against the unmodified request body."
-        };
         foreach (var (path, item) in document.Paths)
         foreach (var (method, operation) in item.Operations ?? [])
         {
@@ -50,11 +45,6 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             {
                 operation.Security = [];
                 operation.Description = "Anonymous published data only; private resources and network addresses are excluded.";
-            }
-            else if (path.Equals("/api/v1/line/webhook", StringComparison.OrdinalIgnoreCase))
-            {
-                operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("LineSignature", document)] = [] }];
-                operation.Description = "Receives LINE webhooks without a user session; the raw request body must have a valid LINE signature.";
             }
             else if (path.StartsWith("/api/v1/admin/line", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/api/v1/admin/intelligence/", StringComparison.OrdinalIgnoreCase) ||

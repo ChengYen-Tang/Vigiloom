@@ -432,11 +432,13 @@ public sealed class ProxyTests
     public async Task PublicRoutesDoNotValidateSessionAtGateway()
     {
         await using var web = await StartUpstreamAsync("web", TestContext.CancellationToken);
+        await using var operations = await StartUpstreamAsync("operations", TestContext.CancellationToken);
         var address = web.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ReverseProxy:Clusters:web:Destinations:web:Address"] = address,
+                ["ReverseProxy:Clusters:operations:Destinations:operations:Address"] = operations.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single(),
                 ["Services:Identity:Url"] = "http://127.0.0.1:1"
             })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), HandleCookies = false });
@@ -448,6 +450,7 @@ public sealed class ProxyTests
         Assert.AreEqual("web", await client.GetStringAsync("/api/v1/public/status", TestContext.CancellationToken));
         using var webhook = await client.PostAsync("/api/v1/line/webhook", null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.OK, webhook.StatusCode);
+        Assert.AreEqual("operations", await webhook.Content.ReadAsStringAsync(TestContext.CancellationToken));
     }
 
     [TestMethod]
