@@ -62,7 +62,10 @@ public static class WorkerHost
         builder.Services.AddScoped<Vigiloom.Infrastructure.Scheduling.Outbox.IOutboxHandler, Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryHandler>();
         builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineDeliveryQueue>();
         builder.Services.AddScoped<LineDeliveryJob>();
-        builder.Services.AddHostedService<LineDeliverySchedule>();
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Operations:Url"]))
+            builder.Services.AddHostedService<LineDeliverySchedule>();
+        else
+            builder.Services.AddHostedService<RetiredLineDeliverySchedule>();
         builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
         builder.Services.AddScoped<IdentityAuditRetention>();
         builder.Services.AddServiceDiscovery();
@@ -195,7 +198,8 @@ public static class WorkerHost
             builder.Services.AddHostedService<PingRollupBackfillSchedule>();
             builder.Services.AddHostedService<PingRetentionSchedule>();
         }
-        builder.Services.AddHostedService<AgentInboxRetentionSchedule>();
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Services:HostMonitoring:Url"]))
+            builder.Services.AddHostedService<AgentInboxRetentionSchedule>();
         if (securityCutover)
             builder.Services.AddHostedService<RetiredSecuritySchedule>();
         else

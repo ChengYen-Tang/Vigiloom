@@ -20,3 +20,14 @@ internal sealed class LineDeliverySchedule(IRecurringJobManager jobs) : IHostedS
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
+
+internal sealed class RetiredLineDeliverySchedule(IRecurringJobManager jobs) : IHostedService
+{
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        jobs.RemoveIfExists("vigiloom-line-delivery");
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}

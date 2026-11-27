@@ -90,7 +90,18 @@ public sealed class HostLifecycleTests(TestContext testContext)
             .Select(service => service.ImplementationType?.Name).ToArray();
         Assert.DoesNotContain("HostMetricRollupSchedule", hosted);
         Assert.DoesNotContain("HostMetricRetentionSchedule", hosted);
+        Assert.DoesNotContain("AgentInboxRetentionSchedule", hosted);
         Assert.Contains("RetiredHostMetricSchedule", hosted);
+    }
+
+    [TestMethod]
+    public void OperationsCutoverRetiresLegacyLineSchedule()
+    {
+        var builder = WorkerHost.CreateBuilder(["--Services:Operations:Url=http://operations"]);
+        var hosted = builder.Services.Where(service => service.ServiceType == typeof(IHostedService))
+            .Select(service => service.ImplementationType?.Name).ToArray();
+        Assert.DoesNotContain("LineDeliverySchedule", hosted);
+        Assert.Contains("RetiredLineDeliverySchedule", hosted);
     }
 
     [TestMethod]

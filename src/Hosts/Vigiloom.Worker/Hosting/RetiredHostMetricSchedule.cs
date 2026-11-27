@@ -9,6 +9,7 @@ internal sealed class RetiredHostMetricSchedule(IRecurringJobManager jobs) : IHo
     {
         jobs.RemoveIfExists("vigiloom-host-metric-rollup");
         jobs.RemoveIfExists("vigiloom-host-metric-retention");
+        jobs.RemoveIfExists("vigiloom-agent-inbox-retention");
         return Task.CompletedTask;
     }
 
