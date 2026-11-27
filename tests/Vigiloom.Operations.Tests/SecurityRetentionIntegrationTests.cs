@@ -62,6 +62,7 @@ public sealed class SecurityRetentionIntegrationTests(TestContext context)
             using var securityClient = security.CreateClient();
             using var operations = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
             {
+                web.UseEnvironment("Testing");
                 web.UseSetting("Hangfire:Enabled", "false");
                 web.UseSetting("Services:Security:Url", "http://security");
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Operations"] = operationsDb.ConnectionString }));

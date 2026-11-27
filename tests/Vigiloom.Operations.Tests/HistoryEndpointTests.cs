@@ -50,6 +50,7 @@ public sealed class HistoryEndpointTests(TestContext context)
             }
             using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
             {
+                web.UseEnvironment("Testing");
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 { ["ConnectionStrings:Operations"] = database.ConnectionString }));
                 web.ConfigureTestServices(s =>
