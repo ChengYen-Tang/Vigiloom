@@ -14,6 +14,7 @@ namespace Vigiloom.Modules.SecurityAnalysis.Tests;
 public sealed class SecurityMigrationTests(TestContext context)
 {
     [TestMethod]
+    [DoNotParallelize]
     public Task CopiesAllSecurityTablesWithAgentAndSourceIdentity() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (source, outer) =>
         await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (target, token) =>
