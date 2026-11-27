@@ -107,6 +107,10 @@ builder.Services.AddHttpClient<ObservationSourceVerifier>((services, client) =>
 builder.Services.AddScoped<IApplicationSourceVerifier>(services => services.GetRequiredService<ObservationSourceVerifier>());
 
 var app = builder.Build();
+var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
+if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapWorkHistoryEndpoints();
 app.MapPost("/internal/v1/devices/audit", async (OperationAuditQuery query, DeviceAuditFeed feed, CancellationToken token) =>
     AuditFeedLimits.Valid(query) ? Results.Ok(await feed.QueryAsync(query, token)) : Results.BadRequest());
