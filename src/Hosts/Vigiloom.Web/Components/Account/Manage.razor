@@ -5,6 +5,7 @@
 @using Vigiloom.Modules.IdentityAccess.Domain
 @using Vigiloom.Web.Authentication
 @inject Microsoft.Extensions.Localization.IStringLocalizer<AccountAdminText> L
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SetupText> IdentityText
 @inject AccountManagement Administration
 
 <PageTitle>@L["帳號管理 - Vigiloom"]</PageTitle>
@@ -67,7 +68,7 @@
     private async Task CreateAsync()
     {
         var result = await Administration.CreateAsync(HttpContext.User, Input.UserName, Input.Role);
-        if (result.Result.Status != AccountOperationStatus.Success) { error = result.Result.Status == AccountOperationStatus.ValidationFailed ? AccountOperationMessages.Describe(result.Result) : L[AccountOperationMessages.Describe(result.Result)].Value; return; }
+        if (result.Result.Status != AccountOperationStatus.Success) { error = result.Result.Status == AccountOperationStatus.ValidationFailed ? AccountOperationMessages.DescribeValidation(result.Result, IdentityText) : L[AccountOperationMessages.Describe(result.Result)].Value; return; }
         code = result.Code;
         Input.UserName = "";
         await LoadAsync();

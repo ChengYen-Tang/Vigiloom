@@ -6,6 +6,7 @@
 @using Vigiloom.Modules.IdentityAccess.Domain
 @using Vigiloom.Web.Authentication
 @inject Microsoft.Extensions.Localization.IStringLocalizer<AccountAdminText> L
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SetupText> IdentityText
 @inject AccountManagement Administration
 @inject NavigationManager Navigation
 
@@ -114,7 +115,7 @@
     private void SetMessage(AccountOperationResult result, string success)
     {
         isError = result.Status != AccountOperationStatus.Success;
-        message = isError ? (result.Status == AccountOperationStatus.ValidationFailed ? AccountOperationMessages.Describe(result) : L[AccountOperationMessages.Describe(result)].Value) : success;
+        message = isError ? (result.Status == AccountOperationStatus.ValidationFailed ? AccountOperationMessages.DescribeValidation(result, IdentityText) : L[AccountOperationMessages.Describe(result)].Value) : success;
     }
     private sealed class NameModel { [Required(ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.RequiredUserName)), StringLength(256, ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.UserNameLength))] public string UserName { get; set; } = ""; }
     private sealed class RoleModel { [Required] public string Role { get; set; } = BuiltInRoles.ReadOnly; }
