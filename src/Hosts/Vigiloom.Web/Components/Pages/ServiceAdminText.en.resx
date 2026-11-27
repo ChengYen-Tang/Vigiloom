@@ -1097,4 +1097,5 @@
   <data name="請先確認操作影響。" xml:space="preserve"><value>First confirm the effects of this action.</value></data>
   <data name="設定已變更或找不到範圍，請重新整理後再試。" xml:space="preserve"><value>Settings changed or the scope was not found. Refresh and try again.</value></data>
   <data name="無法確認移除結果，請重新整理並檢查設定。" xml:space="preserve"><value>Unable to confirm removal. Refresh and check settings.</value></data>
+  <data name="掃描執行中，開始時間（UTC）：{0}" xml:space="preserve"><value>Scan in progress, started (UTC): {0}</value></data>
 </root>

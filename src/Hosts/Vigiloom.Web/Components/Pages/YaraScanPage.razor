@@ -55,7 +55,14 @@
                     }
                     else
                     {
-                        <p>@L["等待 Agent 執行或回報。"]</p>
+                        @if (job.StartedAt is { } startedAt)
+                        {
+                            <p>@L["掃描執行中，開始時間（UTC）：{0}", startedAt.ToUniversalTime().ToString("u")]</p>
+                        }
+                        else
+                        {
+                            <p>@L["等待 Agent 執行或回報。"]</p>
+                        }
                         <AuthorizeView Roles="Administrator" Context="cancelAuthorization"><Authorized>
                             <EditForm Model="job" FormName="@($"yara-scan-cancel-{job.Id:D}")" method="post" OnSubmit="@(() => CancelAsync(job.Id))">
                                 <button type="submit">@L["取消掃描"]</button>
