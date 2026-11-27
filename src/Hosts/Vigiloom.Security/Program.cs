@@ -35,6 +35,7 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.SecurityAnalysis.Application.ScheduledJobs;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddAntiforgery();
 builder.Services.AddOpenApi(options =>
 {
     options.ShouldInclude = description => description.RelativePath?.StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase) == true;

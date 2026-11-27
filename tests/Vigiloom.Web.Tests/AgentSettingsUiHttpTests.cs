@@ -280,21 +280,15 @@ public sealed class AgentSettingsUiHttpTests
             using var agent = factory.CreateClient(options);
             await LoginAsync(reader, "reader", token);
             await LoginAsync(admin, "admin", token);
-            var url = $"/api/v1/agent-management/devices/{first.Id:D}/integrity-scopes/";
-            using (var denied = await anonymous.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
-            using (var denied = await reader.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             var input = new IntegrityScopeInput(IntegrityScopeKind.Directory, "/srv/app", true,
                 ImmutableArray.Create("logs/**"), 3600, 1000, 1048576, 10485760, 16);
-            using (var denied = await admin.PostAsJsonAsync(url, input, token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
-            using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
+            IntegrityScopeView saved;
+            await using (var scope = factory.Services.CreateAsyncScope())
             {
-                var json = await anti.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: token);
-                admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.GetProperty("requestToken").GetString());
+                var result = await scope.ServiceProvider.GetRequiredService<IntegrityConfiguration>().CreateAsync(first.Id, input, Guid.CreateVersion7(), token);
+                Assert.AreEqual(IntegrityConfigurationStatus.Success, result.Status);
+                saved = result.Scope!;
             }
-            using var created = await admin.PostAsJsonAsync(url, input, token);
-            Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
-            var saved = await created.Content.ReadFromJsonAsync<IntegrityScopeView>(cancellationToken: token);
-            Assert.IsNotNull(saved);
             var scopePage = $"/devices/{first.Id:D}/integrity-scopes";
             admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
             using (var english = await admin.GetAsync(scopePage, token))

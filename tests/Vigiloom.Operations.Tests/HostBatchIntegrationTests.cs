@@ -341,7 +341,29 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 using (var missingCsrf = await securityApi.PutAsJsonAsync("/api/v1/agent-management/inventory-settings/platform",
                     new InventorySettingsUpdate(new InventorySettingsOverrides(300), ""), token))
                     Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+                var policyPath = $"/api/v1/agent-management/devices/{identity.DeviceId:D}/integrity-scopes/";
+                var policy = new IntegrityScopeInput(IntegrityScopeKind.Directory, "/srv/api-test", true,
+                    ImmutableArray<string>.Empty, 3600, 1000, 1048576, 10485760, 16);
+                using (var missingCsrf = await securityApi.PostAsJsonAsync(policyPath, policy, token))
+                    Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+                var adminPrincipal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, sessionHandler.AccountId.ToString("D")),
+                    new Claim(ClaimTypes.Role, "Administrator")], IdentityConstants.ApplicationScheme));
+                var antiContext = new DefaultHttpContext { RequestServices = security.Services, User = adminPrincipal };
+                antiContext.Request.Scheme = "https";
+                var anti = security.Services.GetRequiredService<IAntiforgery>().GetAndStoreTokens(antiContext);
+                var antiCookie = antiContext.Response.Headers.SetCookie.Single()!.Split(';')[0];
+                securityApi.DefaultRequestHeaders.Remove("Cookie");
+                securityApi.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={cookie}; {antiCookie}");
+                securityApi.DefaultRequestHeaders.Add("RequestVerificationToken", anti.RequestToken);
+                using (var created = await securityApi.PostAsJsonAsync(policyPath, policy, token))
+                {
+                    Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
+                    Assert.IsNotNull(await created.Content.ReadFromJsonAsync<IntegrityScopeView>(cancellationToken: token));
+                }
+                securityApi.DefaultRequestHeaders.Remove("RequestVerificationToken");
                 sessionHandler.Role = "Read only";
+                using (var denied = await securityApi.GetAsync(policyPath, token))
+                    Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
                 using (var readerInventory = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory", token))
                 {
                     Assert.AreEqual(HttpStatusCode.OK, readerInventory.StatusCode);
