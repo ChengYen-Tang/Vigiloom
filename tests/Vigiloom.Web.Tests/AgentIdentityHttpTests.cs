@@ -399,24 +399,9 @@ public sealed class AgentIdentityHttpTests
                 TotalItems = 1, TotalBytes = nextMeasure.Bytes, Digest = InventoryDigest.Combine([nextMeasure.Digest]), Items = items };
             using (var accepted = await client.PostAsync("/api/v1/agent/batches", JsonBytes(InventoryChunkCodec.Serialize(next)), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
-            var inventoryUrl = $"/api/v1/devices/{device.Id:D}/inventory";
-            using (var denied = await client.GetAsync(inventoryUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
-            var vulnerabilityUrl = $"/api/v1/devices/{device.Id:D}/vulnerabilities";
-            using (var denied = await client.GetAsync(vulnerabilityUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
             await PingTestSite.InitializeAsync(factory, token);
             using var reader = PingTestSite.Client(factory);
             await PingTestSite.LoginAsync(reader, "reader", token);
-            using (var vulnerability = await reader.GetAsync(vulnerabilityUrl, token))
-            {
-                Assert.AreEqual(HttpStatusCode.OK, vulnerability.StatusCode);
-                Assert.IsTrue(vulnerability.Headers.CacheControl!.NoStore);
-            }
-            using (var invalidPage = await reader.GetAsync($"{vulnerabilityUrl}?page=0", token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, invalidPage.StatusCode);
-            using (var invalidState = await reader.GetAsync($"{vulnerabilityUrl}?state=9", token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, invalidState.StatusCode);
-            using (var unknownDevice = await reader.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/vulnerabilities", token))
-                Assert.AreEqual(HttpStatusCode.NotFound, unknownDevice.StatusCode);
             using (var policyStatus = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/inventory-settings-status", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, policyStatus.StatusCode);
@@ -425,33 +410,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(AgentSettingsApplyState.Applied, reported.State);
                 Assert.AreEqual(appliedInventory.Revision, reported.Applied!.Revision);
             }
-            using var viewResponse = await reader.GetAsync(inventoryUrl, token);
-            Assert.AreEqual(HttpStatusCode.OK, viewResponse.StatusCode);
-            var view = await viewResponse.Content.ReadFromJsonAsync<DeviceInventoryView>(cancellationToken: token);
-            Assert.IsNotNull(view);
-            Assert.HasCount(1, view.Sources);
-            Assert.AreEqual(next.SnapshotId, view.Sources[0].CurrentSnapshotId);
-            Assert.AreEqual(1, view.Sources[0].CurrentItemCount);
-            using var chunkResponse = await reader.GetAsync($"{inventoryUrl}/{(int)next.Source}/snapshots/{next.SnapshotId:D}/chunks/0", token);
-            Assert.AreEqual(HttpStatusCode.OK, chunkResponse.StatusCode);
-            var readChunk = await chunkResponse.Content.ReadFromJsonAsync<InventorySnapshotChunkView>(cancellationToken: token);
-            Assert.IsNotNull(readChunk);
-            Assert.AreEqual("Example package", readChunk.Items[0].Name);
-            Assert.AreEqual("package-source", readChunk.Items[0].SourcePackageName);
-            Assert.AreEqual("1.0", readChunk.Items[0].SourcePackageVersion);
-            using var stale = await reader.GetAsync($"{inventoryUrl}/{(int)chunk.Source}/snapshots/{chunk.SnapshotId:D}/chunks/0", token);
-            Assert.AreEqual(HttpStatusCode.NotFound, stale.StatusCode);
-            var changesUrl = $"{inventoryUrl}/changes?from={Uri.EscapeDataString(now.AddHours(-1).ToString("O"))}&until={Uri.EscapeDataString(now.AddHours(1).ToString("O"))}";
-            using (var denied = await client.GetAsync(changesUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
-            using var changesResponse = await reader.GetAsync(changesUrl, token);
-            Assert.AreEqual(HttpStatusCode.OK, changesResponse.StatusCode);
-            var changes = await changesResponse.Content.ReadFromJsonAsync<InventoryChangePage>(cancellationToken: token);
-            Assert.IsNotNull(changes);
-            Assert.HasCount(1, changes.Items);
-            Assert.AreEqual(InventoryChangeType.Added, changes.Items[0].Kind);
-            Assert.AreEqual("Example package", changes.Items[0].After!.Name);
-            Assert.AreEqual("package-source", changes.Items[0].After!.SourcePackageName);
-            Assert.AreEqual("1.0", changes.Items[0].After!.SourcePackageVersion);
             var processOne = new[] { new InventoryEntry("linux:boot:42:1", "worker", NumericId: 42, ProcessStartedAt: now) };
             var processTwo = new[] { new InventoryEntry("linux:boot:43:2", "server", NumericId: 43, ProcessStartedAt: now) };
             var firstMeasure = InventoryDigest.MeasureChunk(processOne);
@@ -474,15 +432,6 @@ public sealed class AgentIdentityHttpTests
             var lastProcessChunk = processChunk with { BatchId = Guid.CreateVersion7(), ChunkIndex = 1, Items = processTwo };
             using (var acceptedProcess = await client.PostAsync("/api/v1/agent/batches", JsonBytes(InventoryChunkCodec.Serialize(lastProcessChunk)), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, acceptedProcess.StatusCode);
-            var processUrl = $"{inventoryUrl}/{(int)InventorySource.HostProcesses}/snapshots/{processChunk.SnapshotId:D}/chunks/0";
-            using (var deniedProcess = await client.GetAsync(processUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, deniedProcess.StatusCode);
-            using (var allowedProcess = await reader.GetAsync(processUrl, token))
-            {
-                Assert.AreEqual(HttpStatusCode.OK, allowedProcess.StatusCode);
-                var processData = await allowedProcess.Content.ReadFromJsonAsync<InventorySnapshotChunkView>(cancellationToken: token);
-                Assert.IsNotNull(processData);
-                Assert.AreEqual(42U, processData.Items.Single().NumericId);
-            }
             using (var legacy = await client.GetAsync("/api/v1/agent/inventory/status", token))
             {
                 var legacySources = await legacy.Content.ReadFromJsonAsync<InventorySourceStatus[]>(cancellationToken: token);

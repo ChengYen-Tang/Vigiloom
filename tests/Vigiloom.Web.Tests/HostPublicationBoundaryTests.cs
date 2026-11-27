@@ -138,9 +138,7 @@ public sealed class HostPublicationBoundaryTests(TestContext context)
         var logs = $"/api/v1/devices/{device.Id:D}/host-logs?from={from}&until={until}";
         var metrics = $"/api/v1/devices/{device.Id:D}/host-metrics?from={from}&until={until}";
         var detections = $"/api/v1/devices/{device.Id:D}/sigma-detections?from={from}&until={until}";
-        var inventoryChanges = $"/api/v1/devices/{device.Id:D}/inventory/changes?from={from}&until={until}";
-        foreach (var path in new[] { logs, metrics, detections, inventoryChanges,
-            $"/api/v1/devices/{device.Id:D}/inventory", $"/api/v1/devices/{device.Id:D}/integrity", $"/api/v1/devices/{device.Id:D}/vulnerabilities" })
+        foreach (var path in new[] { logs, metrics, detections, $"/api/v1/devices/{device.Id:D}/integrity" })
         {
             using var denied = await anonymous.GetAsync(path, token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode, path);
@@ -151,6 +149,5 @@ public sealed class HostPublicationBoundaryTests(TestContext context)
         Assert.Contains("private host log", privateContent);
         Assert.Contains("private.cpu", await reader.GetStringAsync(metrics, token));
         Assert.Contains("private-detection.yml", await reader.GetStringAsync(detections, token));
-        Assert.Contains("Private software", await reader.GetStringAsync(inventoryChanges, token));
     }, context.CancellationToken);
 }

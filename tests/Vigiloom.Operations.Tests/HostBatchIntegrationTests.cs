@@ -92,9 +92,11 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             HttpClient? hostClientForWorker = null;
             var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             var auditHandler = new AuditHandler();
+            var sessionHandler = new AdminSessionHandler();
             using var security = new WebApplicationFactory<SecurityHost::Program>().WithWebHostBuilder(web =>
             {
                 web.UseSetting("Temporal:Enabled", temporalAddress is null ? "false" : "true");
+                if (temporalAddress is not null) web.UseSetting("Temporal:Address", temporalAddress);
                 web.UseSetting("Work:SecurityQueue", queue);
                 web.UseSetting("Work:SecurityLogQueue", queue + "-logs");
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -104,7 +106,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     services.AddHttpClient("ResourceDevices").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
                     services.AddHttpClient("observability").ConfigurePrimaryHttpMessageHandler(() => new RetentionHandler(21));
                     services.AddHttpClient("operations").ConfigurePrimaryHttpMessageHandler(() => auditHandler);
-                    services.AddHttpClient<IdentityCookieValidator>().ConfigurePrimaryHttpMessageHandler(() => new AdminSessionHandler());
+                    services.AddHttpClient<IdentityCookieValidator>().ConfigurePrimaryHttpMessageHandler(() => sessionHandler);
                     services.RemoveAll<IApiCredentialValidation>();
                     services.AddSingleton<IApiCredentialValidation, CredentialValidation>();
                 });
@@ -120,6 +122,10 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(2, read.GetArrayLength());
                 var inventoryResponse = paths.GetProperty("/api/v1/devices/{deviceId}/inventory").GetProperty("get").GetProperty("responses").GetProperty("200");
                 Assert.IsTrue(inventoryResponse.GetProperty("content").GetProperty("application/json").TryGetProperty("schema", out _));
+                var inventorySecurity = paths.GetProperty("/api/v1/devices/{deviceId}/inventory").GetProperty("get").GetProperty("security");
+                Assert.IsTrue(inventorySecurity.EnumerateArray().Any(x => x.TryGetProperty("BrowserSession", out _)));
+                Assert.IsTrue(inventorySecurity.EnumerateArray().Any(x => x.TryGetProperty("ApiBearer", out _)));
+                Assert.IsFalse(inventorySecurity.EnumerateArray().Any(x => x.TryGetProperty("AgentBearer", out _)));
                 var write = paths.GetProperty("/api/v1/agent-management/inventory-settings/platform").GetProperty("put").GetProperty("security");
                 Assert.AreEqual(1, write.GetArrayLength());
                 Assert.IsTrue(write[0].TryGetProperty("BrowserSession", out _));
@@ -130,6 +136,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             {
                 web.UseUrls("http://127.0.0.1:0");
                 web.UseSetting("Hangfire:Enabled", "false"); web.UseSetting("Temporal:Enabled", temporalAddress is null ? "false" : "true");
+                if (temporalAddress is not null) web.UseSetting("Temporal:Address", temporalAddress);
                 web.UseSetting("Work:SecurityQueue", queue);
                 web.UseSetting("Work:AgentQueue", queue + "-agent");
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -195,9 +202,45 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.AreEqual(1L, progress!.Single(x => x.Source == InventorySource.LinuxDpkg).HighWaterGeneration);
             await using (var db = new SecurityAnalysisDbContext(securityOptions)) Assert.AreEqual(1, await db.InventorySnapshots.CountAsync(token));
             await using (var db = new HostMonitoringDbContext(hostOptions)) Assert.AreEqual(0, await db.HostSecurityBatches.CountAsync(token));
+            InventoryEntry[] nextItems = [new("private-package", "Private software", "1.0", "x64", SourcePackageName: "package-source", SourcePackageVersion: "1.0")];
+            var nextMeasured = InventoryDigest.MeasureChunk(nextItems);
+            var next = chunk with { SchemaVersion = InventoryChunkCodec.DpkgSourceSchemaVersion, BatchId = Guid.CreateVersion7(), SnapshotId = Guid.CreateVersion7(),
+                Generation = 2, TotalItems = 1, TotalBytes = nextMeasured.Bytes, Digest = InventoryDigest.Combine([nextMeasured.Digest]), Items = nextItems };
+            async Task PublishInventoryAsync(InventoryChunk batch)
+            {
+                using (var accepted = await SendAsync(client, InventoryChunkCodec.Serialize(batch), "valid", token))
+                    Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
+                if (temporalAddress is null)
+                {
+                    var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = securityDb.ConnectionString }).Build();
+                    var worker = new SecurityHost::Vigiloom.Security.SecurityWorkHandler(config, new SingleHttpClientFactory(hostClient));
+                    await worker.ExecuteAsync(new ServiceWork(nameof(HostSecurityBatchReady), JsonSerializer.Serialize(writer.Batches[^1]), Guid.CreateVersion7().ToString()), token);
+                }
+                else
+                {
+                    var deadline = DateTime.UtcNow.AddSeconds(45);
+                    while (true)
+                    {
+                        await using var db = new SecurityAnalysisDbContext(securityOptions);
+                        if (await db.InventorySources.AnyAsync(x => x.AgentId == identity.AgentId && x.Source == batch.Source && x.CurrentGeneration == batch.Generation, token)) break;
+                        if (DateTime.UtcNow >= deadline) Assert.Fail("Temporal did not deliver the inventory snapshot.");
+                        await Task.Delay(250, token);
+                    }
+                }
+            }
+            await PublishInventoryAsync(next);
+            InventoryEntry[] processItems = [new("linux:boot:42:1", "worker", NumericId: 42, ProcessStartedAt: nowUtc)];
+            var processMeasured = InventoryDigest.MeasureChunk(processItems);
+            var process = new InventoryChunk(5, Guid.CreateVersion7(), nowUtc, Guid.CreateVersion7(), 1, InventorySource.HostProcesses,
+                nowUtc, InventoryOutcome.Complete, 0, 1, 1, processMeasured.Bytes, InventoryDigest.Combine([processMeasured.Digest]), processItems);
+            await PublishInventoryAsync(process);
             using (var securityApi = security.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") }))
             {
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory", token))
+                    Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+                using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/vulnerabilities", token))
+                    Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+                using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory/{(int)process.Source}/snapshots/{process.SnapshotId:D}/chunks/0", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 securityApi.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
                 using (var denied = await securityApi.GetAsync($"/api/v1/agent-management/devices/{identity.DeviceId:D}/integrity-scopes", token))
@@ -207,10 +250,26 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 var inventory = await securityApi.GetFromJsonAsync<DeviceInventoryView>($"/api/v1/devices/{identity.DeviceId:D}/inventory", token);
                 Assert.AreEqual(identity.AgentId, inventory!.AgentId);
                 Assert.IsTrue(inventory.Sources.Any(source => source.Source == InventorySource.LinuxDpkg));
+                var source = inventory.Sources.Single(source => source.Source == InventorySource.LinuxDpkg);
+                Assert.AreEqual(next.SnapshotId, source.CurrentSnapshotId);
+                Assert.AreEqual(1, source.CurrentItemCount);
+                var currentChunk = await securityApi.GetFromJsonAsync<InventorySnapshotChunkView>($"/api/v1/devices/{identity.DeviceId:D}/inventory/{(int)next.Source}/snapshots/{next.SnapshotId:D}/chunks/0", token);
+                Assert.AreEqual("Private software", currentChunk!.Items[0].Name);
+                Assert.AreEqual("package-source", currentChunk.Items[0].SourcePackageName);
+                Assert.AreEqual("1.0", currentChunk.Items[0].SourcePackageVersion);
+                var processChunk = await securityApi.GetFromJsonAsync<InventorySnapshotChunkView>($"/api/v1/devices/{identity.DeviceId:D}/inventory/{(int)process.Source}/snapshots/{process.SnapshotId:D}/chunks/0", token);
+                Assert.AreEqual(42U, processChunk!.Items.Single().NumericId);
+                using (var stale = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory/{(int)chunk.Source}/snapshots/{chunk.SnapshotId:D}/chunks/0", token))
+                    Assert.AreEqual(HttpStatusCode.NotFound, stale.StatusCode);
                 using (var vulnerability = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/vulnerabilities", token))
                     Assert.AreEqual(HttpStatusCode.OK, vulnerability.StatusCode);
                 var start = Uri.EscapeDataString(nowUtc.AddMinutes(-1).ToString("O"));
                 var end = Uri.EscapeDataString(nowUtc.AddMinutes(1).ToString("O"));
+                var changes = await securityApi.GetFromJsonAsync<InventoryChangePage>($"/api/v1/devices/{identity.DeviceId:D}/inventory/changes?from={start}&until={end}", token);
+                var added = Assert.ContainsSingle(changes!.Items.Where(item => item.After?.Name == "Private software"));
+                Assert.AreEqual(InventoryChangeType.Added, added.Kind);
+                Assert.AreEqual("package-source", added.After!.SourcePackageName);
+                Assert.AreEqual("1.0", added.After.SourcePackageVersion);
                 using (var integrityResponse = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/integrity", token))
                     Assert.AreEqual(HttpStatusCode.OK, integrityResponse.StatusCode);
                 using (var baselineResponse = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/baseline", token))
@@ -247,6 +306,30 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 using (var missingCsrf = await securityApi.PutAsJsonAsync("/api/v1/agent-management/inventory-settings/platform",
                     new InventorySettingsUpdate(new InventorySettingsOverrides(300), ""), token))
                     Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+                sessionHandler.Role = "Read only";
+                using (var readerInventory = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory", token))
+                {
+                    Assert.AreEqual(HttpStatusCode.OK, readerInventory.StatusCode);
+                    Assert.IsTrue(readerInventory.Headers.CacheControl!.NoStore);
+                }
+                using (var readerVulnerabilities = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/vulnerabilities", token))
+                {
+                    Assert.AreEqual(HttpStatusCode.OK, readerVulnerabilities.StatusCode);
+                    Assert.IsTrue(readerVulnerabilities.Headers.CacheControl!.NoStore);
+                }
+                var readerChanges = await securityApi.GetFromJsonAsync<InventoryChangePage>($"/api/v1/devices/{identity.DeviceId:D}/inventory/changes?from={start}&until={end}", token);
+                Assert.IsTrue(readerChanges!.Items.Any(item => item.After?.Name == "Private software"));
+                var readerProcess = await securityApi.GetFromJsonAsync<InventorySnapshotChunkView>($"/api/v1/devices/{identity.DeviceId:D}/inventory/{(int)process.Source}/snapshots/{process.SnapshotId:D}/chunks/0", token);
+                Assert.AreEqual(42U, readerProcess!.Items.Single().NumericId);
+                using (var unknown = await securityApi.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/vulnerabilities", token))
+                    Assert.AreEqual(HttpStatusCode.NotFound, unknown.StatusCode);
+                using (var deniedAdmin = await securityApi.GetAsync("/api/v1/admin/intelligence/sources", token))
+                    Assert.AreEqual(HttpStatusCode.Forbidden, deniedAdmin.StatusCode);
+                foreach (var invalidQuery in new[] { "page=0", "state=9" })
+                {
+                    using var invalid = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/vulnerabilities?{invalidQuery}", token);
+                    Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+                }
                 securityApi.DefaultRequestHeaders.Remove("Cookie");
                 securityApi.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
                 using var missing = await securityApi.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/inventory", token);
@@ -747,10 +830,11 @@ public sealed class HostBatchIntegrationTests(TestContext context)
 
     private sealed class AdminSessionHandler : HttpMessageHandler
     {
+        public string Role { get; set; } = "Administrator";
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new ValidatedCookieResponse([
                 new(ClaimTypes.NameIdentifier, Guid.CreateVersion7().ToString("D"), ClaimValueTypes.String, "LOCAL AUTHORITY", "LOCAL AUTHORITY"),
-                new(ClaimTypes.Role, "Administrator", ClaimValueTypes.String, "LOCAL AUTHORITY", "LOCAL AUTHORITY")
+                new(ClaimTypes.Role, Role, ClaimValueTypes.String, "LOCAL AUTHORITY", "LOCAL AUTHORITY")
             ])) });
     }
 

@@ -804,8 +804,6 @@ app.MapDeviceEndpoints();
 app.MapPublicationEndpoints();
 app.MapGroupEndpoints();
 app.MapAgentEndpoints();
-app.MapInventoryEndpoints();
-app.MapVulnerabilityEndpoints();
 app.MapIntegrityMonitoringEndpoints();
 app.MapAgentPackageEndpoints();
 app.MapAgentUpdateDownloadEndpoints();
