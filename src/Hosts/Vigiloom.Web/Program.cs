@@ -821,7 +821,6 @@ app.MapEventTimelineEndpoints();
 app.MapIntelligenceOfflineUiEndpoints();
 app.MapIntegrityScopeEndpoints();
 app.MapHostLogSettingsEndpoints();
-app.MapHostLogEndpoints();
 app.MapAgentReplayPolicyEndpoints();
 app.MapAgentInboxSettingsEndpoints();
 app.MapAgentBatchEndpoints();

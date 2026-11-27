@@ -205,10 +205,6 @@ public sealed class WebHostTests(TestContext testContext)
         var logAgentSecurity = paths.GetProperty("/api/v1/agent/log-settings").GetProperty("get").GetProperty("security");
         Assert.AreEqual(1, logAgentSecurity.GetArrayLength());
         Assert.IsTrue(logAgentSecurity[0].TryGetProperty("AgentBearer", out _));
-        var hostLogSecurity = paths.GetProperty("/api/v1/devices/{deviceId}/host-logs").GetProperty("get").GetProperty("security");
-        Assert.AreEqual(2, hostLogSecurity.GetArrayLength());
-        Assert.IsTrue(hostLogSecurity.EnumerateArray().Any(x => x.TryGetProperty("BrowserSession", out _)));
-        Assert.IsTrue(hostLogSecurity.EnumerateArray().Any(x => x.TryGetProperty("ApiBearer", out _)));
         var metricSeriesSecurity = paths.GetProperty("/api/v1/devices/{deviceId}/host-metrics/series").GetProperty("get").GetProperty("security");
         Assert.IsTrue(metricSeriesSecurity.EnumerateArray().Any(x => x.TryGetProperty("BrowserSession", out _)));
         Assert.IsTrue(metricSeriesSecurity.EnumerateArray().Any(x => x.TryGetProperty("ApiBearer", out _)));

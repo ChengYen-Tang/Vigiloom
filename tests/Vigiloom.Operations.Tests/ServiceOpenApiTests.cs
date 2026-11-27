@@ -45,6 +45,11 @@ public sealed class ServiceOpenApiTests(TestContext context)
         Assert.IsFalse(paths.EnumerateObject().Any(item => item.Name.StartsWith("/internal/", StringComparison.Ordinal)));
         var security = paths.GetProperty(path).GetProperty(method).GetProperty("security");
         Assert.IsTrue(security.EnumerateArray().Any(item => item.TryGetProperty(scheme, out _)));
+        if (path.EndsWith("/host-logs", StringComparison.Ordinal))
+        {
+            Assert.AreEqual(2, security.GetArrayLength());
+            Assert.IsTrue(security.EnumerateArray().Any(item => item.TryGetProperty("BrowserSession", out _)));
+        }
         if (scheme != "ServiceSourceBearer")
         {
             var schemaPath = scheme == "AgentBearer" ? "/api/v1/devices/{deviceId}/host-metrics" : path;

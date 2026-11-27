@@ -498,6 +498,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             await MigrateAsync(provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>(), token);
             await MigrateAsync(provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>(), token);
             var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var operationSession = new AdminSessionHandler { Role = "Read only" };
+            var operationRetention = new RetentionHandler();
             using var operations = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
             {
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -508,7 +510,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     configured.RemoveAll<IOutboxHandler>();
                     configured.AddScoped<IOutboxHandler, TestOutboxHandler>();
                     configured.AddHttpClient("Resources").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
-                    configured.AddHttpClient("Observability").ConfigurePrimaryHttpMessageHandler(() => new RetentionHandler());
+                    configured.AddHttpClient("Observability").ConfigurePrimaryHttpMessageHandler(() => operationRetention);
+                    configured.AddHttpClient<IdentityCookieValidator>().ConfigurePrimaryHttpMessageHandler(() => operationSession);
                     configured.RemoveAll<IApiCredentialValidation>();
                     configured.AddSingleton<IApiCredentialValidation, CredentialValidation>();
                 });
@@ -703,15 +706,34 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             {
                 using (var denied = await publicClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-logs?from={from}&until={until}", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+                publicClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid");
+                using (var deniedAgent = await publicClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-logs?from={from}&until={until}", token))
+                    Assert.AreEqual(HttpStatusCode.Unauthorized, deniedAgent.StatusCode);
                 publicClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
                 var page = await publicClient.GetFromJsonAsync<HostLogPage>($"/api/v1/devices/{identity.DeviceId:D}/host-logs?from={from}&until={until}", token);
                 Assert.IsNotNull(page);
                 Assert.HasCount(1, page.Items);
+                Assert.AreEqual(item.Content, page.Items[0].Content);
                 Assert.AreEqual(14, page.RetentionDays);
+                publicClient.DefaultRequestHeaders.Authorization = null;
+                var operationsCookieOptions = operations.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
+                var claims = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, operationSession.AccountId.ToString("D")),
+                    new Claim("AspNet.Identity.SecurityStamp", "stamp")], IdentityConstants.ApplicationScheme);
+                var cookie = operationsCookieOptions.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(claims), IdentityConstants.ApplicationScheme));
+                publicClient.DefaultRequestHeaders.Add("Cookie", $"{operationsCookieOptions.Cookie.Name}={cookie}");
+                operationRetention.Days = 10;
+                using (var reader = await publicClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-logs?from={from}&until={until}", token))
+                {
+                    Assert.AreEqual(HttpStatusCode.OK, reader.StatusCode);
+                    Assert.IsTrue(reader.Headers.CacheControl!.NoStore);
+                    var history = await reader.Content.ReadFromJsonAsync<HostLogPage>(cancellationToken: token);
+                    Assert.AreEqual(10, history!.RetentionDays);
+                    Assert.AreEqual(item.Content, Assert.ContainsSingle(history.Items).Content);
+                }
                 using var invalid = await publicClient.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/host-logs?from={until}&until={from}", token);
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
             }
-            Assert.AreEqual(auditCount + 1, await auditDb.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.AuditEvents").SingleAsync(token));
+            Assert.AreEqual(auditCount + 2, await auditDb.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.AuditEvents").SingleAsync(token));
             await using var check = new HostMonitoringDbContext(hostOptions);
             Assert.AreEqual(120, (await check.AgentStatuses.SingleAsync(token)).HeartbeatSafetyIntervalSeconds);
             Assert.IsFalse(await check.ReceivedBatches.AnyAsync(x => EF.Property<bool>(x, "PendingDelivery"), token));
@@ -916,8 +938,9 @@ public sealed class HostBatchIntegrationTests(TestContext context)
 
     private sealed class RetentionHandler(int days = 14) : HttpMessageHandler
     {
+        public int Days { get; set; } = days;
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new Vigiloom.Contracts.Services.TelemetryRetentionSnapshot(days, 30, "test")) });
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new Vigiloom.Contracts.Services.TelemetryRetentionSnapshot(Days, 30, "test")) });
     }
 
     private sealed class AuditHandler : HttpMessageHandler

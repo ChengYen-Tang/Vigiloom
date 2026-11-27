@@ -98,9 +98,6 @@ public sealed class PingHttpTests
         Assert.AreEqual(10, current?.LogDays); Assert.AreEqual(5, current?.TraceDays);
         Assert.AreEqual(20, current?.MetricRawDays); Assert.AreEqual(300, current?.MetricRollupDays);
         Assert.AreEqual(180, current?.HealthDays);
-        var from = Uri.EscapeDataString(now.AddDays(-1).ToString("O")); var until = Uri.EscapeDataString(now.AddDays(1).ToString("O"));
-        var hostLogs = await reader.GetFromJsonAsync<HostLogPage>($"/api/v1/devices/{device.Id:D}/host-logs?from={from}&until={until}", token);
-        Assert.AreEqual(10, hostLogs?.RetentionDays);
         admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
         using (var englishAudit = await admin.GetAsync("/settings/audit?source=telemetry-retention", token))
         {

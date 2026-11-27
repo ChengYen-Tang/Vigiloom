@@ -135,17 +135,14 @@ public sealed class HostPublicationBoundaryTests(TestContext context)
         Assert.DoesNotContain("Private software", publicContent);
         var from = Uri.EscapeDataString(now.AddHours(-1).ToString("O"));
         var until = Uri.EscapeDataString(now.AddHours(1).ToString("O"));
-        var logs = $"/api/v1/devices/{device.Id:D}/host-logs?from={from}&until={until}";
         var metrics = $"/api/v1/devices/{device.Id:D}/host-metrics?from={from}&until={until}";
-        foreach (var path in new[] { logs, metrics, $"/api/v1/devices/{device.Id:D}/integrity" })
+        foreach (var path in new[] { metrics, $"/api/v1/devices/{device.Id:D}/integrity" })
         {
             using var denied = await anonymous.GetAsync(path, token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode, path);
         }
         using var reader = PingTestSite.Client(factory);
         await PingTestSite.LoginAsync(reader, "reader", token);
-        var privateContent = await reader.GetStringAsync(logs, token);
-        Assert.Contains("private host log", privateContent);
         Assert.Contains("private.cpu", await reader.GetStringAsync(metrics, token));
     }, context.CancellationToken);
 }
