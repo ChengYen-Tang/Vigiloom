@@ -1102,7 +1102,7 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
-            var monitoringPaths = new[] { "/api/v1/agent-packages", $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status" };
+            var monitoringPaths = new[] { "/api/v1/agent-packages", $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status" };
             foreach (var path in monitoringPaths)
             {
                 using var anonymousRead = await agent.GetAsync(path, token);
@@ -1124,7 +1124,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotAudit.StatusCode);
             using (var apiCannotHeartbeat = await api.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotHeartbeat.StatusCode);
             using (var apiCannotReadMachineSettings = await api.GetAsync("/api/v1/agent/settings", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotReadMachineSettings.StatusCode);
-            using (var apiCannotReadMachineCapacity = await api.GetAsync("/api/v1/agent/queue-capacity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotReadMachineCapacity.StatusCode);
             using (var apiCannotBatch = await api.PostAsync("/api/v1/agent/batches", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotBatch.StatusCode);
             using (var apiCannotDiscover = await api.GetAsync("/api/v1/service-discovery/candidates/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotDiscover.StatusCode);
             using (var apiCannotApprove = await api.PostAsync($"/api/v1/service-discovery/candidates/{Guid.CreateVersion7():D}/approve", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotApprove.StatusCode);
@@ -1172,8 +1171,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Forbidden, manageSettings.StatusCode);
                 using var changeSettings = await reader.PutAsJsonAsync("/api/v1/agent-management/settings/platform", new AgentSettingsUpdate(new(60, null, null), ""), token);
                 Assert.AreEqual(HttpStatusCode.Forbidden, changeSettings.StatusCode);
-                using var readCapacity = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-queue-capacity", token);
-                Assert.AreEqual(HttpStatusCode.OK, readCapacity.StatusCode);
                 using var details = await reader.GetAsync($"/devices/{device.Id:D}", token);
                 var detailsDoc = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("Agent 狀態", detailsDoc.Body!.TextContent);

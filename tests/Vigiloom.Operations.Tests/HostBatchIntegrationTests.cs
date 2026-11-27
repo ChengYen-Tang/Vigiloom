@@ -891,6 +891,13 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             using (var anonymous = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-metrics/aggregate?agentId={identity.AgentId:D}&from={from}&until={until}&kind=CpuTotalPercent&source=cpu&bucketSeconds=60", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             proxyClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
+            using (var denied = await proxyClient.GetAsync("/api/v1/agent/queue-capacity", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var capacityRead = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/agent-queue-capacity", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, capacityRead.StatusCode);
+                Assert.IsTrue(capacityRead.Headers.CacheControl?.NoStore);
+            }
             using (var response = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/agent-settings", token))
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
             var status = await proxyClient.GetFromJsonAsync<AgentConnectionStatus>($"/api/v1/devices/{identity.DeviceId:D}/agent-status", token);
@@ -1006,6 +1013,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             await using (var audit = new HostMonitoringDbContext(hostOptions))
                 Assert.AreEqual(2, await audit.Set<HostMetricThresholdAudit>().CountAsync(token));
             thresholdSession.Role = "Read only";
+            using (var readerCapacity = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/agent-queue-capacity", token))
+                Assert.AreEqual(HttpStatusCode.OK, readerCapacity.StatusCode);
             using (var readerMetrics = await proxyClient.GetAsync($"{metricsPath}?from={from}&until={until}", token))
                 Assert.AreEqual(HttpStatusCode.OK, readerMetrics.StatusCode);
             using (var deniedInbox = await proxyClient.GetAsync(inboxPath, token))
