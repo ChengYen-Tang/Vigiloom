@@ -1,6 +1,6 @@
 # REQ-31 Server Details
 
-The device detail extends the approved Vigiloom blue-and-white visual system. The Product Design exploration in `req-31-server-details-concept.png` is a visual study, not a source of device facts or a commitment to infer an overall health state or an application-to-host relationship.
+The device detail extends the approved Vigiloom blue-and-white visual system. The Product Design exploration in the previous design is a visual study, not a source of device facts or a commitment to infer an overall health state or an application-to-host relationship.
 
 Deep-monitoring data is grouped into inventory, performance, processes and OS services, host logs, and file integrity. Each view is loaded independently and uses bounded pages or snapshot chunks. Snapshot replacement asks the user to reload instead of combining generations. Graph series remain separate by Agent registration, source and dimension; missing samples do not become zero.
 

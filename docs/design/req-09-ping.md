@@ -10,5 +10,5 @@
 
 ## 驗證
 
-- 已依 Product Design 完成來源與真實頁面的同圖比較、桌面及 390px 手機檢查，詳見根目錄 `design-qa.md` 與 `docs/design/evidence/req-09/`。
+- 已依 Product Design 完成來源與真實頁面的同圖比較、桌面及 390px 手機檢查。
 - 設定表單、錯誤保留、儲存回饋、Read only／匿名限制及真實迴圈位址 Ping 由 MSTest HTTP／Chromium／SQL 測試驗證；瀏覽器無警告或錯誤。

@@ -1,7 +1,7 @@
 # REQ-24 health-check settings
 
 Design direction: extend the selected Vigiloom blue-and-white system using the
-existing [service discovery concept](req-22-service-discovery-concept.png) and
+existing service discovery concept and
 the established service-instance management layout. This is a service setting,
 not a device Ping or Collector-health screen.
 

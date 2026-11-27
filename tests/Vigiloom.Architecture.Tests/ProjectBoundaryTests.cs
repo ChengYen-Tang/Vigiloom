@@ -134,7 +134,7 @@ public sealed class ProjectBoundaryTests
 
     private static string[]? AllowedReferences(string name, string[] modules) => name switch
     {
-        "Vigiloom.BuildingBlocks" or "Vigiloom.Contracts" or "Vigiloom.Otlp" or "Vigiloom.UpdateSecurity" or "Vigiloom.Sample.AspNetCore" => [],
+        "Vigiloom.BuildingBlocks" or "Vigiloom.Contracts" or "Vigiloom.Otlp" or "Vigiloom.UpdateSecurity" => [],
         "Vigiloom.Infrastructure" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts"],
         "Vigiloom.Gateway" => ["Vigiloom.Infrastructure"],
         "Vigiloom.Identity" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.IdentityAccess"],
@@ -148,8 +148,6 @@ public sealed class ProjectBoundaryTests
         "Vigiloom.Web" => [.. modules, "Vigiloom.Infrastructure", "Vigiloom.Web.Client"],
         "Vigiloom.Worker" => [.. modules, "Vigiloom.Infrastructure"],
         "Vigiloom.Migrator" => ["Vigiloom.Infrastructure", "Vigiloom.Modules.IdentityAccess", "Vigiloom.Modules.Resources", "Vigiloom.Modules.NetworkMonitoring", "Vigiloom.Modules.AgentManagement", "Vigiloom.Modules.ServiceObservability", "Vigiloom.Modules.SecurityAnalysis", "Vigiloom.Modules.Publishing", "Vigiloom.Modules.AlertingOperations"],
-        "Vigiloom.SpeedLab" => ["Vigiloom.Modules.NetworkMonitoring"],
-        "Vigiloom.CapacitySender" => ["Vigiloom.Contracts"],
         "Vigiloom.Agent.Core" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts"],
         "Vigiloom.Updater.Core" => ["Vigiloom.BuildingBlocks", "Vigiloom.Contracts", "Vigiloom.UpdateSecurity"],
         "Vigiloom.Agent.Platforms.Windows" or "Vigiloom.Agent.Platforms.Linux" => ["Vigiloom.Agent.Core"],
@@ -164,7 +162,7 @@ public sealed class ProjectBoundaryTests
     };
 
     private static Dictionary<string, ProjectDescription> ReadProjects() =>
-        new[] { "src", "tests", "tools", "samples" }
+        new[] { "src", "tests", "tools" }
             .SelectMany(folder => Directory.EnumerateFiles(Path.Combine(Root, folder), "*.csproj", SearchOption.AllDirectories))
             .Select(path =>
             {
