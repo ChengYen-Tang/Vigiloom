@@ -1,6 +1,6 @@
 # Vigiloom central platform package
 
-The package contains the Web, Worker, Migrator, Gateway and service hosts. The
+The package contains the Web, Migrator, Gateway and service hosts. The
 Linux archive includes `compose.microservices.yaml`, which starts the services,
 Temporal and PostgreSQL. SQL Server databases must be created separately with
 compatibility level 150 or higher. The self-contained binaries include the .NET
@@ -47,8 +47,9 @@ back up the database and persistent files, then use the corresponding
 an already split deployment, run the Migrator without arguments for the
 platform database and `initialize-*` for each existing service database;
 these commands apply migrations without copying the old data again. Preserve
-the platform database and Worker while their remaining responsibilities are
-being moved to services.
+the platform database. Before upgrading from a release that included the
+legacy Worker, stop the existing deployment and its orphaned containers with
+`docker compose -f compose.microservices.yaml down --remove-orphans`.
 
 The full fresh-install Compose startup has been checked with isolated SQL
 databases. Upgrades and backup restoration still require deployment validation.

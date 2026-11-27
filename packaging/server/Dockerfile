@@ -1,7 +1,6 @@
 FROM mcr.microsoft.com/dotnet/runtime-deps:10.0
 WORKDIR /app/web
 COPY web/ /app/web/
-COPY worker/ /app/worker/
 COPY migrator/ /app/migrator/
 COPY gateway/ /app/gateway/
 COPY identity/ /app/identity/
@@ -11,7 +10,7 @@ COPY hostmonitoring/ /app/hostmonitoring/
 COPY observability/ /app/observability/
 COPY operations/ /app/operations/
 COPY security/ /app/security/
-RUN chmod +x /app/web/Vigiloom.Web /app/worker/Vigiloom.Worker /app/migrator/Vigiloom.Migrator \
+RUN chmod +x /app/web/Vigiloom.Web /app/migrator/Vigiloom.Migrator \
     /app/gateway/Vigiloom.Gateway /app/identity/Vigiloom.Identity /app/resources/Vigiloom.Resources \
     /app/network/Vigiloom.Network /app/hostmonitoring/Vigiloom.HostMonitoring \
     /app/observability/Vigiloom.Observability /app/operations/Vigiloom.Operations /app/security/Vigiloom.Security

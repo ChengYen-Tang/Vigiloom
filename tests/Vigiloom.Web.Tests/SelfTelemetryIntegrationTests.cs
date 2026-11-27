@@ -333,7 +333,7 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
             var idleBuilder = Host.CreateApplicationBuilder();
             idleBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             { ["Services:Observability:Url"] = observationAddress, ["Vigiloom:SelfTelemetry:Enabled"] = "true" });
-            idleBuilder.AddVigiloomSelfTelemetry("Vigiloom.Worker");
+            idleBuilder.AddVigiloomSelfTelemetry("Vigiloom.Network");
             using (var idleHost = idleBuilder.Build())
             {
                 await idleHost.StartAsync(token);
@@ -342,7 +342,7 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
                 Guid workerServiceId;
                 await using (var db = await resourceContexts.CreateDbContextAsync(token))
                 {
-                    var worker = await db.ApplicationServices.SingleAsync(x => x.ServiceKey == "Vigiloom.Worker", token);
+                    var worker = await db.ApplicationServices.SingleAsync(x => x.ServiceKey == "Vigiloom.Network", token);
                     var group = await db.Groups.SingleAsync(x => x.Name == "Self", token);
                     Assert.IsTrue(await db.ServiceGroups.AnyAsync(x => x.ServiceId == worker.Id && x.GroupId == group.Id, token));
                     workerServiceId = worker.Id;

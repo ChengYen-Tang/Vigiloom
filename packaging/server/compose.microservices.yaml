@@ -55,13 +55,6 @@ services:
       Vigiloom__SetupToken: ${VIGILOOM_SETUP_TOKEN:-}
       Vigiloom__AgentPackages__CachePath: /data/packages
     volumes: ["${VIGILOOM_DATA_PATH:-./data}/keys:/data/keys", "${VIGILOOM_DATA_PATH:-./data}/packages:/data/packages"]
-  worker:
-    <<: *platform
-    entrypoint: ["/app/worker/Vigiloom.Worker"]
-    working_dir: /app/worker
-    environment:
-      <<: *platform-env
-      ConnectionStrings__Vigiloom: ${VIGILOOM_RUNTIME_SQL_CONNECTION}
   vigiloom-identity:
     <<: *platform
     entrypoint: ["/app/identity/Vigiloom.Identity"]

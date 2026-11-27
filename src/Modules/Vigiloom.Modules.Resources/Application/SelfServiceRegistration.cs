@@ -11,7 +11,7 @@ public sealed class SelfServiceRegistration(IDbContextFactory<ResourcesDbContext
 {
     private static readonly HashSet<string> KnownServices = new(StringComparer.Ordinal)
     {
-        "Vigiloom.Web", "Vigiloom.Worker", "Vigiloom.Gateway", "Vigiloom.Identity", "Vigiloom.Resources",
+        "Vigiloom.Web", "Vigiloom.Gateway", "Vigiloom.Identity", "Vigiloom.Resources",
         "Vigiloom.Network", "Vigiloom.Host", "Vigiloom.Observability", "Vigiloom.Security", "Vigiloom.Operations", "Vigiloom.Messaging"
     };
 
