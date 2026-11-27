@@ -51,6 +51,8 @@ using Vigiloom.Modules.ServiceObservability.Domain.Health;
 using Vigiloom.Modules.ServiceObservability.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.ServiceDetails;
+using Vigiloom.Web.Tests.Fixtures;
+using AngleSharp.Html.Parser;
 
 namespace Vigiloom.Web.Tests;
 
@@ -162,14 +164,41 @@ public sealed class SelfTelemetryIntegrationTests(TestContext context)
 
             using (var initial = await PostMetricsAsync(client, token)) Assert.AreEqual(HttpStatusCode.OK, initial.StatusCode);
             Guid serviceId;
+            Guid selfGroupId;
             await using (var db = await resourceContexts.CreateDbContextAsync(token))
             {
                 var service = await db.ApplicationServices.SingleAsync(token);
                 serviceId = service.Id;
                 var group = await db.Groups.SingleAsync(x => x.Name == "Self", token);
+                selfGroupId = group.Id;
                 Assert.IsTrue(await db.ServiceGroups.AnyAsync(x => x.ServiceId == service.Id && x.GroupId == group.Id, token));
             }
             await ProjectAsync(serviceId);
+            await ReusableWebDatabase.ExecuteAsync(async (webDb, webToken) =>
+            {
+                using var baseFactory = PingTestSite.CreateFactory(webDb.ConnectionString);
+                using var webFactory = baseFactory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+                    config.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["Services:Resources:Url"] = resourceAddress,
+                        ["Services:Observability:Url"] = observationAddress
+                    })));
+                await PingTestSite.InitializeAsync(webFactory, webToken, schemaInitialized: true);
+                using var webClient = PingTestSite.Client(webFactory);
+                await PingTestSite.LoginAsync(webClient, "reader", webToken);
+                using var response = await webClient.GetAsync($"/groups/{selfGroupId:D}", webToken);
+                response.EnsureSuccessStatusCode();
+                var page = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(webToken), webToken);
+                Assert.Contains("Self", page.Body!.TextContent);
+                Assert.Contains("Vigiloom.Web", page.Body.TextContent);
+                var serviceLink = page.QuerySelector($"a[href='/services/{serviceId:D}']");
+                Assert.IsNotNull(serviceLink);
+                var row = serviceLink.Closest("tr");
+                Assert.IsNotNull(row);
+                var status = row.QuerySelectorAll("td")[2].TextContent.Trim();
+                Assert.IsFalse(string.IsNullOrWhiteSpace(status));
+                Assert.AreNotEqual("無法讀取", status);
+            }, token);
             var device = new Device("Test host", "host.example", true, DateTimeOffset.UtcNow);
             await using (var db = await resourceContexts.CreateDbContextAsync(token))
             { db.Devices.Add(device); await db.SaveChangesAsync(token); }

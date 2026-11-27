@@ -56,11 +56,34 @@ public sealed class IntelligenceHttpTests(TestContext context)
             using var reader = PingTestSite.Client(factory);
             await PingTestSite.LoginAsync(admin, "admin", token);
             await PingTestSite.LoginAsync(reader, "reader", token);
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync("/settings/sigma", token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("Rule source unavailable", text);
+                Assert.Contains("rules/test.yml", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync("/settings/sigma", token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("规则来源无法使用", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var list = await admin.GetAsync("/settings/sigma", token);
             var listDoc = await new HtmlParser().ParseDocumentAsync(await list.Content.ReadAsStringAsync(token), token);
             Assert.Contains("規則來源無法使用", listDoc.Body!.TextContent);
             var link = listDoc.QuerySelector("a[href^='/settings/sigma/saved?']")?.GetAttribute("href");
             Assert.IsNotNull(link);
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishDetail = await admin.GetAsync(link, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await englishDetail.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("Saved rule settings", text);
+                Assert.Contains("rules/test.yml", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var readOnly = await reader.GetAsync(link, token);
             Assert.AreNotEqual(HttpStatusCode.OK, readOnly.StatusCode);
             using var detail = await admin.GetAsync(link, token);

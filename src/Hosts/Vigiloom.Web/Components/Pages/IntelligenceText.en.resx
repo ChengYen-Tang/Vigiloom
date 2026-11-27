@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="情報來源 - Vigiloom" xml:space="preserve"><value>Intelligence sources - Vigiloom</value></data>
+  <data name="情報來源" xml:space="preserve"><value>Intelligence sources</value></data>
+  <data name="管理來源更新、查看涵蓋範圍與版本。情報資料不代表設備已受影響或安全。" xml:space="preserve"><value>Manage source updates, coverage and versions. Intelligence alone does not establish whether a device is affected or safe.</value></data>
+  <data name="建立自訂安全基準" xml:space="preserve"><value>Create a custom security baseline</value></data>
+  <data name="情報類型與目前範圍" xml:space="preserve"><value>Intelligence types and current coverage</value></data>
+  <data name="漏洞與套件公告：提供 CISA KEV 與 GitHub 已審核公告來源；不涵蓋所有漏洞。" xml:space="preserve"><value>Vulnerabilities and package advisories: CISA KEV and GitHub reviewed advisories; not all vulnerabilities are covered.</value></data>
+  <data name="行為規則：保存 Sigma 原始規則；支援的規則可在" xml:space="preserve"><value>Behavior rules: stores original Sigma rules. Supported rules can be tested and enabled in </value></data>
+  <data name="行為規則" xml:space="preserve"><value>Behavior rules</value></data>
+  <data name="試跑及啟用。" xml:space="preserve"><value>.</value></data>
+  <data name="IOC／YARA：保存來源檔案與 IOC 分類；IOC 偵測需由管理員啟用。" xml:space="preserve"><value>IOC/YARA: stores source files and IOC classifications. An administrator must enable IOC detection.</value></data>
+  <data name="安全設定基準（SCA）：提供兩個已審查的唯讀來源檢查；啟用來源後，可在支援的主機查看檢查結果。" xml:space="preserve"><value>Security configuration assessment (SCA): provides two reviewed read-only source checks. After enabling a source, results can be viewed on supported hosts.</value></data>
+  <data name="各來源是否啟用、資料是否過期，請查看下方狀態。" xml:space="preserve"><value>See the status below for enabled sources and stale data.</value></data>
+  <data name="尚無來源資料。背景工作啟動後會建立已支援的來源。" xml:space="preserve"><value>No sources yet. Supported sources are created when background work starts.</value></data>
+  <data name="情報來源分頁" xml:space="preserve"><value>Intelligence source pages</value></data>
+  <data name="上一頁" xml:space="preserve"><value>Previous</value></data>
+  <data name="下一頁" xml:space="preserve"><value>Next</value></data>
+  <data name="類別：" xml:space="preserve"><value>Category: </value></data>
+  <data name="適用平台與範圍：" xml:space="preserve"><value>Platforms and coverage: </value></data>
+  <data name="來源：" xml:space="preserve"><value>Source: </value></data>
+  <data name="Vigiloom 自訂檢查" xml:space="preserve"><value>Vigiloom custom check</value></data>
+  <data name="官方資料來源" xml:space="preserve"><value>Official source</value></data>
+  <data name="查看來源授權依據" xml:space="preserve"><value>View source license evidence</value></data>
+  <data name="無法辨識此來源，無法確認資料範圍或授權。" xml:space="preserve"><value>Unrecognized source; coverage and licensing cannot be verified.</value></data>
+  <data name="狀態：" xml:space="preserve"><value>Status: </value></data>
+  <data name="啟用來源後，符合條件的新版本會自動選用；手動回復的版本會保留到上游發布新版本。" xml:space="preserve"><value>After enabling the source, eligible new versions are selected automatically. A manually restored version remains selected until the upstream publishes a new version.</value></data>
+  <data name="目前選用的版本不是最近確認的上游資料；設備漏洞結果將標示為過期。需要時可選用最近取得的版本。" xml:space="preserve"><value>The selected version is not the latest confirmed upstream data; device vulnerability results will be marked stale. Select the latest retrieved version if needed.</value></data>
+  <data name="最近儲存草稿（UTC）" xml:space="preserve"><value>Last saved draft (UTC)</value></data>
+  <data name="最後成功更新（UTC）" xml:space="preserve"><value>Last successful update (UTC)</value></data>
+  <data name="最近更新失敗：" xml:space="preserve"><value>Latest update failed: </value></data>
+  <data name="公告匯入：{0}；已讀取 {1} 筆、{2} 頁。" xml:space="preserve"><value>Advisory import: {0}; read {1} records across {2} pages.</value></data>
+  <data name="匯入未完成：" xml:space="preserve"><value>Import incomplete: </value></data>
+  <data name="下次可重試時間（UTC）：" xml:space="preserve"><value>Next retry time (UTC): </value></data>
+  <data name="放棄失敗的匯入並重新排程" xml:space="preserve"><value>Abandon failed import and reschedule</value></data>
+  <data name="更新設定" xml:space="preserve"><value>Update settings</value></data>
+  <data name="啟用此檢查" xml:space="preserve"><value>Enable this check</value></data>
+  <data name="啟用自動更新" xml:space="preserve"><value>Enable automatic updates</value></data>
+  <data name="比對主機事件中的 IOC" xml:space="preserve"><value>Match IOCs in host events</value></data>
+  <data name="命中僅供調查，不會自動隔離主機。" xml:space="preserve"><value>Matches are for investigation only and do not automatically isolate hosts.</value></data>
+  <data name="更新間隔（秒）" xml:space="preserve"><value>Update interval (seconds)</value></data>
+  <data name="例如：3,600 秒是 1 小時。" xml:space="preserve"><value>For example, 3,600 seconds is one hour.</value></data>
+  <data name="資料過期期限（秒）" xml:space="preserve"><value>Data stale interval (seconds)</value></data>
+  <data name="例如：86,400 秒是 1 天。" xml:space="preserve"><value>For example, 86,400 seconds is one day.</value></data>
+  <data name="匯入容量上限（MiB）" xml:space="preserve"><value>Import size limit (MiB)</value></data>
+  <data name="紀錄數上限" xml:space="preserve"><value>Record limit</value></data>
+  <data name="儲存設定" xml:space="preserve"><value>Save settings</value></data>
+  <data name="GitHub 來源憑證" xml:space="preserve"><value>GitHub source credential</value></data>
+  <data name="已設定憑證；內容不會顯示。" xml:space="preserve"><value>Credential is configured; its value is hidden.</value></data>
+  <data name="尚未設定憑證，可使用未登入的來源額度。" xml:space="preserve"><value>No credential configured; unauthenticated source limits apply.</value></data>
+  <data name="新憑證" xml:space="preserve"><value>New credential</value></data>
+  <data name="清除現有憑證" xml:space="preserve"><value>Clear existing credential</value></data>
+  <data name="儲存憑證設定" xml:space="preserve"><value>Save credential settings</value></data>
+  <data name="已停用" xml:space="preserve"><value>Disabled</value></data>
+  <data name="目前版本不可使用" xml:space="preserve"><value>Current version unavailable</value></data>
+  <data name="選用的版本不是最新確認資料" xml:space="preserve"><value>Selected version is not the latest confirmed data</value></data>
+  <data name="資料已過期或尚未更新" xml:space="preserve"><value>Data is stale or not yet updated</value></data>
+  <data name="更新失敗" xml:space="preserve"><value>Update failed</value></data>
+  <data name="已匯入供檢視" xml:space="preserve"><value>Imported for viewing</value></data>
+  <data name="尚未啟用版本" xml:space="preserve"><value>No version enabled</value></data>
+  <data name="已選用來源版本" xml:space="preserve"><value>Source version selected</value></data>
+  <data name="尚未開始" xml:space="preserve"><value>Not started</value></data>
+  <data name="匯入中" xml:space="preserve"><value>Importing</value></data>
+  <data name="驗證中" xml:space="preserve"><value>Validating</value></data>
+  <data name="資料不一致" xml:space="preserve"><value>Data inconsistent</value></data>
+  <data name="失敗" xml:space="preserve"><value>Failed</value></data>
+  <data name="等待來源額度" xml:space="preserve"><value>Waiting for source quota</value></data>
+  <data name="等待啟用" xml:space="preserve"><value>Awaiting activation</value></data>
+  <data name="已啟用" xml:space="preserve"><value>Enabled</value></data>
+  <data name="版本不可使用" xml:space="preserve"><value>Version unavailable</value></data>
+  <data name="候選版本已過期" xml:space="preserve"><value>Candidate version is stale</value></data>
+  <data name="已停止" xml:space="preserve"><value>Stopped</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>No data</value></data>
+  <data name="找不到此頁的情報來源，請重新選擇。" xml:space="preserve"><value>Intelligence source not found on this page. Select again.</value></data>
+  <data name="找不到所選的規則版本，請重新選擇。" xml:space="preserve"><value>Rule version not found. Select again.</value></data>
+  <data name="找不到所選的來源版本，請重新選擇。" xml:space="preserve"><value>Source version not found. Select again.</value></data>
+  <data name="找不到所選的 IOC 來源檔案，請重新選擇。" xml:space="preserve"><value>IOC source file not found. Select again.</value></data>
+  <data name="找不到所選的授權來源檔案，請重新選擇。" xml:space="preserve"><value>License source file not found. Select again.</value></data>
+  <data name="無法讀取情報來源，請稍後重新整理。" xml:space="preserve"><value>Unable to load intelligence sources. Refresh later.</value></data>
+  <data name="設定格式無效，請確認輸入後再試。" xml:space="preserve"><value>Invalid settings format. Check the input and try again.</value></data>
+  <data name="憑證設定格式無效，請重新輸入。" xml:space="preserve"><value>Invalid credential settings. Enter them again.</value></data>
+  <data name="設定超出允許範圍，請檢查數值。" xml:space="preserve"><value>Settings are outside the permitted range. Check the values.</value></data>
+  <data name="設定已儲存。" xml:space="preserve"><value>Settings saved.</value></data>
+  <data name="容量或筆數超出此來源允許的上限。" xml:space="preserve"><value>Size or record count exceeds this source’s limit.</value></data>
+  <data name="來源已變更或不存在，請重新整理。" xml:space="preserve"><value>The source changed or no longer exists. Refresh the page.</value></data>
+  <data name="版本資料格式無效，請重新選擇。" xml:space="preserve"><value>Invalid version data. Select again.</value></data>
+  <data name="請選擇要啟用的版本。" xml:space="preserve"><value>Select a version to enable.</value></data>
+  <data name="已選用來源版本。" xml:space="preserve"><value>Source version selected.</value></data>
+  <data name="版本已啟用。" xml:space="preserve"><value>Version enabled.</value></data>
+  <data name="此版本的紀錄數大幅減少；請確認後再選用。" xml:space="preserve"><value>This version has substantially fewer records. Confirm before selecting it.</value></data>
+  <data name="請確認離線檔案來源及使用條件後再啟用。" xml:space="preserve"><value>Confirm the offline file’s origin and terms before enabling it.</value></data>
+  <data name="版本或來源目前無法使用，請檢查授權、資料狀態與撤回紀錄。" xml:space="preserve"><value>The version or source is unavailable. Check licensing, data status and revocations.</value></data>
+  <data name="版本已變更或不存在，請重新整理。" xml:space="preserve"><value>The version changed or no longer exists. Refresh the page.</value></data>
+  <data name="請輸入有效憑證，或勾選清除憑證。" xml:space="preserve"><value>Enter a valid credential or select clear credential.</value></data>
+  <data name="憑證設定已儲存。" xml:space="preserve"><value>Credential settings saved.</value></data>
+  <data name="請選擇版本並確認撤銷。" xml:space="preserve"><value>Select a version and confirm revocation.</value></data>
+  <data name="版本已撤銷。" xml:space="preserve"><value>Version revoked.</value></data>
+  <data name="找不到所選版本。" xml:space="preserve"><value>Selected version not found.</value></data>
+  <data name="匯入資料格式無效，請重新整理。" xml:space="preserve"><value>Invalid import data. Refresh the page.</value></data>
+  <data name="已放棄失敗匯入，背景工作將依排程重試。" xml:space="preserve"><value>Failed import abandoned. Background work will retry on schedule.</value></data>
+  <data name="匯入狀態已變更，請重新整理。" xml:space="preserve"><value>Import status changed. Refresh the page.</value></data>
+  <data name="無法確認操作結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm the operation. Refresh and check the result.</value></data>
+  <data name="雜湊格式無效" xml:space="preserve"><value>Invalid hash format</value></data>
+  <data name="網域或 IP 格式無效" xml:space="preserve"><value>Invalid domain or IP format</value></data>
+  <data name="IP 格式不明確" xml:space="preserve"><value>Ambiguous IP format</value></data>
+  <data name="尚不支援檔名規則" xml:space="preserve"><value>Filename rules are not supported</value></data>
+  <data name="尚不支援此來源格式" xml:space="preserve"><value>This source format is not supported</value></data>
+  <data name="內容超過長度限制" xml:space="preserve"><value>Content exceeds the length limit</value></data>
+  <data name="原因未明" xml:space="preserve"><value>Unknown reason</value></data>
+  <data name="CISA 已知遭利用的漏洞；不包含所有漏洞，也無法單獨判定設備是否受影響。" xml:space="preserve"><value>CISA known exploited vulnerabilities; this does not cover all vulnerabilities or independently determine device impact.</value></data>
+  <data name="GitHub 已審核的套件安全公告；不包含未審核或惡意軟體公告，不能單獨判定設備是否受影響。" xml:space="preserve"><value>GitHub reviewed package advisories; excludes unreviewed and malware advisories and does not independently determine device impact.</value></data>
+  <data name="Debian 各發行版本的來源套件漏洞狀態；實際設備是否受影響需結合盤點資料判斷。" xml:space="preserve"><value>Debian source-package vulnerability status by release; device impact requires inventory data.</value></data>
+  <data name="Canonical Ubuntu 漏洞資料；設備是否受影響需結合發行版本與套件盤點判斷。" xml:space="preserve"><value>Canonical Ubuntu vulnerability data; device impact requires release and package inventory information.</value></data>
+  <data name="保存 SigmaHQ 行為規則；支援的規則可試跑後啟用，不代表所有規則或設備均已涵蓋。" xml:space="preserve"><value>Stores SigmaHQ behavior rules; supported rules can be tested and enabled. Not all rules or devices are covered.</value></data>
+  <data name="保存 IOC 與 YARA 原始檔案；IOC 來源可依條件選用，YARA 規則授權與相容性仍待核對。" xml:space="preserve"><value>Stores original IOC and YARA files. Eligible IOC sources can be selected; YARA licensing and compatibility require review.</value></data>
+  <data name="無法確認來源涵蓋範圍。" xml:space="preserve"><value>Unable to determine source coverage.</value></data>
+  <data name="已知遭利用的漏洞" xml:space="preserve"><value>Known exploited vulnerabilities</value></data>
+  <data name="開源套件安全公告" xml:space="preserve"><value>Open-source package advisories</value></data>
+  <data name="發行版安全公告" xml:space="preserve"><value>Distribution security advisories</value></data>
+  <data name="安全組態檢查" xml:space="preserve"><value>Security configuration checks</value></data>
+  <data name="未知" xml:space="preserve"><value>Unknown</value></data>
+  <data name="涵蓋多種平台與產品；是否受影響需依產品及版本另行判斷。" xml:space="preserve"><value>Covers multiple platforms and products; impact must be evaluated by product and version.</value></data>
+  <data name="各公告所列的開源套件生態系；是否影響設備尚未在此判斷。" xml:space="preserve"><value>Open-source package ecosystems listed in each advisory; device impact is not determined here.</value></data>
+  <data name="所選情報版本涵蓋的 Debian 發行版本。" xml:space="preserve"><value>Debian releases covered by the selected intelligence version.</value></data>
+  <data name="所選情報版本涵蓋的 Ubuntu 發行版本。" xml:space="preserve"><value>Ubuntu releases covered by the selected intelligence version.</value></data>
+  <data name="依各規則的平台與事件來源而異；實際可用性取決於規則支援與設備已收集的資料。" xml:space="preserve"><value>Varies by rule platform and event source; availability depends on rule support and collected device data.</value></data>
+  <data name="依各檔案與規則的平台和相依條件而異；消費端相容性尚未驗證。" xml:space="preserve"><value>Varies by file and rule platform and dependencies; consumer compatibility is unverified.</value></data>
+  <data name="匯入完成，請確認來源及版本資訊後再選擇使用。" xml:space="preserve"><value>Import complete. Confirm the source and version before selecting it.</value></data>
+  <data name="檔案格式不正確、超出限制或內容已被撤銷。" xml:space="preserve"><value>Invalid file format, exceeded limits, or revoked content.</value></data>
+  <data name="來源已停用或不存在，無法匯入。" xml:space="preserve"><value>Source is disabled or missing; import unavailable.</value></data>
+  <data name="來源正在更新或設定已變更，請稍後再試。" xml:space="preserve"><value>Source is updating or settings changed. Try again later.</value></data>
+  <data name="匯入失敗，請稍後再試。" xml:space="preserve"><value>Import failed. Try again later.</value></data>
+  <data name="自動啟用尚未完成；若下載也失敗，系統會一併重試。" xml:space="preserve"><value>Automatic activation is incomplete; if the download failed too, both will be retried.</value></data>
+  <data name="無法取得來源資料。" xml:space="preserve"><value>Unable to retrieve source data.</value></data>
+  <data name="取得來源資料逾時。" xml:space="preserve"><value>Source data retrieval timed out.</value></data>
+  <data name="來源資料未通過驗證。" xml:space="preserve"><value>Source data failed validation.</value></data>
+  <data name="來源授權檔遺失或已變更，必須重新確認授權。" xml:space="preserve"><value>Source license is missing or changed and must be reviewed again.</value></data>
+  <data name="取得的版本已撤銷或不完整。" xml:space="preserve"><value>The retrieved version is revoked or incomplete.</value></data>
+  <data name="更新未完成，請檢查來源狀態。" xml:space="preserve"><value>Update incomplete. Check source status.</value></data>
+  <data name="來源資料不一致或未通過驗證。" xml:space="preserve"><value>Source data is inconsistent or failed validation.</value></data>
+  <data name="來源分頁失效。" xml:space="preserve"><value>Source pagination is invalid.</value></data>
+  <data name="資料超過設定的容量或筆數上限。" xml:space="preserve"><value>Data exceeds configured size or record limits.</value></data>
+  <data name="目前基礎版本不可使用。" xml:space="preserve"><value>The current base version is unavailable.</value></data>
+  <data name="無法讀取來源憑證，請重新設定。" xml:space="preserve"><value>Unable to read the source credential. Configure it again.</value></data>
+  <data name="無法完成匯入。" xml:space="preserve"><value>Unable to complete the import.</value></data>
+  <data name="離線匯入" xml:space="preserve"><value>Offline import</value></data>
+  <data name="選擇從可信管道取得的 KEV JSON 檔案。系統會驗證格式與紀錄內容，並標記為管理員匯入；匯入本身不證明檔案由 CISA 簽署，也不會自動啟用。" xml:space="preserve"><value>Choose a KEV JSON file obtained from a trusted source. Its format and records are validated and marked as administrator-imported; importing does not prove CISA signed it or enable it automatically.</value></data>
+  <data name="KEV JSON 檔案" xml:space="preserve"><value>KEV JSON file</value></data>
+  <data name="匯入檔案" xml:space="preserve"><value>Import file</value></data>
+  <data name="來源版本" xml:space="preserve"><value>Source versions</value></data>
+  <data name="尚無已驗證的版本。" xml:space="preserve"><value>No validated versions yet.</value></data>
+  <data name="左右滑動可查看完整版本資訊。" xml:space="preserve"><value>Scroll horizontally to view all version details.</value></data>
+  <data name="情報版本，可左右捲動" xml:space="preserve"><value>Intelligence versions, scroll horizontally</value></data>
+  <data name="來源時間（UTC）" xml:space="preserve"><value>Source time (UTC)</value></data>
+  <data name="取得時間（UTC）" xml:space="preserve"><value>Retrieved at (UTC)</value></data>
+  <data name="紀錄" xml:space="preserve"><value>Records</value></data>
+  <data name="狀態" xml:space="preserve"><value>Status</value></data>
+  <data name="版本資訊" xml:space="preserve"><value>Version details</value></data>
+  <data name="來源資料" xml:space="preserve"><value>Source data</value></data>
+  <data name="已撤銷" xml:space="preserve"><value>Revoked</value></data>
+  <data name="內容已清理" xml:space="preserve"><value>Content removed</value></data>
+  <data name="下載未完成" xml:space="preserve"><value>Download incomplete</value></data>
+  <data name="已下載，尚未支援比對" xml:space="preserve"><value>Downloaded; matching is not supported yet</value></data>
+  <data name="未完成驗證" xml:space="preserve"><value>Validation incomplete</value></data>
+  <data name="目前使用" xml:space="preserve"><value>In use</value></data>
+  <data name="已保留" xml:space="preserve"><value>Retained</value></data>
+  <data name="查看資訊" xml:space="preserve"><value>View details</value></data>
+  <data name="格式版本：" xml:space="preserve"><value>Schema version: </value></data>
+  <data name="轉換版本：" xml:space="preserve"><value>Mapping version: </value></data>
+  <data name="授權依據：" xml:space="preserve"><value>License evidence: </value></data>
+  <data name="管理員離線匯入（UTC）：{0}。匯入不代表上游來源已驗證。" xml:space="preserve"><value>Administrator offline import (UTC): {0}. Import does not verify the upstream source.</value></data>
+  <data name="查看來源資料" xml:space="preserve"><value>View source data</value></data>
+  <data name="已清理" xml:space="preserve"><value>Removed</value></data>
+  <data name="情報版本分頁" xml:space="preserve"><value>Intelligence version pages</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>Page {0}</value></data>
+  <data name="審核檢查內容" xml:space="preserve"><value>Review check details</value></data>
+  <data name="請核對目標、預期值及適用系統，再選擇要啟用的版本。" xml:space="preserve"><value>Check the target, expected value and applicable systems before selecting a version.</value></data>
+  <data name="（目前使用）" xml:space="preserve"><value> (in use)</value></data>
+  <data name="名稱：" xml:space="preserve"><value>Name: </value></data>
+  <data name="作業系統：" xml:space="preserve"><value>Operating system: </value></data>
+  <data name="目標：" xml:space="preserve"><value>Target: </value></data>
+  <data name="預期值：" xml:space="preserve"><value>Expected value: </value></data>
+  <data name="參考：" xml:space="preserve"><value>Reference: </value></data>
+  <data name="未提供" xml:space="preserve"><value>Not provided</value></data>
+  <data name="來源與使用條件：" xml:space="preserve"><value>Source and terms: </value></data>
+  <data name="處理建議：" xml:space="preserve"><value>Guidance: </value></data>
+  <data name="以此版本編輯草稿" xml:space="preserve"><value>Edit draft from this version</value></data>
+  <data name="此來源目前僅保存規則資料，尚未支援偵測與發布。" xml:space="preserve"><value>This source currently stores rules only; detection and publication are not supported.</value></data>
+  <data name="僅選用符合授權與作者條件的核心來源規則；這不會部署規則或啟用偵測。" xml:space="preserve"><value>Only core source rules meeting license and author requirements are selected; this does not deploy rules or enable detection.</value></data>
+  <data name="僅選用符合來源授權及完整性檢查的兩份 IOC 原始檔；發現新的授權聲明時須重新核對。YARA 規則與偵測尚未啟用。" xml:space="preserve"><value>Only two IOC source files meeting license and integrity checks are selected. New license notices require review. YARA rules and detection are not enabled.</value></data>
+  <data name="僅支援已審查版本中的指定唯讀檢查；選用來源不代表設備已完成檢查。" xml:space="preserve"><value>Only specified read-only checks in reviewed versions are supported. Selecting a source does not mean devices have been checked.</value></data>
+  <data name="選擇要啟用或回復的版本" xml:space="preserve"><value>Select a version to enable or restore</value></data>
+  <data name="請選擇版本" xml:space="preserve"><value>Select a version</value></data>
+  <data name="確認接受紀錄數大幅減少" xml:space="preserve"><value>Confirm the substantial reduction in record count</value></data>
+  <data name="若選擇離線匯入版本，我已自行確認檔案來源與使用條件；系統未驗證上游身分。" xml:space="preserve"><value>If selecting an offline import, I have verified its origin and terms; the system has not verified upstream identity.</value></data>
+  <data name="選用來源版本" xml:space="preserve"><value>Select source version</value></data>
+  <data name="啟用選擇的版本" xml:space="preserve"><value>Enable selected version</value></data>
+  <data name="此頁沒有其他可選的版本。" xml:space="preserve"><value>No other versions are available on this page.</value></data>
+  <data name="撤銷不可信的版本" xml:space="preserve"><value>Revoke an untrusted version</value></data>
+  <data name="撤銷後，同內容的版本也無法重新發布；若目前使用相同內容，後續查詢會顯示不可用。需要使用時請選擇其他可信版本。" xml:space="preserve"><value>Revocation also prevents versions with identical content from being republished. If identical content is in use, later queries show it as unavailable. Select another trusted version when needed.</value></data>
+  <data name="選擇要撤銷的版本" xml:space="preserve"><value>Select a version to revoke</value></data>
+  <data name="確認撤銷此版本及相同內容的使用資格" xml:space="preserve"><value>Confirm revocation of this version and identical content</value></data>
+  <data name="撤銷版本" xml:space="preserve"><value>Revoke version</value></data>
+  <data name="規則來源資料" xml:space="preserve"><value>Rule source data</value></data>
+  <data name="以下是已保存的上游規則與作者資料。來源符合條件不代表偵測器支援或已啟用。" xml:space="preserve"><value>These are saved upstream rules and author details. Source eligibility does not imply detector support or activation.</value></data>
+  <data name="此頁沒有規則。" xml:space="preserve"><value>No rules on this page.</value></data>
+  <data name="左右滑動可查看完整規則資訊。" xml:space="preserve"><value>Scroll horizontally for complete rule details.</value></data>
+  <data name="規則來源資料，可左右捲動" xml:space="preserve"><value>Rule source data, scroll horizontally</value></data>
+  <data name="規則" xml:space="preserve"><value>Rule</value></data>
+  <data name="上游適用來源" xml:space="preserve"><value>Upstream applicable source</value></data>
+  <data name="作者" xml:space="preserve"><value>Author</value></data>
+  <data name="來源狀態" xml:space="preserve"><value>Source status</value></data>
+  <data name="授權聲明" xml:space="preserve"><value>License declaration</value></data>
+  <data name="來源選用條件" xml:space="preserve"><value>Source selection criteria</value></data>
+  <data name="未指定" xml:space="preserve"><value>Not specified</value></data>
+  <data name="來源聲明 DRL-1.1" xml:space="preserve"><value>Source declares DRL-1.1</value></data>
+  <data name="規則聲明 DRL-1.1" xml:space="preserve"><value>Rule declares DRL-1.1</value></data>
+  <data name="待核對：{0}" xml:space="preserve"><value>Needs review: {0}</value></data>
+  <data name="符合" xml:space="preserve"><value>Eligible</value></data>
+  <data name="不在核心規則範圍" xml:space="preserve"><value>Outside core rule scope</value></data>
+  <data name="缺少作者" xml:space="preserve"><value>Author missing</value></data>
+  <data name="授權待核對" xml:space="preserve"><value>License needs review</value></data>
+  <data name="尚未核對" xml:space="preserve"><value>Not reviewed</value></data>
+  <data name="規則資料分頁" xml:space="preserve"><value>Rule data pages</value></data>
+  <data name="IOC／YARA 來源檔案" xml:space="preserve"><value>IOC/YARA source files</value></data>
+  <data name="以下是上游原始檔案的摘要；IOC 原始檔可依上方條件選用。YARA 規則授權與相容性仍待核對，尚未啟用偵測。" xml:space="preserve"><value>These are upstream source file summaries. IOC files can be selected under the conditions above. YARA rule licensing and compatibility require review; detection is not enabled.</value></data>
+  <data name="此頁沒有來源檔案。" xml:space="preserve"><value>No source files on this page.</value></data>
+  <data name="左右滑動可查看完整檔案資訊。" xml:space="preserve"><value>Scroll horizontally for complete file details.</value></data>
+  <data name="來源檔案，可左右捲動" xml:space="preserve"><value>Source files, scroll horizontally</value></data>
+  <data name="路徑" xml:space="preserve"><value>Path</value></data>
+  <data name="類型" xml:space="preserve"><value>Type</value></data>
+  <data name="IOC 分類" xml:space="preserve"><value>IOC classification</value></data>
+  <data name="查看授權線索" xml:space="preserve"><value>View license evidence</value></data>
+  <data name="授權證據" xml:space="preserve"><value>License evidence</value></data>
+  <data name="{0} 筆，" xml:space="preserve"><value>{0} records, </value></data>
+  <data name="{0} 筆未支援" xml:space="preserve"><value>{0} unsupported</value></data>
+  <data name="不適用" xml:space="preserve"><value>Not applicable</value></data>
+  <data name="來源檔案分頁" xml:space="preserve"><value>Source file pages</value></data>
+  <data name="來源授權線索" xml:space="preserve"><value>Source license evidence</value></data>
+  <data name="檔案：" xml:space="preserve"><value>File: </value></data>
+  <data name="以下僅列出包含作者或授權字樣的原文行，可能來自註解或字串；規則邊界與授權尚未解析或確認，沒有列出也不代表沒有其他條件。" xml:space="preserve"><value>Only original lines containing author or license terms are listed; they may be comments or strings. Rule boundaries and licenses have not been parsed or verified; omitted lines do not imply there are no other terms.</value></data>
+  <data name="檔案與保存的摘要不一致，無法顯示內容。" xml:space="preserve"><value>File does not match the stored digest; content cannot be displayed.</value></data>
+  <data name="檔案不是有效的 UTF-8，無法顯示內容。" xml:space="preserve"><value>File is not valid UTF-8; content cannot be displayed.</value></data>
+  <data name="沒有找到包含這些字樣的行。" xml:space="preserve"><value>No lines containing these terms were found.</value></data>
+  <data name="第 {0} 行：" xml:space="preserve"><value>Line {0}: </value></data>
+  <data name="（此行已截斷）" xml:space="preserve"><value> (line truncated)</value></data>
+  <data name="查看前後內容" xml:space="preserve"><value>View surrounding content</value></data>
+  <data name="授權線索分頁" xml:space="preserve"><value>License evidence pages</value></data>
+  <data name="第 {0} 行的前後內容" xml:space="preserve"><value>Context around line {0}</value></data>
+  <data name="找不到此行。" xml:space="preserve"><value>Line not found.</value></data>
+  <data name="原文上下文分頁" xml:space="preserve"><value>Original context pages</value></data>
+  <data name="較前內容" xml:space="preserve"><value>Earlier content</value></data>
+  <data name="較後內容" xml:space="preserve"><value>Later content</value></data>
+  <data name="未支援的 IOC 項目" xml:space="preserve"><value>Unsupported IOC entries</value></data>
+  <data name="來源檔案：{0}。行號對應原始來源，內容仍保留在該版本中。" xml:space="preserve"><value>Source file: {0}. Line numbers correspond to the original source, whose content remains in this version.</value></data>
+  <data name="此頁沒有未支援的項目。" xml:space="preserve"><value>No unsupported entries on this page.</value></data>
+  <data name="未支援的 IOC 項目，可左右捲動" xml:space="preserve"><value>Unsupported IOC entries, scroll horizontally</value></data>
+  <data name="行號" xml:space="preserve"><value>Line</value></data>
+  <data name="原因" xml:space="preserve"><value>Reason</value></data>
+  <data name="未支援項目分頁" xml:space="preserve"><value>Unsupported entry pages</value></data>
+</root>

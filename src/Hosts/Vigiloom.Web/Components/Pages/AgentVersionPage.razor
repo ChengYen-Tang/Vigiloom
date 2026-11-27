@@ -4,18 +4,19 @@
 @using Vigiloom.Modules.Resources.Application
 @using Vigiloom.Modules.AgentManagement.Application
 @using Vigiloom.Contracts.Devices
+@inject Microsoft.Extensions.Localization.IStringLocalizer<Vigiloom.Web.Client.Components.AgentVersions.VersionText> L
 @inject IDeviceManagement Devices
 @inject IAgentRegistration Agents
 @inject Vigiloom.Contracts.Devices.IAgentStatusReader Monitoring
 @inject ILogger<AgentVersionPage> Logger
 
-<PageTitle>Agent 版本 - Vigiloom</PageTitle>
+<PageTitle>@L["Agent 版本 - Vigiloom"]</PageTitle>
 <main class="device-page">
-    <a href="@($"/devices/{Id:D}")">← 返回設備詳情</a>
-    <header class="device-heading"><div><h1>Agent 版本</h1><p>查看並管理此設備的 Agent 版本。</p></div></header>
-    @if (failed) { <section class="device-panel" role="alert">無法讀取設備，請稍後重新整理。</section> }
-    else if (name is null) { <section class="device-panel"><p>找不到設備。</p></section> }
-    else if (agentId is null) { <section class="device-panel"><h2>@name</h2><p>此設備目前沒有已註冊的 Agent。</p></section> }
+    <a href="@($"/devices/{Id:D}")">@L["← 返回設備詳情"]</a>
+    <header class="device-heading"><div><h1>@L["Agent 版本"]</h1><p>@L["查看並管理此設備的 Agent 版本。"]</p></div></header>
+    @if (failed) { <section class="device-panel" role="alert">@L["無法讀取設備，請稍後重新整理。"]</section> }
+    else if (name is null) { <section class="device-panel"><p>@L["找不到設備。"]</p></section> }
+    else if (agentId is null) { <section class="device-panel"><h2>@name</h2><p>@L["此設備目前沒有已註冊的 Agent。"]</p></section> }
     else
     {
         <section class="device-panel"><h2>@name</h2></section>

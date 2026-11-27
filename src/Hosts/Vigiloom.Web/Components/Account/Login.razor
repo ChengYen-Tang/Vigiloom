@@ -9,14 +9,15 @@
 @using Vigiloom.Modules.IdentityAccess.Domain
 @inject Vigiloom.Web.Authentication.AccountLogin AccountLogin
 @inject NavigationManager Navigation
+@inject Microsoft.Extensions.Localization.IStringLocalizer<LoginText> L
 
-<PageTitle>登入 - Vigiloom</PageTitle>
+<PageTitle>@L["PageTitle"] - Vigiloom</PageTitle>
 <section class="account-card" aria-labelledby="login-title">
-    <h1 id="login-title">登入 Vigiloom</h1>
-    <p class="account-description">使用你的帳號查看監控資訊。</p>
+    <h1 id="login-title">@L["Heading"]</h1>
+    <p class="account-description">@L["Description"]</p>
     @if ((Setup == "complete" || Password == "changed") && error is null)
     {
-        <p class="account-success" role="status">設定已完成，請登入。</p>
+        <p class="account-success" role="status">@L["SetupComplete"]</p>
     }
     @if (error is not null)
     {
@@ -25,19 +26,19 @@
     <EditForm Model="Input" FormName="login" method="post" OnValidSubmit="LoginAsync">
         <DataAnnotationsValidator />
         <div class="account-field">
-            <label for="login-name">帳號</label>
+            <label for="login-name">@L["UserName"]</label>
             <InputText id="login-name" @bind-Value="Input.UserName" autocomplete="username" maxlength="256" required />
             <ValidationMessage For="() => Input.UserName" />
         </div>
         <div class="account-field">
-            <label for="login-password">密碼</label>
+            <label for="login-password">@L["Password"]</label>
             <input id="login-password" name="Input.Password" type="password" autocomplete="current-password" maxlength="1024" required />
             <ValidationMessage For="() => Input.Password" />
         </div>
-        <label class="account-checkbox"><InputCheckbox @bind-Value="Input.RememberMe" /> 記住登入</label>
-        <button class="account-primary" type="submit">登入</button>
+        <label class="account-checkbox"><InputCheckbox @bind-Value="Input.RememberMe" /> @L["RememberMe"]</label>
+        <button class="account-primary" type="submit">@L["SignIn"]</button>
     </EditForm>
-    <p class="account-footer"><a href="/account/reset-password">使用代碼設定密碼</a> · <a href="/account/setup">首次設定</a></p>
+    <p class="account-footer"><a href="/account/reset-password">@L["ResetPassword"]</a> · <a href="/account/setup">@L["FirstSetup"]</a></p>
 </section>
 
 @code {
@@ -66,13 +67,17 @@
             Navigation.NavigateTo(destination, forceLoad: true);
             return;
         }
-        error = "帳號或密碼錯誤，或帳號暫時無法登入。";
+        error = L["LoginFailed"];
     }
 
     private sealed class LoginInput
     {
-        [Required(ErrorMessage = "請輸入帳號。"), StringLength(256)] public string UserName { get; set; } = "";
-        [Required(ErrorMessage = "請輸入密碼。"), StringLength(1024)] public string Password { get; set; } = "";
+        [Required(ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.RequiredUserName))]
+        [StringLength(256, ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.UserNameLength))]
+        public string UserName { get; set; } = "";
+        [Required(ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.RequiredPassword))]
+        [StringLength(1024, ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.PasswordLength))]
+        public string Password { get; set; } = "";
         public bool RememberMe { get; set; }
     }
 }

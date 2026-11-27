@@ -9,48 +9,49 @@
 @using QRCoder
 @using Vigiloom.Modules.IdentityAccess.Domain
 @using Vigiloom.Web.Authentication
+@inject Microsoft.Extensions.Localization.IStringLocalizer<AccountActionText> L
 @inject Vigiloom.Web.Authentication.TwoFactorSettings Management
 
-<PageTitle>雙重驗證設定 - Vigiloom</PageTitle>
+<PageTitle>@L["雙重驗證設定 - Vigiloom"]</PageTitle>
 <section class="account-card" aria-labelledby="settings-title">
-    <h1 id="settings-title">雙重驗證</h1>
-    <p class="account-description">使用驗證器 App 為帳號增加一層保護。</p>
+    <h1 id="settings-title">@L["雙重驗證"]</h1>
+    <p class="account-description">@L["使用驗證器 App 為帳號增加一層保護。"]</p>
     @if (message is not null) { <p class="@(isError ? "account-error" : "account-success")" role="status">@message</p> }
     @if (recoveryCodes is not null)
     {
-        <div class="management-notice"><h2>保存復原碼</h2><p>每個復原碼僅能使用一次。請妥善保存；離開後無法再次查看。</p><textarea readonly rows="10" aria-label="雙重驗證復原碼">@string.Join(Environment.NewLine, recoveryCodes)</textarea></div>
+        <div class="management-notice"><h2>@L["保存復原碼"]</h2><p>@L["每個復原碼僅能使用一次。請妥善保存；離開後無法再次查看。"]</p><textarea readonly rows="10" aria-label="@L["雙重驗證復原碼"]">@string.Join(Environment.NewLine, recoveryCodes)</textarea></div>
     }
     @if (!enabled)
     {
         <EditForm Model="BeginInput" FormName="begin-two-factor" method="post" OnValidSubmit="BeginAsync">
             <DataAnnotationsValidator />
-            <div class="account-field"><label for="begin-password">目前密碼</label><input id="begin-password" name="BeginInput.Password" type="password" autocomplete="current-password" maxlength="1024" required /><ValidationMessage For="() => BeginInput.Password" /></div>
-            <button class="account-primary" type="submit">設定驗證器</button>
+            <div class="account-field"><label for="begin-password">@L["目前密碼"]</label><input id="begin-password" name="BeginInput.Password" type="password" autocomplete="current-password" maxlength="1024" required /><ValidationMessage For="() => BeginInput.Password" /></div>
+            <button class="account-primary" type="submit">@L["設定驗證器"]</button>
         </EditForm>
         @if (key is not null)
         {
-            <div class="account-qr"><p>使用驗證器 App 掃描 QR code，或手動輸入下方密鑰。</p><img src="@qrData" alt="驗證器設定 QR code" /><code>@key</code></div>
+            <div class="account-qr"><p>@L["使用驗證器 App 掃描 QR code，或手動輸入下方密鑰。"]</p><img src="@qrData" alt="@L["驗證器設定 QR code"]" /><code>@key</code></div>
         }
         @if (pending)
         {
             <EditForm Model="ConfirmInput" FormName="enable-two-factor" method="post" OnValidSubmit="EnableAsync">
                 <DataAnnotationsValidator />
-                <div class="account-field"><label for="confirm-totp">驗證器代碼</label><input id="confirm-totp" name="ConfirmInput.Code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" required /><ValidationMessage For="() => ConfirmInput.Code" /></div>
-                <button class="account-primary" type="submit">啟用雙重驗證</button>
+                <div class="account-field"><label for="confirm-totp">@L["驗證器代碼"]</label><input id="confirm-totp" name="ConfirmInput.Code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" required /><ValidationMessage For="() => ConfirmInput.Code" /></div>
+                <button class="account-primary" type="submit">@L["啟用雙重驗證"]</button>
             </EditForm>
         }
     }
     else
     {
-        <p>雙重驗證已啟用。</p>
+        <p>@L["雙重驗證已啟用。"]</p>
         <EditForm Model="DisableInput" FormName="disable-two-factor" method="post" OnValidSubmit="DisableAsync">
             <DataAnnotationsValidator />
-            <div class="account-field"><label for="disable-password">目前密碼</label><input id="disable-password" name="DisableInput.Password" type="password" autocomplete="current-password" maxlength="1024" required /><ValidationMessage For="() => DisableInput.Password" /></div>
-            <div class="account-field"><label for="disable-code">驗證器代碼或復原碼</label><input id="disable-code" name="DisableInput.Code" autocomplete="one-time-code" maxlength="64" required /><ValidationMessage For="() => DisableInput.Code" /></div>
-            <button class="management-danger" type="submit">停用雙重驗證</button>
+            <div class="account-field"><label for="disable-password">@L["目前密碼"]</label><input id="disable-password" name="DisableInput.Password" type="password" autocomplete="current-password" maxlength="1024" required /><ValidationMessage For="() => DisableInput.Password" /></div>
+            <div class="account-field"><label for="disable-code">@L["驗證器代碼或復原碼"]</label><input id="disable-code" name="DisableInput.Code" autocomplete="one-time-code" maxlength="64" required /><ValidationMessage For="() => DisableInput.Code" /></div>
+            <button class="management-danger" type="submit">@L["停用雙重驗證"]</button>
         </EditForm>
     }
-    <p class="account-footer"><a href="/">返回總覽</a></p>
+    <p class="account-footer"><a href="/">@L["返回總覽"]</a></p>
 </section>
 
 @code {
@@ -98,7 +99,7 @@
         await RenewCookieAsync(persistent);
         enabled = true;
         recoveryCodes = result.RecoveryCodes;
-        message = "雙重驗證已啟用。";
+        message = L["雙重驗證已啟用。"].Value;
     }
     private async Task DisableAsync()
     {
@@ -108,18 +109,18 @@
         if (result.Status != TwoFactorStatus.Success) { Fail(); return; }
         await RenewCookieAsync(persistent);
         enabled = false;
-        message = "雙重驗證已停用。";
+        message = L["雙重驗證已停用。"].Value;
     }
     private async Task RenewCookieAsync(bool persistent)
     {
         await Management.RenewCookieAsync(HttpContext, persistent);
     }
-    private void Fail() { isError = true; message = "無法完成操作，請確認密碼或驗證碼。"; }
-    private sealed class PasswordModel { [Required, StringLength(1024)] public string Password { get; set; } = ""; }
-    private sealed class CodeModel { [Required, StringLength(64)] public string Code { get; set; } = ""; }
+    private void Fail() { isError = true; message = L["無法完成操作，請確認密碼或驗證碼。"].Value; }
+    private sealed class PasswordModel { [Required(ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.RequiredPassword)), StringLength(1024, ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.PasswordLength))] public string Password { get; set; } = ""; }
+    private sealed class CodeModel { [Required(ErrorMessageResourceType = typeof(TwoFactorText), ErrorMessageResourceName = nameof(TwoFactorText.RequiredCode)), StringLength(64, ErrorMessageResourceType = typeof(TwoFactorText), ErrorMessageResourceName = nameof(TwoFactorText.CodeLength))] public string Code { get; set; } = ""; }
     private sealed class DisableModel
     {
-        [Required, StringLength(1024)] public string Password { get; set; } = "";
-        [Required, StringLength(64)] public string Code { get; set; } = "";
+        [Required(ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.RequiredPassword)), StringLength(1024, ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.PasswordLength))] public string Password { get; set; } = "";
+        [Required(ErrorMessageResourceType = typeof(TwoFactorText), ErrorMessageResourceName = nameof(TwoFactorText.RequiredCode)), StringLength(64, ErrorMessageResourceType = typeof(TwoFactorText), ErrorMessageResourceName = nameof(TwoFactorText.CodeLength))] public string Code { get; set; } = "";
     }
 }

@@ -1,0 +1,22 @@
+@inject Microsoft.Extensions.Localization.IStringLocalizer<MainLayout> L
+@inject NavigationManager Navigation
+
+<details class="language-menu">
+    <summary>@L["語言"]</summary>
+    <nav aria-label="@L["語言"]" data-enhance-nav="false">
+        <a href="@CultureUrl("en")" lang="en">English</a>
+        <a href="@CultureUrl("zh-Hant")" lang="zh-Hant">繁體中文</a>
+        <a href="@CultureUrl("zh-Hans")" lang="zh-Hans">简体中文</a>
+    </nav>
+</details>
+
+@code {
+    private string CultureUrl(string culture)
+    {
+        var destination = Navigation.GetUriWithQueryParameters(Navigation.Uri, new Dictionary<string, object?>
+        {
+            ["culture"] = null, ["ui-culture"] = null
+        });
+        return $"/culture/set?culture={culture}&returnUrl={Uri.EscapeDataString("/" + Navigation.ToBaseRelativePath(destination))}";
+    }
+}

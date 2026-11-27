@@ -26,12 +26,12 @@ internal static class LogQuotaEndpoints
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(2048))
             .Produces<LogQuotaContract>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(413).ProducesProblem(429);
         var route = app.MapGroup("/api/v1/log-quota").RequireAuthorization(AccessPolicies.Administrator).RequireRateLimiting("api-client");
-        route.MapGet("/", async (LogQuotaSettings settings, HttpContext context, CancellationToken token) =>
+        route.MapGet("/", async (LogQuotaReader settings, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
-            return Results.Ok(Map(await settings.GetAsync(token)));
+            return Results.Ok(Map(await settings.GetSnapshotAsync(token)));
         }).Produces<LogQuotaContract>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429);
-        route.MapPut("/", async (LogQuotaContract input, HttpContext context, LogQuotaSettings settings, CancellationToken token) =>
+        route.MapPut("/", async (LogQuotaContract input, HttpContext context, LogQuotaReader settings, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async actor =>
             {
                 var values = new LogQuotaValues(input.SourceRate, input.SourceBurst, input.GlobalRate, input.GlobalBurst);

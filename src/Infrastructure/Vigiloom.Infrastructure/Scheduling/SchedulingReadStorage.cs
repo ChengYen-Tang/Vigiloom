@@ -7,7 +7,7 @@ namespace Vigiloom.Infrastructure.Scheduling;
 /// <summary>Uses bounded SQL timeouts for synchronous Hangfire management reads only.</summary>
 public sealed class SchedulingReadStorage
 {
-    public SchedulingReadStorage(IConfiguration configuration) : this(SchedulingRegistration.Connection(configuration)) { }
+    public SchedulingReadStorage(IConfiguration configuration) : this(SchedulingRegistration.HangfireConnection(configuration)) { }
 
     public SchedulingReadStorage(string connectionString)
     {
@@ -15,8 +15,10 @@ public sealed class SchedulingReadStorage
         var options = SchedulingRegistration.StorageOptions(prepareSchema: false);
         options.CommandTimeout = TimeSpan.FromSeconds(5);
         options.TryAutoDetectSchemaDependentOptions = false;
-        Storage = new SqlServerStorage(connection.ConnectionString, options);
+        ConnectionString = connection.ConnectionString;
+        Storage = new SqlServerStorage(ConnectionString, options);
     }
 
     public SqlServerStorage Storage { get; }
+    public string ConnectionString { get; }
 }

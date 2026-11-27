@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="事件" xml:space="preserve"><value>事件</value></data>
+  <data name="事件與證據" xml:space="preserve"><value>事件与证据</value></data>
+  <data name="查看主機、服務與安全監控的時間線。安全比對結果是待調查線索，目前不包含人工判定狀態。" xml:space="preserve"><value>查看主机、服务与安全监控的时间线。安全比对结果是待调查线索，当前不包含人工判定状态。</value></data>
+  <data name="篩選事件" xml:space="preserve"><value>筛选事件</value></data>
+  <data name="開始日期（UTC）" xml:space="preserve"><value>开始日期（UTC）</value></data>
+  <data name="結束日期（UTC）" xml:space="preserve"><value>结束日期（UTC）</value></data>
+  <data name="群組" xml:space="preserve"><value>群组</value></data>
+  <data name="全部群組" xml:space="preserve"><value>全部群组</value></data>
+  <data name="來源" xml:space="preserve"><value>来源</value></data>
+  <data name="全部來源" xml:space="preserve"><value>全部来源</value></data>
+  <data name="查詢" xml:space="preserve"><value>查询</value></data>
+  <data name="清除篩選" xml:space="preserve"><value>清除筛选</value></data>
+  <data name="事件時間線" xml:space="preserve"><value>事件时间线</value></data>
+  <data name="這段時間沒有符合條件的事件。" xml:space="preserve"><value>这段时间没有符合条件的事件。</value></data>
+  <data name="左右滑動查看完整事件。" xml:space="preserve"><value>左右滑动查看完整事件。</value></data>
+  <data name="事件時間線，可左右捲動" xml:space="preserve"><value>事件时间线，可左右滚动</value></data>
+  <data name="時間（UTC）" xml:space="preserve"><value>时间（UTC）</value></data>
+  <data name="證據" xml:space="preserve"><value>证据</value></data>
+  <data name="相關對象" xml:space="preserve"><value>相关对象</value></data>
+  <data name="查看原始事件" xml:space="preserve"><value>查看原始事件</value></data>
+  <data name="查看掃描" xml:space="preserve"><value>查看扫描</value></data>
+  <data name="查看服務" xml:space="preserve"><value>查看服务</value></data>
+  <data name="查看設備" xml:space="preserve"><value>查看设备</value></data>
+  <data name="查看規則依據" xml:space="preserve"><value>查看规则依据</value></data>
+  <data name="匯出目前頁 CSV" xml:space="preserve"><value>导出当前页 CSV</value></data>
+  <data name="結果超過可顯示的範圍，請縮小日期或選擇來源後重新查詢。" xml:space="preserve"><value>结果超过可显示的范围，请缩小日期或选择来源后重新查询。</value></data>
+  <data name="事件分頁" xml:space="preserve"><value>事件分页</value></data>
+  <data name="上一頁" xml:space="preserve"><value>上一页</value></data>
+  <data name="下一頁" xml:space="preserve"><value>下一页</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>第 {0} 页</value></data>
+  <data name="主機日誌" xml:space="preserve"><value>主机日志</value></data>
+  <data name="應用程式日誌" xml:space="preserve"><value>应用程序日志</value></data>
+  <data name="應用程式追蹤" xml:space="preserve"><value>应用程序追踪</value></data>
+  <data name="服務健康" xml:space="preserve"><value>服务健康</value></data>
+  <data name="資產盤點" xml:space="preserve"><value>资产盘点</value></data>
+  <data name="完整性" xml:space="preserve"><value>完整性</value></data>
+  <data name="行為規則" xml:space="preserve"><value>行为规则</value></data>
+  <data name="漏洞評估" xml:space="preserve"><value>漏洞评估</value></data>
+  <data name="安全基準" xml:space="preserve"><value>安全基准</value></data>
+  <data name="IOC 比對" xml:space="preserve"><value>IOC 比对</value></data>
+  <data name="YARA 掃描" xml:space="preserve"><value>YARA 扫描</value></data>
+  <data name="請選擇有效的日期。" xml:space="preserve"><value>请选择有效的日期。</value></data>
+  <data name="開始日期不能晚於結束日期。" xml:space="preserve"><value>开始日期不能晚于结束日期。</value></data>
+  <data name="每次最多查詢 31 天。" xml:space="preserve"><value>每次最多查询 31 天。</value></data>
+  <data name="請選擇有效的群組。" xml:space="preserve"><value>请选择有效的群组。</value></data>
+  <data name="無法確認登入身分。" xml:space="preserve"><value>无法确认登录身份。</value></data>
+  <data name="請確認篩選條件與頁碼。" xml:space="preserve"><value>请确认筛选条件与页码。</value></data>
+  <data name="無法載入事件，請稍後再試。" xml:space="preserve"><value>无法加载事件，请稍后再试。</value></data>
+  <data name="通知紀錄" xml:space="preserve"><value>通知记录</value></data>
+  <data name="查看 Ping、服務健康、行為規則與漏洞評估產生的通知。" xml:space="preserve"><value>查看 Ping、服务健康、行为规则与漏洞评估产生的通知。</value></data>
+  <data name="通知派送狀態" xml:space="preserve"><value>通知派送状态</value></data>
+  <data name="LINE 通知" xml:space="preserve"><value>LINE 通知</value></data>
+  <data name="管理員可設定 LINE 群組接收通知；此處的紀錄不代表通知已送達。" xml:space="preserve"><value>管理员可设置 LINE 群组接收通知；此处的记录不代表通知已送达。</value></data>
+  <data name="篩選通知" xml:space="preserve"><value>筛选通知</value></data>
+  <data name="通知及已恢復告警保存 {0} 天；尚未排入派送的通知與進行中的告警會保留。" xml:space="preserve"><value>通知及已恢复告警保存 {0} 天；尚未排入派送的通知与进行中的告警会保留。</value></data>
+  <data name="沒有符合條件的通知紀錄。" xml:space="preserve"><value>没有符合条件的通知记录。</value></data>
+  <data name="左右滑動查看完整通知。" xml:space="preserve"><value>左右滑动查看完整通知。</value></data>
+  <data name="通知紀錄，可左右捲動" xml:space="preserve"><value>通知记录，可左右滚动</value></data>
+  <data name="通知內容" xml:space="preserve"><value>通知内容</value></data>
+  <data name="通知紀錄分頁" xml:space="preserve"><value>通知记录分页</value></data>
+  <data name="Ping 與服務告警生命週期" xml:space="preserve"><value>Ping 与服务告警生命周期</value></data>
+  <data name="同一設備目標尚未恢復時，不重複建立 Ping 不可達通知。服務檢查的相同異常狀態不重複通知；異常狀態改變時仍會通知。未知狀態不代表恢復。" xml:space="preserve"><value>同一设备目标尚未恢复时，不重复建立 Ping 不可达通知。服务检查的相同异常状态不重复通知；异常状态改变时仍会通知。未知状态不代表恢复。</value></data>
+  <data name="「尚未恢復」表示告警尚未關閉，不代表一定有最新的異常量測；日期依告警開始時間篩選。" xml:space="preserve"><value>「尚未恢复」表示告警尚未关闭，不代表一定有最新的异常测量；日期依告警开始时间筛选。</value></data>
+  <data name="沒有符合條件的 Ping 或服務告警。" xml:space="preserve"><value>没有符合条件的 Ping 或服务告警。</value></data>
+  <data name="左右滑動查看完整告警。" xml:space="preserve"><value>左右滑动查看完整告警。</value></data>
+  <data name="告警生命週期，可左右捲動" xml:space="preserve"><value>告警生命周期，可左右滚动</value></data>
+  <data name="開始時間（UTC）" xml:space="preserve"><value>开始时间（UTC）</value></data>
+  <data name="監控目標" xml:space="preserve"><value>监控目标</value></data>
+  <data name="最後告警狀態" xml:space="preserve"><value>最后告警状态</value></data>
+  <data name="結束時間（UTC）" xml:space="preserve"><value>结束时间（UTC）</value></data>
+  <data name="服務檢查 {0}" xml:space="preserve"><value>服务检查 {0}</value></data>
+  <data name="尚未恢復" xml:space="preserve"><value>尚未恢复</value></data>
+  <data name="告警生命週期分頁" xml:space="preserve"><value>告警生命周期分页</value></data>
+  <data name="已恢復" xml:space="preserve"><value>已恢复</value></data>
+  <data name="不可達" xml:space="preserve"><value>不可达</value></data>
+  <data name="降級" xml:space="preserve"><value>降级</value></data>
+  <data name="異常" xml:space="preserve"><value>异常</value></data>
+  <data name="未知" xml:space="preserve"><value>未知</value></data>
+  <data name="請選擇有效的通知來源。" xml:space="preserve"><value>请选择有效的通知来源。</value></data>
+  <data name="頁碼無效，請重新查詢。" xml:space="preserve"><value>页码无效，请重新查询。</value></data>
+  <data name="無法載入通知紀錄，請稍後再試。" xml:space="preserve"><value>无法加载通知记录，请稍后再试。</value></data>
+  <data name="{0}：{1}" xml:space="preserve"><value>{0}：{1}</value></data>
+  <data name="主機日誌採集缺口" xml:space="preserve"><value>主机日志采集缺口</value></data>
+  <data name="服務健康檢查" xml:space="preserve"><value>服务健康检查</value></data>
+  <data name="資產盤點變更" xml:space="preserve"><value>资产盘点变更</value></data>
+  <data name="完整性變更" xml:space="preserve"><value>完整性变更</value></data>
+  <data name="行為規則後續命中" xml:space="preserve"><value>行为规则后续命中</value></data>
+  <data name="行為規則命中" xml:space="preserve"><value>行为规则命中</value></data>
+  <data name="行為規則未評估" xml:space="preserve"><value>行为规则未评估</value></data>
+  <data name="安全基準檢查" xml:space="preserve"><value>安全基准检查</value></data>
+  <data name="IOC 比對線索" xml:space="preserve"><value>IOC 匹配线索</value></data>
+  <data name="未指定" xml:space="preserve"><value>未指定</value></data>
+  <data name="解析版本 {0}；{1}/{2}；原文：{3}" xml:space="preserve"><value>解析版本 {0}；{1}/{2}；原文：{3}</value></data>
+  <data name="解析版本 {0}；{1}/{2}" xml:space="preserve"><value>解析版本 {0}；{1}/{2}</value></data>
+  <data name="服務實例 {0}" xml:space="preserve"><value>服务实例 {0}</value></data>
+  <data name="檢查 {0}" xml:space="preserve"><value>检查 {0}</value></data>
+  <data name="掃描 {0}；結果 {1}" xml:space="preserve"><value>扫描 {0}；结果 {1}</value></data>
+  <data name="來源 {0}；類型 {1}；Agent {2}；世代 {3}" xml:space="preserve"><value>来源 {0}；类型 {1}；Agent {2}；世代 {3}</value></data>
+  <data name="範圍 {0}；版本 {1}；類型 {2}；Agent {3}；採集有缺口" xml:space="preserve"><value>范围 {0}；版本 {1}；类型 {2}；Agent {3}；采集有缺口</value></data>
+  <data name="範圍 {0}；版本 {1}；類型 {2}；Agent {3}" xml:space="preserve"><value>范围 {0}；版本 {1}；类型 {2}；Agent {3}</value></data>
+  <data name="先前未評估；版本 {0}；事件 {1}/{2}" xml:space="preserve"><value>先前未评估；版本 {0}；事件 {1}/{2}</value></data>
+  <data name="版本 {0}；事件 {1}/{2}" xml:space="preserve"><value>版本 {0}；事件 {1}/{2}</value></data>
+  <data name="情報版本 {0}；狀態 {1}" xml:space="preserve"><value>情报版本 {0}；状态 {1}</value></data>
+  <data name="版本 {0}；結果 {1}" xml:space="preserve"><value>版本 {0}；结果 {1}</value></data>
+</root>

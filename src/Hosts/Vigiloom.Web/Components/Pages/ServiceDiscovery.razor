@@ -9,75 +9,76 @@
 @inject ICandidateAdministration Approval
 @inject Vigiloom.Web.Services.SourceManagement Sources
 @inject ILogger<ServiceDiscovery> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ServiceAdminText> L
 
-<PageTitle>待加入服務 - Vigiloom</PageTitle>
+<PageTitle>@L["待加入服務"] - Vigiloom</PageTitle>
 <main class="device-page service-discovery">
-    <header class="device-heading"><div><h1>待加入服務</h1><p>查看最近三分鐘仍有回報的服務；應用服務不需要綁定設備。</p></div></header>
-    <p class="management-notice">加入後預設為私人。正式遙測接收管線尚未完成，加入不代表已開始收集或服務正常。</p>
+    <header class="device-heading"><div><h1>@L["待加入服務"]</h1><p>@L["查看最近三分鐘仍有回報的服務；應用服務不需要綁定設備。"]</p></div></header>
+    <p class="management-notice">@L["加入後預設為私人。正式遙測接收管線尚未完成，加入不代表已開始收集或服務正常。"]</p>
     @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
     @if (message is not null) { <p role="status">@message</p> }
     @if (secret is not null)
     {
-        <section class="device-panel"><h2>立即保存來源憑證</h2><p>憑證只顯示這一次。請安全保存，不要貼到網址或公開紀錄；遺失時可再次更換憑證。</p>
-            <textarea readonly rows="3" aria-label="來源憑證">@secret</textarea>
-            <p>請將憑證安全交給負責設定應用來源的人員。來源開始回報後，最近三分鐘內有回報的服務會出現在下方清單，供管理員確認加入。</p>
-            <details><summary>目前可用的來源回報資訊</summary>
-                <p>使用 HTTPS 將來源憑證放在 Authorization: Bearer 標頭，向此平台的 <code>POST /api/v1/service-discovery/observations</code> 傳送 JSON 欄位 <code>serviceKey</code>、<code>environment</code> 及 <code>displayName</code>。只傳送服務識別資料，不要傳送 Log、Metric 或 Trace。</p>
-                <p>這個入口只建立待加入候選，並非 OpenTelemetry 接收端；完整應用接入指引與正式遙測收集尚未完成。</p>
-                <p>來源憑證可向該來源下所有仍獲授權收集的已加入服務寫入資料。互不信任的應用請使用不同來源；不要將中央來源憑證交給共用 Collector 的應用端。</p>
+        <section class="device-panel"><h2>@L["立即保存來源憑證"]</h2><p>@L["憑證只顯示這一次。請安全保存，不要貼到網址或公開紀錄；遺失時可再次更換憑證。"]</p>
+            <textarea readonly rows="3" aria-label="@L["來源憑證"]">@secret</textarea>
+            <p>@L["請將憑證安全交給負責設定應用來源的人員。來源開始回報後，最近三分鐘內有回報的服務會出現在下方清單，供管理員確認加入。"]</p>
+            <details><summary>@L["目前可用的來源回報資訊"]</summary>
+                <p>@L["使用 HTTPS 將來源憑證放在 Authorization: Bearer 標頭，向此平台的 "]<code>POST /api/v1/service-discovery/observations</code>@L[" 傳送 JSON 欄位 "]<code>serviceKey</code>@L["、"]<code>environment</code>@L[" 及 "]<code>displayName</code>@L["。只傳送服務識別資料，不要傳送 Log、Metric 或 Trace。"]</p>
+                <p>@L["這個入口只建立待加入候選，並非 OpenTelemetry 接收端；完整應用接入指引與正式遙測收集尚未完成。"]</p>
+                <p>@L["來源憑證可向該來源下所有仍獲授權收集的已加入服務寫入資料。互不信任的應用請使用不同來源；不要將中央來源憑證交給共用 Collector 的應用端。"]</p>
             </details>
         </section>
     }
-    <section class="device-panel"><h2>服務候選清單</h2>
-        <p>請先確認服務名稱、環境與來源，再加入。停止回報超過三分鐘便不再顯示；核准前不保存完整遙測。</p>
+    <section class="device-panel"><h2>@L["服務候選清單"]</h2>
+        <p>@L["請先確認服務名稱、環境與來源，再加入。停止回報超過三分鐘便不再顯示；核准前不保存完整遙測。"]</p>
         <EditForm Model="ConfirmApproval" FormName="service-approve" method="post" OnValidSubmit="ApproveAsync">
-        @if (loadError) { <p role="alert">無法讀取清單，請重新整理後再試。</p> }
-        else if (candidates.Count == 0) { <p>此頁沒有待加入的服務。</p> }
+        @if (loadError) { <p role="alert">@L["無法讀取清單，請重新整理後再試。"]</p> }
+        else if (candidates.Count == 0) { <p>@L["此頁沒有待加入的服務。"]</p> }
         else
         {
-            <p class="scroll-hint">表格可左右滑動以查看完整資訊。</p>
-            <div class="table-scroll" tabindex="0" role="region" aria-label="服務候選清單，可左右滑動">
-            <table><thead><tr><th>服務名稱</th><th>環境</th><th>來源</th><th>最後回報（UTC）</th><th>操作</th></tr></thead><tbody>
+            <p class="scroll-hint">@L["表格可左右滑動以查看完整資訊。"]</p>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="@L["服務候選清單，可左右滑動"]">
+            <table><thead><tr><th>@L["服務名稱"]</th><th>@L["環境"]</th><th>@L["來源"]</th><th>@L["最後回報（UTC）"]</th><th>@L["操作"]</th></tr></thead><tbody>
             @foreach (var candidate in candidates)
             {
-                <tr @key="candidate.Id"><td><strong>@candidate.DisplayName</strong><br /><small>服務識別：@candidate.ServiceKey</small>@if (!string.IsNullOrEmpty(candidate.ServiceNamespace)) { <br /><small>命名空間：@candidate.ServiceNamespace</small> }</td><td class="environment">@candidate.Environment</td>
-                <td>@candidate.SourceName<details><summary>來源識別碼</summary><small>@candidate.SourceId</small></details></td><td class="timestamp">@candidate.LastSeen.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td>
-                    <details><summary>加入服務</summary>
-                        <label><input type="checkbox" name="@($"approve-{candidate.Id:N}")" value="true" /> 我已確認來源及環境，並了解服務預設為私人</label>
-                        <button type="submit" name="ConfirmApproval.Id" value="@candidate.Id">加入服務</button>
+                <tr @key="candidate.Id"><td><strong>@candidate.DisplayName</strong><br /><small>@L["服務識別："]@candidate.ServiceKey</small>@if (!string.IsNullOrEmpty(candidate.ServiceNamespace)) { <br /><small>@L["命名空間："]@candidate.ServiceNamespace</small> }</td><td class="environment">@candidate.Environment</td>
+                <td>@candidate.SourceName<details><summary>@L["來源識別碼"]</summary><small>@candidate.SourceId</small></details></td><td class="timestamp">@candidate.LastSeen.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td>
+                    <details><summary>@L["加入服務"]</summary>
+                        <label><input type="checkbox" name="@($"approve-{candidate.Id:N}")" value="true" /> @L["我已確認來源及環境，並了解服務預設為私人"]</label>
+                        <button type="submit" name="ConfirmApproval.Id" value="@candidate.Id">@L["加入服務"]</button>
                     </details>
                 </td></tr>
             }
             </tbody></table></div>
         }
         </EditForm>
-        <nav aria-label="候選清單分頁"><span>第 @candidatePage 頁</span>
-            @if (candidatePage > 1) { <a href="@PageUrl(candidatePage - 1, sourcePage)">上一頁</a> }
-            @if (candidates.Count == 50 && candidatePage < 200) { <a href="@PageUrl(candidatePage + 1, sourcePage)">下一頁</a> }
+        <nav aria-label="@L["候選清單分頁"]"><span>@L["第 {0} 頁", candidatePage]</span>
+            @if (candidatePage > 1) { <a href="@PageUrl(candidatePage - 1, sourcePage)">@L["上一頁"]</a> }
+            @if (candidates.Count == 50 && candidatePage < 200) { <a href="@PageUrl(candidatePage + 1, sourcePage)">@L["下一頁"]</a> }
         </nav>
     </section>
-    <section class="device-panel"><h2>來源憑證管理</h2>
-        <p>來源憑證可讓應用來源回報待加入服務的基本資訊。撤銷後，該來源會立即失去回報授權。</p>
+    <section class="device-panel"><h2>@L["來源憑證管理"]</h2>
+        <p>@L["來源憑證可讓應用來源回報待加入服務的基本資訊。撤銷後，該來源會立即失去回報授權。"]</p>
         <EditForm Model="CreateSource" FormName="source-create" method="post" OnValidSubmit="CreateAsync">
-            <label for="source-name">來源名稱</label><InputText id="source-name" @bind-Value="CreateSource.Name" maxlength="128" required />
-            <button type="submit">建立來源</button>
+            <label for="source-name">@L["來源名稱"]</label><InputText id="source-name" @bind-Value="CreateSource.Name" maxlength="128" required />
+            <button type="submit">@L["建立來源"]</button>
         </EditForm>
         <EditForm Model="ConfirmRevocation" FormName="source-revoke" method="post" OnValidSubmit="RevokeAsync">
-        @if (loadError) { <p role="alert">無法讀取來源，請重新整理後再試。</p> }
-        else if (sources.Count == 0) { <p>此頁沒有來源。</p> }
+        @if (loadError) { <p role="alert">@L["無法讀取來源，請重新整理後再試。"]</p> }
+        else if (sources.Count == 0) { <p>@L["此頁沒有來源。"]</p> }
         else
         {
-            <p class="scroll-hint">表格可左右滑動以查看完整資訊。</p>
-            <div class="table-scroll" tabindex="0" role="region" aria-label="來源清單，可左右滑動">
-            <table><thead><tr><th>來源名稱</th><th>狀態</th><th>建立時間（UTC）</th><th>操作</th></tr></thead><tbody>
+            <p class="scroll-hint">@L["表格可左右滑動以查看完整資訊。"]</p>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="@L["來源清單，可左右滑動"]">
+            <table><thead><tr><th>@L["來源名稱"]</th><th>@L["狀態"]</th><th>@L["建立時間（UTC）"]</th><th>@L["操作"]</th></tr></thead><tbody>
             @foreach (var source in sources)
             {
-                <tr @key="source.Id"><td><strong>@source.Name</strong><details><summary>來源識別碼</summary><small>@source.Id</small></details></td><td>@(source.RevokedAt is null ? "可使用" : "已撤銷")</td><td class="timestamp">@source.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td>
+                <tr @key="source.Id"><td><strong>@source.Name</strong><details><summary>@L["來源識別碼"]</summary><small>@source.Id</small></details></td><td>@(source.RevokedAt is null ? L["可使用"].Value : L["已撤銷"].Value)</td><td class="timestamp">@source.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm")</td><td>
                     @if (source.RevokedAt is null)
                     {
-                        <details><summary>撤銷來源</summary>
-                            <label><input type="checkbox" name="@($"revoke-{source.Id:N}")" value="true" /> 我了解撤銷會立即停止該來源授權</label>
-                            <button type="submit" name="ConfirmRevocation.Id" value="@source.Id">撤銷來源</button>
+                        <details><summary>@L["撤銷來源"]</summary>
+                            <label><input type="checkbox" name="@($"revoke-{source.Id:N}")" value="true" /> @L["我了解撤銷會立即停止該來源授權"]</label>
+                            <button type="submit" name="ConfirmRevocation.Id" value="@source.Id">@L["撤銷來源"]</button>
                         </details>
                     }
                 </td></tr>
@@ -88,24 +89,24 @@
         <EditForm Model="RotateSource" FormName="source-rotate" method="post" OnValidSubmit="RotateAsync">
             @if (!loadError && sources.Any(x => x.RevokedAt is null))
             {
-                <details><summary>更換來源憑證</summary>
-                    <p>更換後舊憑證立即失效，請更新使用該來源的 Collector 設定。服務身分與已核准狀態會保留。</p>
-                    <label for="rotate-source">選擇來源</label>
+                <details><summary>@L["更換來源憑證"]</summary>
+                    <p>@L["更換後舊憑證立即失效，請更新使用該來源的 Collector 設定。服務身分與已核准狀態會保留。"]</p>
+                    <label for="rotate-source">@L["選擇來源"]</label>
                     <select id="rotate-source" name="RotateSource.Selection" required>
-                        <option value="">請選擇來源</option>
+                        <option value="">@L["請選擇來源"]</option>
                         @foreach (var source in sources.Where(x => x.RevokedAt is null))
                         {
                             <option value="@($"{source.Id:D}:{source.Version}")">@source.Name (@source.Id)</option>
                         }
                     </select>
-                    <label><input type="checkbox" name="RotateSource.Confirm" value="true" required /> 我了解舊憑證會立即失效</label>
-                    <button type="submit">更換憑證</button>
+                    <label><input type="checkbox" name="RotateSource.Confirm" value="true" required /> @L["我了解舊憑證會立即失效"]</label>
+                    <button type="submit">@L["更換憑證"]</button>
                 </details>
             }
         </EditForm>
-        <nav aria-label="來源清單分頁"><span>第 @sourcePage 頁</span>
-            @if (sourcePage > 1) { <a href="@PageUrl(candidatePage, sourcePage - 1)">上一頁</a> }
-            @if (sources.Count == 50 && sourcePage < 200) { <a href="@PageUrl(candidatePage, sourcePage + 1)">下一頁</a> }
+        <nav aria-label="@L["來源清單分頁"]"><span>@L["第 {0} 頁", sourcePage]</span>
+            @if (sourcePage > 1) { <a href="@PageUrl(candidatePage, sourcePage - 1)">@L["上一頁"]</a> }
+            @if (sources.Count == 50 && sourcePage < 200) { <a href="@PageUrl(candidatePage, sourcePage + 1)">@L["下一頁"]</a> }
         </nav>
     </section>
 </main>
@@ -143,52 +144,52 @@
 
     private async Task CreateAsync()
     {
-        if (!HttpContext.Request.IsHttps) { error = "建立憑證需要安全連線（HTTPS）。"; return; }
-        if (string.IsNullOrWhiteSpace(CreateSource.Name) || CreateSource.Name.Length > 128 || Actor() is not { } actor) { error = "請輸入 1 至 128 字的來源名稱。"; return; }
+        if (!HttpContext.Request.IsHttps) { error = L["建立憑證需要安全連線（HTTPS）。"].Value; return; }
+        if (string.IsNullOrWhiteSpace(CreateSource.Name) || CreateSource.Name.Length > 128 || Actor() is not { } actor) { error = L["請輸入 1 至 128 字的來源名稱。"].Value; return; }
         try { var result = await Sources.IssueAsync(CreateSource.Name, actor, HttpContext.RequestAborted); secret = result.Secret; CreateSource.Name = ""; await LoadAsync(); }
-        catch (Exception ex) { Logger.LogWarning("Cannot issue source: {ExceptionType}", ex.GetType().Name); error = "無法確認建立結果，請重新整理並檢查來源。"; }
+        catch (Exception ex) { Logger.LogWarning("Cannot issue source: {ExceptionType}", ex.GetType().Name); error = L["無法確認建立結果，請重新整理並檢查來源。"].Value; }
     }
 
     private async Task ApproveAsync()
     {
         var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
-        if (!Guid.TryParse(form["ConfirmApproval.Id"], out var id) || form[$"approve-{id:N}"] != "true" || Actor() is not { } actor) { error = "請確認服務來源及環境。"; return; }
+        if (!Guid.TryParse(form["ConfirmApproval.Id"], out var id) || form[$"approve-{id:N}"] != "true" || Actor() is not { } actor) { error = L["請確認服務來源及環境。"].Value; return; }
         try
         {
             var result = await Approval.ApproveAsync(id, actor, HttpContext.RequestAborted);
             message = result.Status is ApprovalStatus.Approved or ApprovalStatus.AlreadyApproved && result.ServiceId is not null
-                ? $"服務已加入，預設為私人；正式遙測接收尚未完成。服務識別碼：{result.ServiceId:D}" : null;
-            if (message is null) error = "服務已過期或無法加入，請重新整理後確認。";
+                ? L["服務已加入，預設為私人；正式遙測接收尚未完成。服務識別碼：{0}", result.ServiceId!.Value.ToString("D")].Value : null;
+            if (message is null) error = L["服務已過期或無法加入，請重新整理後確認。"].Value;
             await LoadAsync();
         }
-        catch (Exception ex) { Logger.LogWarning("Cannot approve service: {ExceptionType}", ex.GetType().Name); error = "無法確認加入結果，請重新整理後檢查。"; }
+        catch (Exception ex) { Logger.LogWarning("Cannot approve service: {ExceptionType}", ex.GetType().Name); error = L["無法確認加入結果，請重新整理後檢查。"].Value; }
     }
 
     private async Task RevokeAsync()
     {
         var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
-        if (!Guid.TryParse(form["ConfirmRevocation.Id"], out var id) || id.Version != 7 || form[$"revoke-{id:N}"] != "true" || Actor() is not { } actor) { error = "請確認撤銷來源的影響。"; return; }
-        try { if (await Sources.RevokeAsync(id, actor, HttpContext.RequestAborted)) message = "來源已撤銷。"; else error = "找不到來源。"; await LoadAsync(); }
-        catch (Exception ex) { Logger.LogWarning("Cannot revoke source: {ExceptionType}", ex.GetType().Name); error = "無法確認撤銷結果，請重新整理後檢查。"; }
+        if (!Guid.TryParse(form["ConfirmRevocation.Id"], out var id) || id.Version != 7 || form[$"revoke-{id:N}"] != "true" || Actor() is not { } actor) { error = L["請確認撤銷來源的影響。"].Value; return; }
+        try { if (await Sources.RevokeAsync(id, actor, HttpContext.RequestAborted)) message = L["來源已撤銷。"].Value; else error = L["找不到來源。"].Value; await LoadAsync(); }
+        catch (Exception ex) { Logger.LogWarning("Cannot revoke source: {ExceptionType}", ex.GetType().Name); error = L["無法確認撤銷結果，請重新整理後檢查。"].Value; }
     }
     private async Task RotateAsync()
     {
-        if (!HttpContext.Request.IsHttps) { error = "更換憑證需要安全連線（HTTPS）。"; return; }
+        if (!HttpContext.Request.IsHttps) { error = L["更換憑證需要安全連線（HTTPS）。"].Value; return; }
         var form = await HttpContext.Request.ReadFormAsync(HttpContext.RequestAborted);
         var parts = form["RotateSource.Selection"].ToString().Split(':', 2);
         Span<byte> version = stackalloc byte[8];
         if (parts.Length != 2 || !Guid.TryParse(parts[0], out var id) || id.Version != 7 ||
             !Convert.TryFromBase64String(parts[1], version, out var written) || written != 8 ||
             form["RotateSource.Confirm"] != "true" || Actor() is not { } actor)
-        { error = "請選擇來源並確認更換憑證的影響。"; return; }
+        { error = L["請選擇來源並確認更換憑證的影響。"].Value; return; }
         try
         {
             var result = await Sources.RotateAsync(id, version.ToArray(), actor, HttpContext.RequestAborted);
-            if (result.Status == SourceRotationStatus.Rotated) { secret = result.Credential; message = "來源憑證已更換，請立即保存並更新 Collector 設定。"; }
-            else error = "來源已變更、撤銷或不存在，請重新整理後確認。";
+            if (result.Status == SourceRotationStatus.Rotated) { secret = result.Credential; message = L["來源憑證已更換，請立即保存並更新 Collector 設定。"].Value; }
+            else error = L["來源已變更、撤銷或不存在，請重新整理後確認。"].Value;
             await LoadAsync();
         }
-        catch (Exception ex) { Logger.LogWarning("Cannot rotate source credential: {ExceptionType}", ex.GetType().Name); error = "無法確認更換結果，請重新整理並檢查；如有需要可再次更換憑證。"; }
+        catch (Exception ex) { Logger.LogWarning("Cannot rotate source credential: {ExceptionType}", ex.GetType().Name); error = L["無法確認更換結果，請重新整理並檢查；如有需要可再次更換憑證。"].Value; }
     }
     private sealed class SourceForm { public string Name { get; set; } = ""; }
     private sealed class ConfirmForm { public bool Confirm { get; set; } }

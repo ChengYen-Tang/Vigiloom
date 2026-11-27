@@ -6,14 +6,16 @@
 @inject IDeviceManagement Devices
 @inject ILogger<DevicePingHistory> Logger
 
-<PageTitle>設備 Ping 歷史 - Vigiloom</PageTitle>
+@inject Microsoft.Extensions.Localization.IStringLocalizer<PageShellText> L
+
+<PageTitle>@L["設備 Ping 歷史 - Vigiloom"]</PageTitle>
 <main class="device-page">
-    <a href="@($"/devices/{Id:D}")">← 返回設備詳情</a>
-    @if (error) { <p class="device-alert" role="alert">無法載入設備，請稍後再試。</p> }
-    else if (device is null) { <section class="device-panel"><h1>找不到設備</h1><p>此設備不存在。</p></section> }
+    <a href="@($"/devices/{Id:D}")">@L["← 返回設備詳情"]</a>
+    @if (error) { <p class="device-alert" role="alert">@L["無法載入設備，請稍後再試。"]</p> }
+    else if (device is null) { <section class="device-panel"><h1>@L["找不到設備"]</h1><p>@L["此設備不存在。"]</p></section> }
     else
     {
-        <header class="device-heading"><div><h1>設備 Ping 歷史</h1><p class="history-device-name">@device.Name</p></div></header>
+        <header class="device-heading"><div><h1>@L["設備 Ping 歷史"]</h1><p class="history-device-name">@device.Name</p></div></header>
         <Vigiloom.Web.Client.Components.PingHistory.PingHistoryPanel DeviceId="Id" InitialTarget="@device.Address" @rendermode="InteractiveAuto" />
     }
 </main>

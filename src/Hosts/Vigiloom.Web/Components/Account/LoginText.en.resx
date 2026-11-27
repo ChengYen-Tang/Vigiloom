@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="PageTitle">
+    <value>Sign in</value>
+  </data>
+  <data xml:space="preserve" name="Heading">
+    <value>Sign in to Vigiloom</value>
+  </data>
+  <data xml:space="preserve" name="Description">
+    <value>Sign in to view monitoring information.</value>
+  </data>
+  <data xml:space="preserve" name="SetupComplete">
+    <value>Setup is complete. Please sign in.</value>
+  </data>
+  <data xml:space="preserve" name="UserName">
+    <value>Username</value>
+  </data>
+  <data xml:space="preserve" name="Password">
+    <value>Password</value>
+  </data>
+  <data xml:space="preserve" name="RememberMe">
+    <value>Remember me</value>
+  </data>
+  <data xml:space="preserve" name="SignIn">
+    <value>Sign in</value>
+  </data>
+  <data xml:space="preserve" name="ResetPassword">
+    <value>Set password using a code</value>
+  </data>
+  <data xml:space="preserve" name="FirstSetup">
+    <value>First-time setup</value>
+  </data>
+  <data xml:space="preserve" name="LoginFailed">
+    <value>The username or password is incorrect, or the account cannot sign in right now.</value>
+  </data>
+  <data xml:space="preserve" name="RequiredUserName">
+    <value>Enter your username.</value>
+  </data>
+  <data xml:space="preserve" name="UserNameLength">
+    <value>Username must be at most {1} characters.</value>
+  </data>
+  <data xml:space="preserve" name="RequiredPassword">
+    <value>Enter your password.</value>
+  </data>
+  <data xml:space="preserve" name="PasswordLength">
+    <value>Password must be at most {1} characters.</value>
+  </data>
+</root>

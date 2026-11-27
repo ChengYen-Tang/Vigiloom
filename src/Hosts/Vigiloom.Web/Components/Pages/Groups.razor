@@ -7,34 +7,35 @@
 @inject IGroupManagement GroupsService
 @inject NavigationManager Navigation
 @inject ILogger<Groups> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<GroupText> L
 
-<PageTitle>群組 - Vigiloom</PageTitle>
+<PageTitle>@L["群組"] - Vigiloom</PageTitle>
 <main class="device-page">
     <header class="device-heading">
-        <div><h1>群組</h1><p>依地點、環境或系統整理設備和應用服務。群組不改變公開設定。</p></div>
-        <AuthorizeView Policy="Administrator"><Authorized><a class="device-primary" href="/groups/new">新增群組</a></Authorized></AuthorizeView>
+        <div><h1>@L["群組"]</h1><p>@L["依地點、環境或系統整理設備和應用服務。群組不改變公開設定。"]</p></div>
+        <AuthorizeView Policy="Administrator"><Authorized><a class="device-primary" href="/groups/new">@L["新增群組"]</a></Authorized></AuthorizeView>
     </header>
     <section class="device-panel">
         <form method="get" action="/groups" class="device-filters">
-            <label>搜尋群組 <input name="search" value="@Search" maxlength="256" placeholder="名稱或說明" /></label>
-            <button type="submit">搜尋</button><a href="/groups/ungrouped">未分組設備</a><a href="/groups/ungrouped-services">未分組服務</a>
+            <label>@L["搜尋群組"] <input name="search" value="@Search" maxlength="256" placeholder="@L["名稱或說明"]" /></label>
+            <button type="submit">@L["搜尋"]</button><a href="/groups/ungrouped">@L["未分組設備"]</a><a href="/groups/ungrouped-services">@L["未分組服務"]</a>
         </form>
-        @if (error) { <p class="device-alert" role="alert">無法載入群組，請稍後重新整理。</p> }
-        else if (result is not null && result.Items.Count == 0) { <p class="device-empty">沒有符合條件的群組。</p> }
+        @if (error) { <p class="device-alert" role="alert">@L["無法載入群組，請稍後重新整理。"]</p> }
+        else if (result is not null && result.Items.Count == 0) { <p class="device-empty">@L["沒有符合條件的群組。"]</p> }
         else if (result is not null)
         {
-            <p class="device-count">共 @result.Total 個群組</p>
-            <p class="group-scroll-hint">左右滑動查看完整表格。</p>
-            <div class="device-table-wrap"><table><thead><tr><th>名稱</th><th>說明</th><th>設備</th><th>應用服務</th><th></th></tr></thead><tbody>
+            <p class="device-count">@L["共 {0} 個群組", result.Total]</p>
+            <p class="group-scroll-hint">@L["左右滑動查看完整表格。"]</p>
+            <div class="device-table-wrap"><table><thead><tr><th>@L["名稱"]</th><th>@L["說明"]</th><th>@L["設備"]</th><th>@L["應用服務"]</th><th></th></tr></thead><tbody>
             @foreach (var group in result.Items)
             {
-                <tr @key="group.Id"><td><a href="@($"/groups/{group.Id:D}")">@group.Name</a></td><td>@(group.Description ?? "—")</td><td>@group.DeviceCount</td><td>@group.ServiceCount</td><td><a href="@($"/groups/{group.Id:D}")">查看群組</a></td></tr>
+                <tr @key="group.Id"><td><a href="@($"/groups/{group.Id:D}")">@group.Name</a></td><td>@(group.Description ?? "—")</td><td>@group.DeviceCount</td><td>@group.ServiceCount</td><td><a href="@($"/groups/{group.Id:D}")">@L["查看群組"]</a></td></tr>
             }
             </tbody></table></div>
-            <nav class="device-pagination" aria-label="群組分頁">
-                @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">上一頁</a> }
-                <span>第 @result.Page 頁</span>
-                @if ((long)result.Page * result.PageSize < result.Total) { <a href="@PageUrl(result.Page + 1)">下一頁</a> }
+            <nav class="device-pagination" aria-label="@L["群組分頁"]">
+                @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">@L["上一頁"]</a> }
+                <span>@L["第 {0} 頁", result.Page]</span>
+                @if ((long)result.Page * result.PageSize < result.Total) { <a href="@PageUrl(result.Page + 1)">@L["下一頁"]</a> }
             </nav>
         }
     </section>

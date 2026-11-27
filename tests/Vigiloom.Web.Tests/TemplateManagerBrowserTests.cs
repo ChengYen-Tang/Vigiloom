@@ -211,6 +211,17 @@ public sealed class TemplateManagerBrowserTests(TestContext context)
         await page.GetByRole(AriaRole.Button, new() { Name = "確認刪除" }).ClickAsync();
         await page.GetByText("範本已刪除。", new() { Exact = true }).WaitForAsync();
 
+        const string templatePath = "/settings/publication-templates";
+        await page.GotoAsync($"{url}/culture/set?culture=en&returnUrl={Uri.EscapeDataString(templatePath)}");
+        var gamma = page.GetByRole(AriaRole.Row).Filter(new() { HasText = "Gamma" });
+        await gamma.GetByRole(AriaRole.Button, new() { Name = "Edit", Exact = true }).ClickAsync();
+        Assert.AreEqual("Gamma", await page.GetByLabel("Template name", new() { Exact = true }).InputValueAsync());
+        await page.GetByRole(AriaRole.Button, new() { Name = "Preview changes", Exact = true }).ClickAsync();
+        await page.GetByText("Confirm changes", new() { Exact = true }).WaitForAsync();
+        await page.GotoAsync($"{url}/culture/set?culture=zh-Hans&returnUrl={Uri.EscapeDataString(templatePath)}");
+        await page.GetByRole(AriaRole.Row).Filter(new() { HasText = "Gamma" }).GetByRole(AriaRole.Button, new() { Name = "编辑", Exact = true }).ClickAsync();
+        Assert.AreEqual("Gamma", await page.GetByLabel("模板名称", new() { Exact = true }).InputValueAsync());
+
         async Task CreateAsync(string name, int days = 0)
         {
             await page.GetByRole(AriaRole.Button, new() { Name = "新增範本" }).ClickAsync();

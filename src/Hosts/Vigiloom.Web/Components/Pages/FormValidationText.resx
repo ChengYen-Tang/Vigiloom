@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Required" xml:space="preserve"><value>此欄位為必填。</value></data>
+  <data name="StringLength" xml:space="preserve"><value>最多可輸入 {1} 個字元。</value></data>
+  <data name="Range" xml:space="preserve"><value>請輸入 {1} 到 {2} 之間的數值。</value></data>
+</root>

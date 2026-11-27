@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="網路測速設定" xml:space="preserve"><value>网络测速设置</value></data>
+  <data name="從中央平台所在位置量測對外網路速度，與各設備的 Ping 分開。" xml:space="preserve"><value>从中央平台所在位置测量对外网络速度，与各设备的 Ping 分开。</value></data>
+  <data name="Speedtest.net 測試" xml:space="preserve"><value>Speedtest.net 测试</value></data>
+  <data name="測試會連線至 Speedtest.net 伺服器，並占用上下傳頻寬。資料處理方式請參閱服務提供者的條款與隱私政策。" xml:space="preserve"><value>测试会连接至 Speedtest.net 服务器，并占用上下行带宽。数据处理方式请参阅服务提供者的条款与隐私政策。</value></data>
+  <data name="Speedtest.net 使用條款" xml:space="preserve"><value>Speedtest.net 使用条款</value></data>
+  <data name="隱私政策" xml:space="preserve"><value>隐私政策</value></data>
+  <data name="啟用排程測速" xml:space="preserve"><value>启用排程测速</value></data>
+  <data name="測速間隔（1～168 小時）" xml:space="preserve"><value>测速间隔（1～168 小时）</value></data>
+  <data name="進階限制" xml:space="preserve"><value>高级限制</value></data>
+  <data name="每次參考流量預算（2～2048 MiB）" xml:space="preserve"><value>每次参考流量预算（2～2048 MiB）</value></data>
+  <data name="每次最長時間（{0}～{1} 秒）" xml:space="preserve"><value>每次最长时间（{0}～{1} 秒）</value></data>
+  <data name="測試量會依測得的速度自動調整；通訊開銷及失敗請求的部分流量可能超出參考預算。" xml:space="preserve"><value>测试量会依测得的速度自动调整；通信开销及失败请求的部分流量可能超出参考预算。</value></data>
+  <data name="每個中央位置同時只執行一筆。停用排程會取消待執行與進行中的測試。" xml:space="preserve"><value>每个中央位置同时只执行一笔。停用排程会取消待执行与进行中的测试。</value></data>
+  <data name="儲存測速設定" xml:space="preserve"><value>保存测速设置</value></data>
+  <data name="查看測速紀錄" xml:space="preserve"><value>查看测速记录</value></data>
+  <data name="最近 24 小時已安排 {0} 次測速。" xml:space="preserve"><value>最近 24 小时已安排 {0} 次测速。</value></data>
+  <data name="下次自動排程（UTC）：{0}" xml:space="preserve"><value>下次自动排程（UTC）：{0}</value></data>
+  <data name="未啟用" xml:space="preserve"><value>未启用</value></data>
+  <data name="無法讀取設定，請稍後重新整理。" xml:space="preserve"><value>无法读取设置，请稍后刷新。</value></data>
+  <data name="請檢查數值範圍。" xml:space="preserve"><value>请检查数值范围。</value></data>
+  <data name="設定已儲存；中央 Worker 會依新排程執行。" xml:space="preserve"><value>设置已保存；中央 Worker 会依新排程执行。</value></data>
+  <data name="設定已被其他操作變更，請重新整理後再試。" xml:space="preserve"><value>设置已被其他操作变更，请刷新后再试。</value></data>
+  <data name="無法確認儲存結果，請重新整理後檢查。" xml:space="preserve"><value>无法确认保存结果，请刷新后检查。</value></data>
+  <data name="保存期限已儲存，但無法更新測速排程設定，請重新整理。" xml:space="preserve"><value>保存期限已保存，但无法更新测速排程设置，请刷新。</value></data>
+  <data name="測速紀錄保存" xml:space="preserve"><value>测速记录保存</value></data>
+  <data name="到期的測速結果每小時分批清理；執行中、待執行及最近 24 小時的工作不會清除。延長期限無法恢復已清除的紀錄。" xml:space="preserve"><value>到期的测速结果每小时分批清理；执行中、待执行及最近 24 小时的工作不会清除。延长期限无法恢复已清除的记录。</value></data>
+  <data name="無法讀取保存設定，請重新整理後再試。" xml:space="preserve"><value>无法读取保存设置，请刷新后再试。</value></data>
+  <data name="目前保存 {0} 天。已清除 {1} 筆；最近一次清除資料（UTC）：{2}。" xml:space="preserve"><value>当前保存 {0} 天。已清除 {1} 笔；最近一次清除数据（UTC）：{2}。</value></data>
+  <data name="尚無紀錄" xml:space="preserve"><value>尚无记录</value></data>
+  <data name="清理失敗可至" xml:space="preserve"><value>清理失败可至</value></data>
+  <data name="背景工作" xml:space="preserve"><value>后台工作</value></data>
+  <data name="查詢。" xml:space="preserve"><value>查询。</value></data>
+  <data name="保存天數（{0}～{1} 天）" xml:space="preserve"><value>保存天数（{0}～{1} 天）</value></data>
+  <data name="以 {0} 為準，預估有 {1} 筆結果超過新期限。實際清理數量會隨時間及資料變動。" xml:space="preserve"><value>以 {0} 为准，预计有 {1} 笔结果超过新期限。实际清理数量会随时间及数据变动。</value></data>
+  <data name="預覽截止時間（UTC）：{0}；申請時間早於此截止時間、目前已結束，且開始時間（未開始則申請時間）已滿 24 小時的結果會列入清理範圍。" xml:space="preserve"><value>预览截止时间（UTC）：{0}；申请时间早于此截止时间、当前已结束，且开始时间（未开始则申请时间）已满 24 小时的结果会列入清理范围。</value></data>
+  <data name="變更後將依排程清理；刪除後無法復原。預覽在 5 分鐘內有效。" xml:space="preserve"><value>变更后将依排程清理；删除后无法恢复。预览在 5 分钟内有效。</value></data>
+  <data name="確認儲存" xml:space="preserve"><value>确认保存</value></data>
+  <data name="取消" xml:space="preserve"><value>取消</value></data>
+  <data name="預覽變更" xml:space="preserve"><value>预览变更</value></data>
+  <data name="請輸入有效的保存天數。" xml:space="preserve"><value>请输入有效的保存天数。</value></data>
+  <data name="保存設定已儲存。" xml:space="preserve"><value>保存设置已保存。</value></data>
+  <data name="預覽已過期或天數已變更，請重新預覽。" xml:space="preserve"><value>预览已过期或天数已变更，请重新预览。</value></data>
+</root>

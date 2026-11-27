@@ -1,14 +1,15 @@
 @using Vigiloom.Contracts.Agent.Integrity
+@inject Microsoft.Extensions.Localization.IStringLocalizer<HostText> L
 
-<details><summary>@Label</summary>
-    @if (Item is null) { <p>無此項目。</p> }
+<details><summary>@(Label ?? L["查看證據"].Value)</summary>
+    @if (Item is null) { <p>@L["無此項目。"]</p> }
     else
     {
-        <dl><dt>擁有者</dt><dd>@(Item.Owner ?? "未提供")</dd><dt>內容雜湊</dt><dd>@(Item.ContentDigest ?? "未提供")</dd><dt>安全性雜湊</dt><dd>@(Item.SecurityDigest ?? "未提供")</dd></dl>
+        <dl><dt>@L["擁有者"]</dt><dd>@(Item.Owner ?? L["未提供"].Value)</dd><dt>@L["內容雜湊"]</dt><dd>@(Item.ContentDigest ?? L["未提供"].Value)</dd><dt>@L["安全性雜湊"]</dt><dd>@(Item.SecurityDigest ?? L["未提供"].Value)</dd></dl>
     }
 </details>
 
 @code {
     [Parameter] public IntegrityItem? Item { get; set; }
-    [Parameter] public string Label { get; set; } = "查看證據";
+    [Parameter] public string? Label { get; set; }
 }

@@ -1,94 +1,95 @@
 @using Vigiloom.Contracts.Publishing
 @implements IAsyncDisposable
+@inject Microsoft.Extensions.Localization.IStringLocalizer<PublicationText> L
 @inject IPublicationClient Client
 @inject ILogger<PublicationEditor> Logger
 
 <div class="publication-editor" data-runtime="@RendererInfo.Name" data-interactive="@(RendererInfo.IsInteractive ? "true" : "false")">
-    @if (loading) { <p role="status">正在載入公開設定…</p> }
-    else if (settings is null) { <section class="publication-card" role="alert">@(error ?? "找不到資源或已無法存取。")</section> }
+    @if (loading) { <p role="status">@L["正在載入公開設定…"]</p> }
+    else if (settings is null) { <section class="publication-card" role="alert">@(error ?? L["找不到資源或已無法存取。"].Value)</section> }
     else
     {
-        <section class="publication-info"><strong>目前狀態：@CurrentStatus</strong><span>改為不公開後，訪客之後將無法取得此資源。</span></section>
+        <section class="publication-info"><strong>@L["目前狀態："]@CurrentStatus</strong><span>@L["改為不公開後，訪客之後將無法取得此資源。"]</span></section>
         @if (Kind == "services" && settings.Public && IsServiceHistory(settings.PolicyVersion) && settings.HistoryReady == false)
-        { <p class="publication-message" role="status">公開歷史尚未就緒；訪客目前無法查看歷史，請稍後重新儲存設定。</p> }
+        { <p class="publication-message" role="status">@L["公開歷史尚未就緒；訪客目前無法查看歷史，請稍後重新儲存設定。"]</p> }
         @if (message is not null) { <p class="publication-message" role="@(success ? "status" : "alert")">@message</p> }
         <EditForm Model="model" OnSubmit="SaveAsync" FormName="publication-editor">
             <section class="publication-card publication-layout">
                 <div>
-                    <fieldset><legend>公開狀態</legend>
+                    <fieldset><legend>@L["公開狀態"]</legend>
                         <div class="publication-choices"><InputRadioGroup @bind-Value="model.Public">
-                            <label><InputRadio Value="false" disabled="@Disabled" /> 不公開（僅登入後可查看）</label>
-                            <label><InputRadio Value="true" disabled="@Disabled" /> 公開（允許訪客查看）</label>
+                            <label><InputRadio Value="false" disabled="@Disabled" /> @L["不公開（僅登入後可查看）"]</label>
+                            <label><InputRadio Value="true" disabled="@Disabled" /> @L["公開（允許訪客查看）"]</label>
                         </InputRadioGroup></div>
                     </fieldset>
                     @if (model.Public)
                     {
-                        <label for="public-name">公開顯示名稱</label>
+                        <label for="public-name">@L["公開顯示名稱"]</label>
                         <InputText id="public-name" @bind-Value="model.Name" maxlength="256" disabled="@Disabled" />
-                        <p>名稱不可包含 IP 位址或過於複雜的符號組合。請確認名稱適合公開。</p>
+                        <p>@L["名稱不可包含 IP 位址或過於複雜的符號組合。請確認名稱適合公開。"]</p>
                         @if (Kind == "services")
                         {
-                            <fieldset class="publication-history"><legend>公開顯示內容</legend>
+                            <fieldset class="publication-history"><legend>@L["公開顯示內容"]</legend>
                                 <InputRadioGroup @bind-Value="model.Policy">
-                                    <label><InputRadio Value="@PublicationPolicy.BaselineVersion" disabled="@Disabled" /><span><strong>僅顯示簡易狀態</strong><small>訪客可查看目前的服務狀態。</small></span></label>
-                                    <label><InputRadio Value="@PublicationPolicy.ServiceHistoryVersion" disabled="@Disabled" /><span><strong>包含簡易每日狀態歷史</strong><small>顯示啟用後最多 90 天的狀態與可用率。</small></span></label>
-                                    <label><InputRadio Value="@PublicationPolicy.ServiceHistoryDetailsVersion" disabled="@Disabled" /><span><strong>包含狀態變更時間</strong><small>除每日摘要外，也公開簡易狀態變更的時間。</small></span></label>
+                                    <label><InputRadio Value="@PublicationPolicy.BaselineVersion" disabled="@Disabled" /><span><strong>@L["僅顯示簡易狀態"]</strong><small>@L["訪客可查看目前的服務狀態。"]</small></span></label>
+                                    <label><InputRadio Value="@PublicationPolicy.ServiceHistoryVersion" disabled="@Disabled" /><span><strong>@L["包含簡易每日狀態歷史"]</strong><small>@L["顯示啟用後最多 90 天的狀態與可用率。"]</small></span></label>
+                                    <label><InputRadio Value="@PublicationPolicy.ServiceHistoryDetailsVersion" disabled="@Disabled" /><span><strong>@L["包含狀態變更時間"]</strong><small>@L["除每日摘要外，也公開簡易狀態變更的時間。"]</small></span></label>
                                 </InputRadioGroup>
                             </fieldset>
-                            <p class="publication-history-note">切換公開歷史選項後，從設定生效時重新累積，不公開之前的歷史；IP、日誌與追蹤等進階資訊不會公開。</p>
+                            <p class="publication-history-note">@L["切換公開歷史選項後，從設定生效時重新累積，不公開之前的歷史；IP、日誌與追蹤等進階資訊不會公開。"]</p>
                         }
                         else
                         {
-                            <label for="public-policy">公開範本</label>
+                            <label for="public-policy">@L["公開範本"]</label>
                             <InputSelect id="public-policy" @bind-Value="model.Policy" disabled="@Disabled">
-                                @if (Kind == "devices") { <option value="">請選擇公開範本</option> }
-                                <option value="@PublicationPolicy.BaselineVersion">基礎公開設定</option>
-                                @foreach (var template in templates) { <option value="@template.Id.ToString()">@template.Name@(template.IsDefault ? "（預設）" : "")</option> }
-                                @if (MissingSelection) { <option value="@model.Policy" disabled>原範本已無法使用，請重新選擇</option> }
+                                @if (Kind == "devices") { <option value="">@L["請選擇公開範本"]</option> }
+                                <option value="@PublicationPolicy.BaselineVersion">@L["基礎公開設定"]</option>
+                                @foreach (var template in templates) { <option value="@template.Id.ToString()">@template.Name@(template.IsDefault ? L["（預設）"].Value : "")</option> }
+                                @if (MissingSelection) { <option value="@model.Policy" disabled>@L["原範本已無法使用，請重新選擇"]</option> }
                             </InputSelect>
                         }
-                        @if (Kind == "devices" && moreTemplates) { <button type="button" @onclick="LoadMoreAsync" disabled="@(Disabled || loadingTemplates)">載入更多範本</button> }
-                        @if (templateError is not null) { <p role="alert">@templateError</p><button type="button" @onclick="LoadMoreAsync" disabled="@(Disabled || loadingTemplates)">重試載入</button> }
+                        @if (Kind == "devices" && moreTemplates) { <button type="button" @onclick="LoadMoreAsync" disabled="@(Disabled || loadingTemplates)">@L["載入更多範本"]</button> }
+                        @if (templateError is not null) { <p role="alert">@templateError</p><button type="button" @onclick="LoadMoreAsync" disabled="@(Disabled || loadingTemplates)">@L["重試載入"]</button> }
                     }
                 </div>
                 <aside aria-labelledby="publication-preview-heading">
-                    <h2 id="publication-preview-heading">公開預覽</h2>
-                    @if (!model.Public) { <p>目前選擇不公開，訪客不會看到此資源。</p> }
+                    <h2 id="publication-preview-heading">@L["公開預覽"]</h2>
+                    @if (!model.Public) { <p>@L["目前選擇不公開，訪客不會看到此資源。"]</p> }
                     else if (Kind == "devices" && model.Policy != PublicationPolicy.BaselineVersion && SelectedTemplate is null)
-                    { <p>請選擇可用的公開範本後查看預覽。</p> }
+                    { <p>@L["請選擇可用的公開範本後查看預覽。"]</p> }
                     else
                     {
-                        <div class="publication-preview"><strong>@(string.IsNullOrWhiteSpace(model.Name) ? "請輸入公開名稱" : model.Name)</strong>
+                        <div class="publication-preview"><strong>@(string.IsNullOrWhiteSpace(model.Name) ? L["請輸入公開名稱"].Value : model.Name)</strong>
                             @if (Kind != "groups") { <span class="@StateClass(preview?.State)">@StateText(preview?.State)</span> }
                             @if (Kind == "devices" && ShowLatency && preview?.LatencyMilliseconds is { } latency) { <span>@latency.ToString("0.##") ms</span> }
                             @if (Kind == "devices" && ShowObservedAt && preview?.ObservedAt is { } observed) { <span>@observed.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</span> }
                         </div>
                         @if (Kind == "services" && IsServiceHistory(model.Policy))
-                        { <div class="publication-history-preview"><strong>每日狀態歷史（最多 90 天）</strong><span>@(model.Policy == PublicationPolicy.ServiceHistoryDetailsVersion ? "也公開簡易狀態的變更時間。" : "公開頁顯示啟用後的每日摘要。")</span></div> }
+                        { <div class="publication-history-preview"><strong>@L["每日狀態歷史（最多 90 天）"]</strong><span>@(model.Policy == PublicationPolicy.ServiceHistoryDetailsVersion ? L["也公開簡易狀態的變更時間。"].Value : L["公開頁顯示啟用後的每日摘要。"].Value)</span></div> }
                         @if (Kind == "devices")
                         {
-                            <p>名稱與狀態會公開@(ShowLatency ? "，包含目前延遲" : "")@(ShowObservedAt ? "及觀測時間" : "")；@(SelectedTemplate?.HistoryDays > 0 ? $"歷史平均延遲最多公開 {SelectedTemplate.HistoryDays} 天。" : "不公開歷史。") IP 和主機進階資料不會公開。</p>
+                            <p>@L["名稱與狀態會公開"]@(ShowLatency ? L["，包含目前延遲"].Value : "")@(ShowObservedAt ? L["及觀測時間"].Value : "")@L["；"]@(SelectedTemplate?.HistoryDays > 0 ? L["歷史平均延遲最多公開 {0} 天。", SelectedTemplate.HistoryDays].Value : L["不公開歷史。"].Value)@L[" IP 和主機進階資料不會公開。"]</p>
                             @if (SelectedTemplate is { HistoryDays: > 0, HistoryReady: false })
-                            { <p class="publication-message" role="status">此範本的歷史尚未就緒；請至範本管理重新預覽並確認設定。</p> }
+                            { <p class="publication-message" role="status">@L["此範本的歷史尚未就緒；請至範本管理重新預覽並確認設定。"]</p> }
                             else if (SelectedTemplate is { HistoryDays: > 0 } selectedHistory)
                             {
                                 @if (!settings.Public || settings.TemplateId != selectedHistory.Id)
-                                { <p>套用後從設定生效時開始累積可公開的歷史。</p> }
+                                { <p>@L["套用後從設定生效時開始累積可公開的歷史。"]</p> }
                                 else if (historyUnavailable || history is null)
-                                { <p>目前無法取得可公開的歷史預覽。</p> }
+                                { <p>@L["目前無法取得可公開的歷史預覽。"]</p> }
                                 else if (history.Points.Count == 0)
-                                { <p>目前沒有可顯示的歷史資料。</p> }
+                                { <p>@L["目前沒有可顯示的歷史資料。"]</p> }
                                 else
-                                { var point = history.Points[^1]; <p>最新歷史：@point.From.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC · @(point.AverageLatencyMilliseconds is { } value ? $"{value:0.##} ms" : "無延遲資料")</p> }
-                                <p>歷史為已結束的五分鐘平均延遲，資料可能持續彙整。</p>
+                                { var point = history.Points[^1]; <p>@L["最新歷史："]@point.From.ToUniversalTime().ToString("yyyy-MM-dd HH:mm") UTC · @(point.AverageLatencyMilliseconds is { } value ? $"{value:0.##} ms" : L["無延遲資料"].Value)</p> }
+                                <p>@L["歷史為已結束的五分鐘平均延遲，資料可能持續彙整。"]</p>
                             }
                         }
-                        else if (Kind == "services") { <p>名稱與簡易狀態會公開；@(model.Policy == PublicationPolicy.ServiceHistoryDetailsVersion ? "啟用後的每日歷史及狀態變更時間也會公開，最多 90 天。" : model.Policy == PublicationPolicy.ServiceHistoryVersion ? "啟用後的每日狀態歷史也會公開，最多 90 天。" : "不公開狀態歷史。") IP、日誌與追蹤等進階資訊不會公開。</p> }
-                        else { <p>只顯示已公開的設備和服務及其數量。群組不改變成員的公開設定。</p> }
+                        else if (Kind == "services") { <p>@L["名稱與簡易狀態會公開；"]@(model.Policy == PublicationPolicy.ServiceHistoryDetailsVersion ? L["啟用後的每日歷史及狀態變更時間也會公開，最多 90 天。"].Value : model.Policy == PublicationPolicy.ServiceHistoryVersion ? L["啟用後的每日狀態歷史也會公開，最多 90 天。"].Value : L["不公開狀態歷史。"].Value)@L[" IP、日誌與追蹤等進階資訊不會公開。"]</p> }
+                        else { <p>@L["只顯示已公開的設備和服務及其數量。群組不改變成員的公開設定。"]</p> }
                     }
                 </aside>
             </section>
-            <div class="publication-actions"><button type="submit" disabled="@Disabled">@(saving ? "儲存中…" : "儲存設定")</button><a href="@BackHref">返回</a></div>
+            <div class="publication-actions"><button type="submit" disabled="@Disabled">@(saving ? L["儲存中…"].Value : L["儲存設定"].Value)</button><a href="@BackHref">@L["返回"]</a></div>
         </EditForm>
     }
 </div>
@@ -117,10 +118,10 @@
     private bool MissingSelection => Kind == "devices" && model.Policy.Length != 0 && model.Policy != PublicationPolicy.BaselineVersion && SelectedTemplate is null;
     private bool ShowLatency => model.Policy == PublicationPolicy.BaselineVersion || SelectedTemplate?.ShowLatency == true;
     private bool ShowObservedAt => model.Policy == PublicationPolicy.BaselineVersion || SelectedTemplate?.ShowObservedAt == true;
-    private string CurrentStatus => settings is null || !settings.Public ? "不公開" :
+    private string CurrentStatus => settings is null || !settings.Public ? L["不公開"].Value :
         Kind == "devices" && settings.PolicyVersion == PublicationPolicy.TemplateVersion
-            ? !currentTemplateChecked ? "已設定公開，範本狀態暫時無法確認" : currentTemplate is null ? "已設定公開，但範本失效，目前訪客不可見" : "公開中"
-            : settings.PolicyVersion == PublicationPolicy.BaselineVersion || Kind == "services" && IsServiceHistory(settings.PolicyVersion) ? "公開中" : "已設定公開，但政策無效，目前訪客不可見";
+            ? !currentTemplateChecked ? L["已設定公開，範本狀態暫時無法確認"].Value : currentTemplate is null ? L["已設定公開，但範本失效，目前訪客不可見"].Value : L["公開中"].Value
+            : settings.PolicyVersion == PublicationPolicy.BaselineVersion || Kind == "services" && IsServiceHistory(settings.PolicyVersion) ? L["公開中"].Value : L["已設定公開，但政策無效，目前訪客不可見"].Value;
 
     private static bool IsServiceHistory(string? policy) => policy is PublicationPolicy.ServiceHistoryVersion or PublicationPolicy.ServiceHistoryDetailsVersion;
 
@@ -150,17 +151,17 @@
                 }
                 catch (UnauthorizedAccessException) { throw; }
                 catch (Exception ex) when (ex is not OperationCanceledException)
-                { Logger.LogWarning(ex, "Unable to load publication templates"); templateError = "範本暫時無法讀取；仍可撤銷公開，或選擇基礎公開設定。"; }
+                { Logger.LogWarning(ex, "Unable to load publication templates"); templateError = L["範本暫時無法讀取；仍可撤銷公開，或選擇基礎公開設定。"].Value; }
             }
             try { preview = await Client.PreviewAsync(Kind, Id, lifetime.Token); }
             catch (UnauthorizedAccessException) { throw; }
             catch (Exception ex) when (ex is not OperationCanceledException)
-            { Logger.LogWarning(ex, "Unable to load publication preview"); message = "預覽暫時無法讀取，仍可變更公開設定。"; }
+            { Logger.LogWarning(ex, "Unable to load publication preview"); message = L["預覽暫時無法讀取，仍可變更公開設定。"].Value; }
             await RefreshHistoryAsync();
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch (UnauthorizedAccessException) { settings = null; error = "登入已過期或權限已變更，請重新登入。"; }
-        catch (Exception ex) { settings = null; error = "無法載入公開設定，請稍後重新整理。"; Logger.LogWarning(ex, "Unable to load publication settings"); }
+        catch (UnauthorizedAccessException) { settings = null; error = L["登入已過期或權限已變更，請重新登入。"].Value; }
+        catch (Exception ex) { settings = null; error = L["無法載入公開設定，請稍後重新整理。"].Value; Logger.LogWarning(ex, "Unable to load publication settings"); }
         finally { loading = false; }
     }
 
@@ -171,7 +172,7 @@
         var selected = SelectedTemplate;
         var validPolicy = model.Policy == PublicationPolicy.BaselineVersion || Kind == "services" && IsServiceHistory(model.Policy) || Kind == "devices" && selected is not null;
         if (model.Public && (!PublicationPolicy.TryValidateName(model.Name, out _) || !validPolicy))
-        { message = "請輸入不含 IP 位址或過於複雜符號組合的公開名稱，並選擇公開範本。"; return; }
+        { message = L["請輸入不含 IP 位址或過於複雜符號組合的公開名稱，並選擇公開範本。"].Value; return; }
         saving = true;
         try
         {
@@ -183,21 +184,21 @@
                 settings = result.Settings; model.Name = settings.DisplayName ?? model.Name; currentTemplate = model.Public ? selected : null;
                 currentTemplateChecked = true; success = true;
                 message = Kind == "services" && settings.Public && IsServiceHistory(settings.PolicyVersion) && settings.HistoryReady == false
-                    ? "公開設定已儲存，但歷史尚未就緒；請稍後重新儲存。" : "公開設定已儲存。";
+                    ? L["公開設定已儲存，但歷史尚未就緒；請稍後重新儲存。"].Value : L["公開設定已儲存。"].Value;
                 try { preview = await Client.PreviewAsync(Kind, Id, lifetime.Token); }
-                catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to refresh publication preview"); preview = null; message = "公開設定已儲存，預覽暫時無法更新。"; }
+                catch (Exception ex) when (ex is not OperationCanceledException) { Logger.LogWarning(ex, "Unable to refresh publication preview"); preview = null; message = L["公開設定已儲存，預覽暫時無法更新。"].Value; }
                 await RefreshHistoryAsync();
             }
-            else message = result.Status switch { PublicationSaveStatus.Conflict => "設定已變更或資源已封存，請重新整理後再試。", PublicationSaveStatus.Invalid => "公開名稱或範本無效，請檢查後再試。", _ => "資源不存在或無法儲存，請重新整理。" };
+            else message = result.Status switch { PublicationSaveStatus.Conflict => L["設定已變更或資源已封存，請重新整理後再試。"].Value, PublicationSaveStatus.Invalid => L["公開名稱或範本無效，請檢查後再試。"].Value, _ => L["資源不存在或無法儲存，請重新整理。"].Value };
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch (UnauthorizedAccessException) { message = "登入已過期或權限已變更，請重新登入。"; }
-        catch (Exception ex) { Logger.LogWarning(ex, "Unable to save publication settings"); message = "無法確認儲存結果，請重新整理後再試。"; }
+        catch (UnauthorizedAccessException) { message = L["登入已過期或權限已變更，請重新登入。"].Value; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to save publication settings"); message = L["無法確認儲存結果，請重新整理後再試。"].Value; }
         finally { saving = false; }
     }
 
-    private static string StateText(string? state) => state switch
-    { "Operational" => "可達", "Unavailable" => "不可達", "Healthy" => "正常", "Degraded" => "降級", "Unhealthy" => "異常", _ => "未知或尚無資料" };
+    private string StateText(string? state) => state switch
+    { "Operational" => L["可達"].Value, "Unavailable" => L["不可達"].Value, "Healthy" => L["正常"].Value, "Degraded" => L["降級"].Value, "Unhealthy" => L["異常"].Value, _ => L["未知或尚無資料"].Value };
     private static string StateClass(string? state) => state switch
     { "Operational" or "Healthy" => "publication-good", "Unavailable" or "Unhealthy" => "publication-danger", _ => "publication-unknown" };
     private async Task RefreshHistoryAsync()
@@ -228,8 +229,8 @@
             templatePage = page.Page; moreTemplates = page.HasMore; templateError = null;
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch (UnauthorizedAccessException) { templateError = "登入已過期或權限已變更，請重新登入。"; }
-        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load publication templates"); templateError = "範本暫時無法讀取；仍可撤銷公開，或選擇基礎公開設定。"; }
+        catch (UnauthorizedAccessException) { templateError = L["登入已過期或權限已變更，請重新登入。"].Value; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to load publication templates"); templateError = L["範本暫時無法讀取；仍可撤銷公開，或選擇基礎公開設定。"].Value; }
         finally { loadingTemplates = false; }
     }
     public ValueTask DisposeAsync() { lifetime.Cancel(); lifetime.Dispose(); return ValueTask.CompletedTask; }

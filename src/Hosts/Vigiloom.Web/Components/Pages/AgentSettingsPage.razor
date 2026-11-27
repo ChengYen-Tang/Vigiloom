@@ -16,154 +16,155 @@
 @inject IAgentReplayPolicy ReplayPolicy
 @inject IDeviceManagement Devices
 @inject ILogger<AgentSettingsPage> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ServiceAdminText> L
 
-<PageTitle>Agent 設定 - Vigiloom</PageTitle>
+<PageTitle>@L["Agent 設定"] - Vigiloom</PageTitle>
 <main class="device-page device-form-page">
-    @if (Id is { } id) { <a href="@($"/devices/{id:D}")">← 返回設備詳情</a> }
+    @if (Id is { } id) { <a href="@($"/devices/{id:D}")">← @L["返回設備詳情"]</a> }
     <header class="device-heading">
-        <div><h1>@(Id is null ? "Agent 平台設定" : "此設備的 Agent 設定")</h1>
-            <p>@(Id is null ? "設定 Agent 同步、心跳與資料傳送的預設週期。" : $"{deviceName ?? "設備"} · 覆寫此設備的週期；未覆寫的項目會跟隨平台設定。")</p></div>
+        <div><h1>@(Id is null ? L["Agent 平台設定"].Value : L["此設備的 Agent 設定"].Value)</h1>
+            <p>@(Id is null ? L["設定 Agent 同步、心跳與資料傳送的預設週期。"].Value : L["{0} · 覆寫此設備的週期；未覆寫的項目會跟隨平台設定。", deviceName ?? L["設備"].Value].Value)</p></div>
     </header>
     <section class="device-panel">
-        @if (loadError) { <p class="device-alert" role="alert">無法讀取設定，請稍後重新整理。</p> }
-        else if (current is null) { <p role="alert">找不到此設備。</p> }
+        @if (loadError) { <p class="device-alert" role="alert">@L["無法讀取設定，請稍後重新整理。"]</p> }
+        else if (current is null) { <p role="alert">@L["找不到此設備。"]</p> }
         else
         {
-            <h2>傳送與同步</h2>
-            <p class="agent-settings-intro">留空代表@(Id is null ? "使用內建預設值" : "繼承平台值")。設定儲存後，Agent 會定期同步；離線的 Agent 會在重新連線後更新。</p>
+            <h2>@L["傳送與同步"]</h2>
+            <p class="agent-settings-intro">@L["留空代表{0}。設定儲存後，Agent 會定期同步；離線的 Agent 會在重新連線後更新。", Id is null ? L["使用內建預設值"].Value : L["繼承平台值"].Value]</p>
             @if (message is not null) { <p role="status">@message</p> }
             <EditForm Model="Input" FormName="agent-settings" method="post" OnSubmit="SaveAsync">
                 <DataAnnotationsValidator /><ValidationSummary />
                 <InputHidden @bind-Value="Input.Version" />
-                <label for="agent-heartbeat">心跳間隔（10～300 秒）</label>
-                <InputNumber id="agent-heartbeat" @bind-Value="Input.HeartbeatSeconds" min="10" max="300" placeholder="@($"沿用 {current.Inherited.Settings.HeartbeatSeconds} 秒")" />
-                <small class="agent-settings-hint">目前目標值：@current.Effective.Settings.HeartbeatSeconds 秒</small>
-                <label for="agent-poll">設定同步間隔（60～3600 秒）</label>
-                <InputNumber id="agent-poll" @bind-Value="Input.SettingsPollSeconds" min="60" max="3600" placeholder="@($"沿用 {current.Inherited.Settings.SettingsPollSeconds} 秒")" />
-                <small class="agent-settings-hint">目前目標值：@current.Effective.Settings.SettingsPollSeconds 秒；同步時間會略作分散。</small>
-                <label for="agent-batch">資料傳送間隔（1～300 秒）</label>
-                <InputNumber id="agent-batch" @bind-Value="Input.BatchIntervalSeconds" min="1" max="300" placeholder="@($"沿用 {current.Inherited.Settings.BatchIntervalSeconds} 秒")" />
-                <small class="agent-settings-hint">目前目標值：@current.Effective.Settings.BatchIntervalSeconds 秒；網路失敗時會退避重試。</small>
-                <p>設備可能尚未套用新值；可從設備詳情查看最近回報與同步狀態。</p>
-                <div class="device-actions"><button type="submit">儲存 Agent 設定</button></div>
+                <label for="agent-heartbeat">@L["心跳間隔（10～300 秒）"]</label>
+                <InputNumber id="agent-heartbeat" @bind-Value="Input.HeartbeatSeconds" min="10" max="300" placeholder="@L["沿用 {0} 秒", current.Inherited.Settings.HeartbeatSeconds]" />
+                <small class="agent-settings-hint">@L["目前目標值：{0} 秒", current.Effective.Settings.HeartbeatSeconds]</small>
+                <label for="agent-poll">@L["設定同步間隔（60～3600 秒）"]</label>
+                <InputNumber id="agent-poll" @bind-Value="Input.SettingsPollSeconds" min="60" max="3600" placeholder="@L["沿用 {0} 秒", current.Inherited.Settings.SettingsPollSeconds]" />
+                <small class="agent-settings-hint">@L["目前目標值：{0} 秒；同步時間會略作分散。", current.Effective.Settings.SettingsPollSeconds]</small>
+                <label for="agent-batch">@L["資料傳送間隔（1～300 秒）"]</label>
+                <InputNumber id="agent-batch" @bind-Value="Input.BatchIntervalSeconds" min="1" max="300" placeholder="@L["沿用 {0} 秒", current.Inherited.Settings.BatchIntervalSeconds]" />
+                <small class="agent-settings-hint">@L["目前目標值：{0} 秒；網路失敗時會退避重試。", current.Effective.Settings.BatchIntervalSeconds]</small>
+                <p>@L["設備可能尚未套用新值；可從設備詳情查看最近回報與同步狀態。"]</p>
+                <div class="device-actions"><button type="submit">@L["儲存 Agent 設定"]</button></div>
             </EditForm>
         }
     </section>
     <section class="device-panel">
-        <h2>主機效能採樣</h2>
-        @if (Id is null) { <p><a href="/settings/agents/metric-retention">管理主機效能資料保存期限</a></p> }
-        @if (metricLoadError) { <p class="device-alert" role="alert">無法讀取採樣設定，請稍後重新整理。</p> }
-        else if (metricCurrent is null) { <p role="alert">找不到此設備。</p> }
+        <h2>@L["主機效能採樣"]</h2>
+        @if (Id is null) { <p><a href="/settings/agents/metric-retention">@L["管理主機效能資料保存期限"]</a></p> }
+        @if (metricLoadError) { <p class="device-alert" role="alert">@L["無法讀取採樣設定，請稍後重新整理。"]</p> }
+        else if (metricCurrent is null) { <p role="alert">@L["找不到此設備。"]</p> }
         else
         {
-            <p class="agent-settings-intro">留空代表@(Id is null ? "使用內建預設值" : "繼承平台值")。較短的間隔會增加資料量與設備負擔。</p>
+            <p class="agent-settings-intro">@L["留空代表{0}。較短的間隔會增加資料量與設備負擔。", Id is null ? L["使用內建預設值"].Value : L["繼承平台值"].Value]</p>
             @if (metricMessage is not null) { <p class="agent-settings-status" role="status">@metricMessage</p> }
             <EditForm Model="MetricInput" FormName="agent-metrics" method="post" OnSubmit="SaveMetricsAsync">
                 <DataAnnotationsValidator /><ValidationSummary />
                 <InputHidden @bind-Value="MetricInput.Version" />
-                <label for="agent-metric-host">主機效能採樣間隔（10～3600 秒）</label>
-                <InputNumber id="agent-metric-host" @bind-Value="MetricInput.HostIntervalSeconds" min="10" max="3600" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.HostIntervalSeconds} 秒")" />
-                <small class="agent-settings-hint">CPU、記憶體、磁碟與網路；目前目標值：@metricCurrent.Effective.Settings.HostIntervalSeconds 秒。</small>
-                <label for="agent-metric-process">程序採樣與主機程序／服務快照間隔（10～3600 秒）</label>
-                <InputNumber id="agent-metric-process" @bind-Value="MetricInput.ProcessIntervalSeconds" min="10" max="3600" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.ProcessIntervalSeconds} 秒")" />
-                <small class="agent-settings-hint">程序、OS 服務與監聽端點快照在每輪完成後等待此間隔；設備負載或離線可能延後。</small>
-                <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.ProcessIntervalSeconds 秒。</small>
-                <label for="agent-metric-cpu">採樣 CPU 預算（每分鐘 100～60000 毫秒）</label>
-                <InputNumber id="agent-metric-cpu" @bind-Value="MetricInput.CpuMillisecondsPerMinute" min="100" max="60000" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.CpuMillisecondsPerMinute} 毫秒")" />
-                <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.CpuMillisecondsPerMinute 毫秒；達到後延後後續採樣。</small>
-                <label for="agent-metric-memory">Agent 記憶體門檻（64～4096 MiB）</label>
-                <InputNumber id="agent-metric-memory" @bind-Value="MetricInput.WorkingSetLimitMiB" min="64" max="4096" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.WorkingSetLimitMiB} MiB")" />
-                <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.WorkingSetLimitMiB MiB；Agent 使用量達到門檻時延後後續採樣。</small>
-                <label for="agent-metric-process-budget">程序採集時間預算（100～30000 毫秒）</label>
-                <InputNumber id="agent-metric-process-budget" @bind-Value="MetricInput.ProcessCollectionBudgetMs" min="100" max="30000" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.ProcessCollectionBudgetMs} 毫秒")" />
-                <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.ProcessCollectionBudgetMs 毫秒；到期後不再開始讀取其他程序。</small>
-                <label for="agent-metric-io">採樣 I/O 預算（1～4096 MiB／分鐘）</label>
-                <InputNumber id="agent-metric-io" @bind-Value="MetricInput.IoLimitMiBPerMinute" min="1" max="4096" placeholder="@($"沿用 {metricCurrent.Inherited.Settings.IoLimitMiBPerMinute} MiB／分鐘")" />
-                <small class="agent-settings-hint">目前目標值：@metricCurrent.Effective.Settings.IoLimitMiBPerMinute MiB／分鐘；依採樣期間 Agent 程序的邏輯 I/O 調整後續採樣，並非實體磁碟硬上限。</small>
-                <p>設定儲存後會由 Agent 定期同步；目標值不代表設備已套用。</p>
-                <div class="device-actions"><button type="submit">儲存採樣設定</button></div>
+                <label for="agent-metric-host">@L["主機效能採樣間隔（10～3600 秒）"]</label>
+                <InputNumber id="agent-metric-host" @bind-Value="MetricInput.HostIntervalSeconds" min="10" max="3600" placeholder="@L["沿用 {0} 秒", metricCurrent.Inherited.Settings.HostIntervalSeconds]" />
+                <small class="agent-settings-hint">@L["CPU、記憶體、磁碟與網路；目前目標值：{0} 秒。", metricCurrent.Effective.Settings.HostIntervalSeconds]</small>
+                <label for="agent-metric-process">@L["程序採樣與主機程序／服務快照間隔（10～3600 秒）"]</label>
+                <InputNumber id="agent-metric-process" @bind-Value="MetricInput.ProcessIntervalSeconds" min="10" max="3600" placeholder="@L["沿用 {0} 秒", metricCurrent.Inherited.Settings.ProcessIntervalSeconds]" />
+                <small class="agent-settings-hint">@L["程序、OS 服務與監聽端點快照在每輪完成後等待此間隔；設備負載或離線可能延後。"]</small>
+                <small class="agent-settings-hint">@L["目前目標值：{0} 秒。", metricCurrent.Effective.Settings.ProcessIntervalSeconds]</small>
+                <label for="agent-metric-cpu">@L["採樣 CPU 預算（每分鐘 100～60000 毫秒）"]</label>
+                <InputNumber id="agent-metric-cpu" @bind-Value="MetricInput.CpuMillisecondsPerMinute" min="100" max="60000" placeholder="@L["沿用 {0} 毫秒", metricCurrent.Inherited.Settings.CpuMillisecondsPerMinute]" />
+                <small class="agent-settings-hint">@L["目前目標值：{0} 毫秒；達到後延後後續採樣。", metricCurrent.Effective.Settings.CpuMillisecondsPerMinute]</small>
+                <label for="agent-metric-memory">@L["Agent 記憶體門檻（64～4096 MiB）"]</label>
+                <InputNumber id="agent-metric-memory" @bind-Value="MetricInput.WorkingSetLimitMiB" min="64" max="4096" placeholder="@L["沿用 {0} MiB", metricCurrent.Inherited.Settings.WorkingSetLimitMiB]" />
+                <small class="agent-settings-hint">@L["目前目標值：{0} MiB；Agent 使用量達到門檻時延後後續採樣。", metricCurrent.Effective.Settings.WorkingSetLimitMiB]</small>
+                <label for="agent-metric-process-budget">@L["程序採集時間預算（100～30000 毫秒）"]</label>
+                <InputNumber id="agent-metric-process-budget" @bind-Value="MetricInput.ProcessCollectionBudgetMs" min="100" max="30000" placeholder="@L["沿用 {0} 毫秒", metricCurrent.Inherited.Settings.ProcessCollectionBudgetMs]" />
+                <small class="agent-settings-hint">@L["目前目標值：{0} 毫秒；到期後不再開始讀取其他程序。", metricCurrent.Effective.Settings.ProcessCollectionBudgetMs]</small>
+                <label for="agent-metric-io">@L["採樣 I/O 預算（1～4096 MiB／分鐘）"]</label>
+                <InputNumber id="agent-metric-io" @bind-Value="MetricInput.IoLimitMiBPerMinute" min="1" max="4096" placeholder="@L["沿用 {0} MiB／分鐘", metricCurrent.Inherited.Settings.IoLimitMiBPerMinute]" />
+                <small class="agent-settings-hint">@L["目前目標值：{0} MiB／分鐘；依採樣期間 Agent 程序的邏輯 I/O 調整後續採樣，並非實體磁碟硬上限。", metricCurrent.Effective.Settings.IoLimitMiBPerMinute]</small>
+                <p>@L["設定儲存後會由 Agent 定期同步；目標值不代表設備已套用。"]</p>
+                <div class="device-actions"><button type="submit">@L["儲存採樣設定"]</button></div>
             </EditForm>
         }
     </section>
     <section class="device-panel">
-        <h2>主機盤點</h2>
-        @if (inventoryLoadError) { <p class="device-alert" role="alert">無法讀取盤點設定，請稍後重新整理。</p> }
-        else if (inventoryCurrent is null) { <p role="alert">找不到此設備。</p> }
+        <h2>@L["主機盤點"]</h2>
+        @if (inventoryLoadError) { <p class="device-alert" role="alert">@L["無法讀取盤點設定，請稍後重新整理。"]</p> }
+        else if (inventoryCurrent is null) { <p role="alert">@L["找不到此設備。"]</p> }
         else
         {
-            <p class="agent-settings-intro">留空代表@(Id is null ? "使用內建預設值" : "繼承平台值")。Agent 啟動後會盤點一次，接著在每輪完成後依間隔再次盤點；安全基準檢查也使用此間隔。</p>
+            <p class="agent-settings-intro">@L["留空代表{0}。Agent 啟動後會盤點一次，接著在每輪完成後依間隔再次盤點；安全基準檢查也使用此間隔。", Id is null ? L["使用內建預設值"].Value : L["繼承平台值"].Value]</p>
             @if (inventoryMessage is not null) { <p class="agent-settings-status" role="status">@inventoryMessage</p> }
             <EditForm Model="InventoryInput" FormName="agent-inventory" method="post" OnSubmit="SaveInventoryAsync">
                 <DataAnnotationsValidator /><ValidationSummary />
                 <InputHidden @bind-Value="InventoryInput.Version" />
-                <label for="agent-inventory-interval">盤點間隔（900～604800 秒，即 15 分鐘～7 天）</label>
-                <InputNumber id="agent-inventory-interval" @bind-Value="InventoryInput.ScanIntervalSeconds" min="900" max="604800" placeholder="@($"沿用 {inventoryCurrent.Inherited.Settings.ScanIntervalSeconds} 秒")" />
-                <small class="agent-settings-hint">目前目標值：@inventoryCurrent.Effective.Settings.ScanIntervalSeconds 秒（預設 6 小時）。較短的間隔會增加設備負擔。</small>
-                <label for="agent-process-command">程序執行資訊</label>
+                <label for="agent-inventory-interval">@L["盤點間隔（900～604800 秒，即 15 分鐘～7 天）"]</label>
+                <InputNumber id="agent-inventory-interval" @bind-Value="InventoryInput.ScanIntervalSeconds" min="900" max="604800" placeholder="@L["沿用 {0} 秒", inventoryCurrent.Inherited.Settings.ScanIntervalSeconds]" />
+                <small class="agent-settings-hint">@L["目前目標值：{0} 秒（預設 6 小時）。較短的間隔會增加設備負擔。", inventoryCurrent.Effective.Settings.ScanIntervalSeconds]</small>
+                <label for="agent-process-command">@L["程序執行資訊"]</label>
                 <select id="agent-process-command" name="InventoryInput.CollectCommandLine">
-                    <option value="" selected="@(InventoryInput.CollectCommandLine is null)">@(Id is null ? "使用預設值" : "繼承平台設定")</option>
-                    <option value="false" selected="@(InventoryInput.CollectCommandLine == false)">不收集執行路徑</option>
-                    <option value="true" selected="@(InventoryInput.CollectCommandLine == true)">收集執行路徑，遮罩所有參數</option>
+                    <option value="" selected="@(InventoryInput.CollectCommandLine is null)">@(Id is null ? L["使用預設值"].Value : L["繼承平台設定"].Value)</option>
+                    <option value="false" selected="@(InventoryInput.CollectCommandLine == false)">@L["不收集執行路徑"]</option>
+                    <option value="true" selected="@(InventoryInput.CollectCommandLine == true)">@L["收集執行路徑，遮罩所有參數"]</option>
                 </select>
-                <small class="agent-settings-hint">目前目標值：@(inventoryCurrent.Effective.Settings.CollectCommandLine ? "收集路徑，所有參數遮罩" : "不收集")。參數不會傳送到平台。</small>
-                <small class="agent-settings-hint">停用後，新盤點不再收集路徑；之前已保存的資料仍依保存政策處理。</small>
+                <small class="agent-settings-hint">@L["目前目標值：{0}。參數不會傳送到平台。", inventoryCurrent.Effective.Settings.CollectCommandLine ? L["收集路徑，所有參數遮罩"].Value : L["不收集"].Value]</small>
+                <small class="agent-settings-hint">@L["停用後，新盤點不再收集路徑；之前已保存的資料仍依保存政策處理。"]</small>
                 @if (Id is not null)
                 {
-                    <p>設定狀態：@InventoryStateText(inventoryStatus?.State)</p>
+                    <p>@L["設定狀態：{0}", InventoryStateText(inventoryStatus?.State)]</p>
                     @if (inventoryStatus?.Applied is { } applied)
                     {
-                        <p>Agent 已採用：@applied.Settings.ScanIntervalSeconds 秒；程序執行資訊：@(applied.Settings.CollectCommandLine ? "收集路徑，參數遮罩" : "不收集")。進行中的盤點會繼續完成。</p>
+                        <p>@L["Agent 已採用：{0} 秒；程序執行資訊：{1}。進行中的盤點會繼續完成。", applied.Settings.ScanIntervalSeconds, applied.Settings.CollectCommandLine ? L["收集路徑，參數遮罩"].Value : L["不收集"].Value]</p>
                     }
-                    @if (inventoryStatusLoadError) { <p role="status">無法讀取 Agent 設定狀態，請稍後重新整理。</p> }
+                    @if (inventoryStatusLoadError) { <p role="status">@L["無法讀取 Agent 設定狀態，請稍後重新整理。"]</p> }
                 }
-                else { <p>設定會由 Agent 定期同步；目標值不代表設備已套用。</p> }
-                <div class="device-actions"><button type="submit">儲存盤點設定</button></div>
+                else { <p>@L["設定會由 Agent 定期同步；目標值不代表設備已套用。"]</p> }
+                <div class="device-actions"><button type="submit">@L["儲存盤點設定"]</button></div>
             </EditForm>
         }
     </section>
     <section class="device-panel">
-        <h2>本機佇列容量</h2>
-        @if (capacityLoadError) { <p class="device-alert" role="alert">無法讀取佇列容量設定，請稍後重新整理。</p> }
-        else if (capacityCurrent is null) { <p role="alert">找不到此設備。</p> }
+        <h2>@L["本機佇列容量"]</h2>
+        @if (capacityLoadError) { <p class="device-alert" role="alert">@L["無法讀取佇列容量設定，請稍後重新整理。"]</p> }
+        else if (capacityCurrent is null) { <p role="alert">@L["找不到此設備。"]</p> }
         else
         {
             <div class="agent-settings-intro">
-                <p>留空代表@(Id is null ? "使用內建預設值" : "繼承平台值")。降低上限不會刪除已保留資料；超過上限時，新資料須等待空間。</p>
-                <p>這是批次內容的邏輯容量，資料庫與暫存檔會使用額外磁碟空間。</p>
+                <p>@L["留空代表{0}。降低上限不會刪除已保留資料；超過上限時，新資料須等待空間。", Id is null ? L["使用內建預設值"].Value : L["繼承平台值"].Value]</p>
+                <p>@L["這是批次內容的邏輯容量，資料庫與暫存檔會使用額外磁碟空間。"]</p>
             </div>
             @if (capacityMessage is not null) { <p class="agent-settings-status" role="status">@capacityMessage</p> }
             <EditForm Model="CapacityInput" FormName="agent-capacity" method="post" OnSubmit="SaveCapacityAsync">
                 <DataAnnotationsValidator /><ValidationSummary />
                 <InputHidden @bind-Value="CapacityInput.Version" />
-                <label for="agent-capacity-mib">批次內容容量（1～1024 MiB）</label>
-                <InputNumber id="agent-capacity-mib" @bind-Value="CapacityInput.PayloadMiB" min="1" max="1024" placeholder="@($"沿用 {capacityCurrent.Inherited.Capacity.PayloadBytes / (1024 * 1024)} MiB")" />
-                <small class="agent-settings-hint">目前目標值：@(capacityCurrent.Effective.Capacity.PayloadBytes / (1024 * 1024)) MiB</small>
-                <label for="agent-capacity-batches">批次數量上限（1～100000 批）</label>
-                <InputNumber id="agent-capacity-batches" @bind-Value="CapacityInput.BatchCount" min="1" max="100000" placeholder="@($"沿用 {capacityCurrent.Inherited.Capacity.BatchCount} 批")" />
-                <small class="agent-settings-hint">目前目標值：@capacityCurrent.Effective.Capacity.BatchCount 批</small>
-                <p>設定會由 Agent 定期同步；目標值不代表設備已套用。</p>
-                <div class="device-actions"><button type="submit">儲存佇列容量</button></div>
+                <label for="agent-capacity-mib">@L["批次內容容量（1～1024 MiB）"]</label>
+                <InputNumber id="agent-capacity-mib" @bind-Value="CapacityInput.PayloadMiB" min="1" max="1024" placeholder="@L["沿用 {0} MiB", capacityCurrent.Inherited.Capacity.PayloadBytes / (1024 * 1024)]" />
+                <small class="agent-settings-hint">@L["目前目標值：{0} MiB", capacityCurrent.Effective.Capacity.PayloadBytes / (1024 * 1024)]</small>
+                <label for="agent-capacity-batches">@L["批次數量上限（1～100000 批）"]</label>
+                <InputNumber id="agent-capacity-batches" @bind-Value="CapacityInput.BatchCount" min="1" max="100000" placeholder="@L["沿用 {0} 批", capacityCurrent.Inherited.Capacity.BatchCount]" />
+                <small class="agent-settings-hint">@L["目前目標值：{0} 批", capacityCurrent.Effective.Capacity.BatchCount]</small>
+                <p>@L["設定會由 Agent 定期同步；目標值不代表設備已套用。"]</p>
+                <div class="device-actions"><button type="submit">@L["儲存佇列容量"]</button></div>
             </EditForm>
         }
     </section>
     @if (Id is null)
     {
         <section class="device-panel replay-policy" aria-labelledby="replay-policy-title">
-            <h2 id="replay-policy-title">離線資料補送</h2>
-            @if (replayLoadError) { <p class="device-alert" role="alert">無法讀取補送政策，請稍後重新整理。</p> }
+            <h2 id="replay-policy-title">@L["離線資料補送"]</h2>
+            @if (replayLoadError) { <p class="device-alert" role="alert">@L["無法讀取補送政策，請稍後重新整理。"]</p> }
             else if (replay is not null)
             {
-                <p>目前狀態：@(replay.Phase switch { AgentReplayPhase.Disabled => "尚未啟用期限", AgentReplayPhase.Grace => "過渡期間", AgentReplayPhase.Enforced => "期限已啟用", _ => "未知" })</p>
-                <p>期限啟用後，平台接受設定的期限內入列的新批次；已提交的批次仍可確認重送。支援此功能的 Agent 會保留遭拒收的超期資料。</p>
-                @if (replay.GraceUntil is { } deadline) { <p>過渡期結束時間（UTC）：@deadline.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</p> }
+                <p>@L["目前狀態：{0}", replay.Phase switch { AgentReplayPhase.Disabled => L["尚未啟用期限"].Value, AgentReplayPhase.Grace => L["過渡期間"].Value, AgentReplayPhase.Enforced => L["期限已啟用"].Value, _ => L["未知"].Value }]</p>
+                <p>@L["期限啟用後，平台接受設定的期限內入列的新批次；已提交的批次仍可確認重送。支援此功能的 Agent 會保留遭拒收的超期資料。"]</p>
+                @if (replay.GraceUntil is { } deadline) { <p>@L["過渡期結束時間（UTC）：{0}", deadline.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")]</p> }
                 @if (replayMessage is not null) { <p role="status">@replayMessage</p> }
                 @if (replay.Phase is AgentReplayPhase.Disabled or AgentReplayPhase.Grace)
                 {
                     <EditForm Model="ReplayInput" FormName="agent-replay" method="post" OnSubmit="SaveReplayAsync">
                         <InputHidden @bind-Value="ReplayInput.Version" />
-                        <p>操作前請確認所有接收節點都已更新，舊節點及其執行中的接收工作已停止。</p>
-                        <label><InputCheckbox @bind-Value="ReplayInput.Confirmed" /> 我已確認所有接收節點完成更新</label>
-                        <div class="device-actions"><button type="submit">@(replay.Phase == AgentReplayPhase.Disabled ? "開始過渡期" : "啟用 24 小時期限")</button></div>
+                        <p>@L["操作前請確認所有接收節點都已更新，舊節點及其執行中的接收工作已停止。"]</p>
+                        <label><InputCheckbox @bind-Value="ReplayInput.Confirmed" /> @L["我已確認所有接收節點完成更新"]</label>
+                        <div class="device-actions"><button type="submit">@(replay.Phase == AgentReplayPhase.Disabled ? L["開始過渡期"].Value : L["啟用 24 小時期限"].Value)</button></div>
                     </EditForm>
                 }
             }
@@ -263,7 +264,7 @@
 
     private async Task SaveReplayAsync(EditContext context)
     {
-        if (Id is not null || replay is null || !ReplayInput.Confirmed) { replayMessage = "請先確認所有接收節點完成更新。"; return; }
+        if (Id is not null || replay is null || !ReplayInput.Confirmed) { replayMessage = L["請先確認所有接收節點完成更新。"].Value; return; }
         if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
         var target = replay.Phase == AgentReplayPhase.Disabled ? AgentReplayPhase.Grace : AgentReplayPhase.Enforced;
         try
@@ -273,11 +274,11 @@
                 replay = saved;
                 ReplayInput.Version = saved.Version;
                 ReplayInput.Confirmed = false;
-                replayMessage = target == AgentReplayPhase.Grace ? "過渡期已開始。請在結束後啟用期限。" : "24 小時補送期限已啟用。";
+                replayMessage = target == AgentReplayPhase.Grace ? L["過渡期已開始。請在結束後啟用期限。"].Value : L["24 小時補送期限已啟用。"].Value;
             }
-            else replayMessage = "政策狀態已變更或過渡期尚未結束，請重新整理後再試。";
+            else replayMessage = L["政策狀態已變更或過渡期尚未結束，請重新整理後再試。"].Value;
         }
-        catch (Exception exception) { Logger.LogWarning("Could not change Agent replay policy: {ExceptionType}", exception.GetType().Name); replayMessage = "無法確認政策是否已儲存，請重新整理並檢查。"; }
+        catch (Exception exception) { Logger.LogWarning("Could not change Agent replay policy: {ExceptionType}", exception.GetType().Name); replayMessage = L["無法確認政策是否已儲存，請重新整理並檢查。"].Value; }
     }
 
     private sealed class ReplayForm
@@ -292,18 +293,18 @@
         if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
         var input = new AgentQueueCapacityUpdate(new(CapacityInput.PayloadMiB is { } mib ? (long)mib * 1024 * 1024 : null,
             CapacityInput.BatchCount), CapacityInput.Version ?? "");
-        if (!AgentQueueCapacityConfiguration.Valid(input.Overrides)) { capacityMessage = "請檢查佇列容量的允許範圍。"; return; }
+        if (!AgentQueueCapacityConfiguration.Valid(input.Overrides)) { capacityMessage = L["請檢查佇列容量的允許範圍。"].Value; return; }
         try
         {
             if (await CapacitySettings.UpdateAsync(Id, input, actor, HttpContext.RequestAborted) is { } saved)
             {
                 capacityCurrent = saved;
                 CapacityInput.Version = saved.Version;
-                capacityMessage = "設定已儲存；Agent 會在下一次同步時更新。";
+                capacityMessage = L["設定已儲存；Agent 會在下一次同步時更新。"].Value;
             }
-            else capacityMessage = "設定已被其他操作變更，請重新整理後再試。";
+            else capacityMessage = L["設定已被其他操作變更，請重新整理後再試。"].Value;
         }
-        catch (Exception exception) { Logger.LogWarning("Could not save Agent queue capacity: {ExceptionType}", exception.GetType().Name); capacityMessage = "無法確認儲存結果，請重新整理並檢查。"; }
+        catch (Exception exception) { Logger.LogWarning("Could not save Agent queue capacity: {ExceptionType}", exception.GetType().Name); capacityMessage = L["無法確認儲存結果，請重新整理並檢查。"].Value; }
     }
 
     private async Task SaveMetricsAsync(EditContext context)
@@ -311,18 +312,18 @@
         if (!context.Validate() || metricCurrent is null) return;
         if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
         var input = new AgentMetricSettingsUpdate(new(MetricInput.HostIntervalSeconds, MetricInput.ProcessIntervalSeconds, MetricInput.CpuMillisecondsPerMinute, MetricInput.WorkingSetLimitMiB, MetricInput.ProcessCollectionBudgetMs, MetricInput.IoLimitMiBPerMinute), MetricInput.Version ?? "");
-        if (!AgentMetricConfiguration.Valid(input.Overrides)) { metricMessage = "請檢查採樣設定的允許範圍。"; return; }
+        if (!AgentMetricConfiguration.Valid(input.Overrides)) { metricMessage = L["請檢查採樣設定的允許範圍。"].Value; return; }
         try
         {
             if (await MetricSettings.UpdateAsync(Id, input, actor, HttpContext.RequestAborted) is { } saved)
             {
                 metricCurrent = saved;
                 MetricInput.Version = saved.Version;
-                metricMessage = "設定已儲存；Agent 會在下一次同步時更新。";
+                metricMessage = L["設定已儲存；Agent 會在下一次同步時更新。"].Value;
             }
-            else metricMessage = "設定已被其他操作變更，請重新整理後再試。";
+            else metricMessage = L["設定已被其他操作變更，請重新整理後再試。"].Value;
         }
-        catch (Exception exception) { Logger.LogWarning("Could not save Agent metric settings: {ExceptionType}", exception.GetType().Name); metricMessage = "無法確認儲存結果，請重新整理並檢查。"; }
+        catch (Exception exception) { Logger.LogWarning("Could not save Agent metric settings: {ExceptionType}", exception.GetType().Name); metricMessage = L["無法確認儲存結果，請重新整理並檢查。"].Value; }
     }
 
     private async Task SaveInventoryAsync(EditContext context)
@@ -330,38 +331,38 @@
         if (!context.Validate() || inventoryCurrent is null) return;
         if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
         var input = new InventorySettingsUpdate(new(InventoryInput.ScanIntervalSeconds, InventoryInput.CollectCommandLine), InventoryInput.Version ?? "");
-        if (!InventoryConfiguration.Valid(input.Overrides)) { inventoryMessage = "請檢查盤點間隔的允許範圍。"; return; }
+        if (!InventoryConfiguration.Valid(input.Overrides)) { inventoryMessage = L["請檢查盤點間隔的允許範圍。"].Value; return; }
         try
         {
             if (await InventorySettings.UpdateAsync(Id, input, actor, HttpContext.RequestAborted) is { } saved)
             {
                 inventoryCurrent = saved;
                 InventoryInput.Version = saved.Version;
-                inventoryMessage = "設定已儲存；Agent 會在下一次同步時更新。";
+                inventoryMessage = L["設定已儲存；Agent 會在下一次同步時更新。"].Value;
                 if (Id is { } deviceId)
                 {
                     try { inventoryStatus = await InventoryMonitoring.GetAsync(deviceId, HttpContext.RequestAborted); inventoryStatusLoadError = false; }
                     catch (Exception exception) { Logger.LogWarning("Could not refresh inventory settings status: {ExceptionType}", exception.GetType().Name); inventoryStatus = null; inventoryStatusLoadError = true; }
                 }
             }
-            else inventoryMessage = "設定已被其他操作變更，請重新整理後再試。";
+            else inventoryMessage = L["設定已被其他操作變更，請重新整理後再試。"].Value;
         }
-        catch (Exception exception) { Logger.LogWarning("Could not save inventory settings: {ExceptionType}", exception.GetType().Name); inventoryMessage = "無法確認儲存結果，請重新整理並檢查。"; }
+        catch (Exception exception) { Logger.LogWarning("Could not save inventory settings: {ExceptionType}", exception.GetType().Name); inventoryMessage = L["無法確認儲存結果，請重新整理並檢查。"].Value; }
     }
 
-    private static string InventoryStateText(AgentSettingsApplyState? state) => state switch
+    private string InventoryStateText(AgentSettingsApplyState? state) => state switch
     {
-        AgentSettingsApplyState.Disabled => "設備已停用",
-        AgentSettingsApplyState.NotRegistered => "Agent 尚未註冊",
-        AgentSettingsApplyState.WaitingForHeartbeat => "等待 Agent 心跳",
-        AgentSettingsApplyState.WaitingForReport => "等待 Agent 回報設定",
-        AgentSettingsApplyState.Pending => "等待 Agent 套用新設定",
-        AgentSettingsApplyState.Applied => "Agent 已採用目標設定",
-        AgentSettingsApplyState.Failed => "設定同步失敗，Agent 繼續使用最後有效設定",
-        AgentSettingsApplyState.Offline => "Agent 離線",
-        AgentSettingsApplyState.ClockUncertain => "回報時間異常",
-        AgentSettingsApplyState.ReportStale => "設定回報已過期",
-        _ => "未知"
+        AgentSettingsApplyState.Disabled => L["設備已停用"].Value,
+        AgentSettingsApplyState.NotRegistered => L["Agent 尚未註冊"].Value,
+        AgentSettingsApplyState.WaitingForHeartbeat => L["等待 Agent 心跳"].Value,
+        AgentSettingsApplyState.WaitingForReport => L["等待 Agent 回報設定"].Value,
+        AgentSettingsApplyState.Pending => L["等待 Agent 套用新設定"].Value,
+        AgentSettingsApplyState.Applied => L["Agent 已採用目標設定"].Value,
+        AgentSettingsApplyState.Failed => L["設定同步失敗，Agent 繼續使用最後有效設定"].Value,
+        AgentSettingsApplyState.Offline => L["Agent 離線"].Value,
+        AgentSettingsApplyState.ClockUncertain => L["回報時間異常"].Value,
+        AgentSettingsApplyState.ReportStale => L["設定回報已過期"].Value,
+        _ => L["未知"].Value
     };
 
     private async Task SaveAsync(EditContext context)
@@ -369,46 +370,46 @@
         if (!context.Validate() || current is null) return;
         if (!Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
         var input = new AgentSettingsUpdate(new(Input.HeartbeatSeconds, Input.SettingsPollSeconds, Input.BatchIntervalSeconds), Input.Version ?? "");
-        if (!AgentConfiguration.Valid(input.Overrides)) { message = "請檢查各項設定的允許範圍。"; return; }
+        if (!AgentConfiguration.Valid(input.Overrides)) { message = L["請檢查各項設定的允許範圍。"].Value; return; }
         try
         {
             if (await Settings.UpdateAsync(Id, input, actor, HttpContext.RequestAborted) is { } saved)
             {
                 current = saved;
                 Input.Version = saved.Version;
-                message = "設定已儲存；Agent 會在下一次同步時更新。";
+                message = L["設定已儲存；Agent 會在下一次同步時更新。"].Value;
             }
-            else message = "設定已被其他操作變更，請重新整理後再試。";
+            else message = L["設定已被其他操作變更，請重新整理後再試。"].Value;
         }
-        catch (Exception exception) { Logger.LogWarning("Could not save Agent settings: {ExceptionType}", exception.GetType().Name); message = "無法確認儲存結果，請重新整理並檢查。"; }
+        catch (Exception exception) { Logger.LogWarning("Could not save Agent settings: {ExceptionType}", exception.GetType().Name); message = L["無法確認儲存結果，請重新整理並檢查。"].Value; }
     }
 
     private sealed class SettingsForm
     {
-        [Range(10, 300)] public int? HeartbeatSeconds { get; set; }
-        [Range(60, 3600)] public int? SettingsPollSeconds { get; set; }
-        [Range(1, 300)] public int? BatchIntervalSeconds { get; set; }
+        [Range(10, 300, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? HeartbeatSeconds { get; set; }
+        [Range(60, 3600, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? SettingsPollSeconds { get; set; }
+        [Range(1, 300, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? BatchIntervalSeconds { get; set; }
         public string? Version { get; set; }
     }
     private sealed class CapacityForm
     {
-        [Range(1, 1024)] public int? PayloadMiB { get; set; }
-        [Range(1, 100000)] public int? BatchCount { get; set; }
+        [Range(1, 1024, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? PayloadMiB { get; set; }
+        [Range(1, 100000, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? BatchCount { get; set; }
         public string? Version { get; set; }
     }
     private sealed class MetricForm
     {
-        [Range(10, 3600)] public int? HostIntervalSeconds { get; set; }
-        [Range(10, 3600)] public int? ProcessIntervalSeconds { get; set; }
-        [Range(100, 60000)] public int? CpuMillisecondsPerMinute { get; set; }
-        [Range(64, 4096)] public int? WorkingSetLimitMiB { get; set; }
-        [Range(100, 30000)] public int? ProcessCollectionBudgetMs { get; set; }
-        [Range(1, 4096)] public int? IoLimitMiBPerMinute { get; set; }
+        [Range(10, 3600, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? HostIntervalSeconds { get; set; }
+        [Range(10, 3600, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? ProcessIntervalSeconds { get; set; }
+        [Range(100, 60000, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? CpuMillisecondsPerMinute { get; set; }
+        [Range(64, 4096, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? WorkingSetLimitMiB { get; set; }
+        [Range(100, 30000, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? ProcessCollectionBudgetMs { get; set; }
+        [Range(1, 4096, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? IoLimitMiBPerMinute { get; set; }
         public string? Version { get; set; }
     }
     private sealed class InventoryForm
     {
-        [Range(900, 604800)] public int? ScanIntervalSeconds { get; set; }
+        [Range(900, 604800, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? ScanIntervalSeconds { get; set; }
         public bool? CollectCommandLine { get; set; }
         public string? Version { get; set; }
     }

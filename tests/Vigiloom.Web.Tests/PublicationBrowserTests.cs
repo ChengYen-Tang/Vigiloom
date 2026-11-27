@@ -85,6 +85,14 @@ public sealed class PublicationBrowserTests(TestContext context)
         await page.GetByRole(AriaRole.Button, new() { Name = "儲存設定" }).ClickAsync();
         await page.GetByText("公開設定已儲存。", new() { Exact = true }).WaitForAsync();
         Assert.AreEqual(0, await page.GetByText("公開歷史尚未就緒；訪客目前無法查看歷史，請稍後重新儲存設定。", new() { Exact = true }).CountAsync());
+        var publicationPath = $"/settings/publication/services/{service.Id:D}";
+        await page.GotoAsync($"{url}/culture/set?culture=en&returnUrl={Uri.EscapeDataString(publicationPath)}");
+        await page.GetByLabel("Public display name", new() { Exact = true }).WaitForAsync();
+        Assert.AreEqual("Orders", await page.GetByLabel("Public display name", new() { Exact = true }).InputValueAsync());
+        await page.GetByRole(AriaRole.Radio, new() { Name = "Include daily status history", Exact = false }).WaitForAsync();
+        await page.GotoAsync($"{url}/culture/set?culture=zh-Hans&returnUrl={Uri.EscapeDataString(publicationPath)}");
+        await page.GetByLabel("公开显示名称", new() { Exact = true }).WaitForAsync();
+        Assert.AreEqual("Orders", await page.GetByLabel("公开显示名称", new() { Exact = true }).InputValueAsync());
     }, context.CancellationToken);
 
     [TestMethod]

@@ -85,6 +85,15 @@ public sealed class DeviceManagementTests
             Assert.AreEqual("Test router", invalidDocument.QuerySelector("#device-name")!.GetAttribute("value"));
             Assert.AreEqual("https://invalid.example", invalidDocument.QuerySelector("#device-address")!.GetAttribute("value"));
         }
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var invalid = await admin.PostAsync("/devices/new", new FormUrlEncodedContent(fields), token))
+        {
+            var invalidDocument = await new HtmlParser().ParseDocumentAsync(await invalid.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Enter a valid IPv4, IPv6 or DNS name.", invalidDocument.Body!.TextContent);
+            Assert.AreEqual("Test router", invalidDocument.QuerySelector("#device-name")!.GetAttribute("value"));
+            Assert.AreEqual("https://invalid.example", invalidDocument.QuerySelector("#device-address")!.GetAttribute("value"));
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         fields["Input.Address"] = "EXAMPLE.COM";
         using var create = await admin.PostAsync("/devices/new", new FormUrlEncodedContent(fields), token);
         Assert.AreEqual(HttpStatusCode.Redirect, create.StatusCode, (await new HtmlParser().ParseDocumentAsync(await create.Content.ReadAsStringAsync(token), token)).Body?.TextContent);
@@ -94,6 +103,17 @@ public sealed class DeviceManagementTests
         Assert.IsNotNull(devices);
         Assert.AreEqual(1, devices.Total);
         Assert.AreEqual("example.com", devices.Items[0].Address);
+        foreach (var (culture, heading) in new[] { ("en", "Add device"), ("zh-Hans", "添加设备") })
+        {
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd(culture);
+            using var localized = await admin.GetAsync("/devices", token);
+            var content = (await new HtmlParser().ParseDocumentAsync(await localized.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+            Assert.Contains(heading, content);
+            Assert.Contains("Test router", content);
+            Assert.Contains("example.com", content);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         var now = DateTimeOffset.UtcNow;
         var auditUrl = $"/api/v1/operations/audit-feed/devices?from={Uri.EscapeDataString(now.AddDays(-1).ToString("O"))}&to={Uri.EscapeDataString(now.AddDays(1).ToString("O"))}";
         var auditFeed = await admin.GetFromJsonAsync<AuditFeedPage>(auditUrl, token);
@@ -110,6 +130,17 @@ public sealed class DeviceManagementTests
             Assert.DoesNotContain("編輯設備", content);
             Assert.DoesNotContain("確認封存", content);
         }
+        reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var response = await reader.GetAsync($"/devices/{devices.Items[0].Id:D}", token))
+        {
+            var content = (await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+            Assert.Contains("Monitoring information", content);
+            Assert.Contains("Ping measurements", content);
+            Assert.Contains("Test router", content);
+            Assert.Contains("example.com", content);
+            Assert.DoesNotContain("Confirm archive", content);
+        }
+        reader.DefaultRequestHeaders.AcceptLanguage.Clear();
         using (var response = await reader.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("No", "example.org", [], false), token)) Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
         using (var response = await admin.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("No CSRF", "example.org", [], false), token)) Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
         using var apiReader = Client(factory);

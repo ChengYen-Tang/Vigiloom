@@ -1,0 +1,81 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="Title">
+    <value>Create an administrator</value>
+  </data>
+  <data xml:space="preserve" name="Description">
+    <value>Complete the initial setup to start using Vigiloom.</value>
+  </data>
+  <data xml:space="preserve" name="SetupToken">
+    <value>Setup key</value>
+  </data>
+  <data xml:space="preserve" name="TokenHint">
+    <value>Enter the key configured during installation.</value>
+  </data>
+  <data xml:space="preserve" name="Administrator">
+    <value>Administrator username</value>
+  </data>
+  <data xml:space="preserve" name="Password">
+    <value>Password</value>
+  </data>
+  <data xml:space="preserve" name="PasswordHint">
+    <value>Use at least 12 characters, including uppercase and lowercase letters, a number, and a symbol.</value>
+  </data>
+  <data xml:space="preserve" name="ConfirmPassword">
+    <value>Confirm password</value>
+  </data>
+  <data xml:space="preserve" name="AlreadyHaveAccount">
+    <value>Already have an account? Sign in</value>
+  </data>
+  <data xml:space="preserve" name="SetupFailed">
+    <value>Setup could not be completed. Check the setup key and system status.</value>
+  </data>
+  <data xml:space="preserve" name="RequiredToken">
+    <value>Enter the setup key.</value>
+  </data>
+  <data xml:space="preserve" name="TokenLength">
+    <value>Setup key must be at most {1} characters.</value>
+  </data>
+  <data xml:space="preserve" name="RequiredConfirmation">
+    <value>Confirm your password.</value>
+  </data>
+  <data xml:space="preserve" name="PasswordMismatch">
+    <value>Passwords do not match.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordTooShort">
+    <value>The password is too short. Check the password requirements.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresNonAlphanumeric">
+    <value>The password must contain a symbol.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresDigit">
+    <value>The password must contain a number.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresLower">
+    <value>The password must contain a lowercase letter.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresUpper">
+    <value>The password must contain an uppercase letter.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresUniqueChars">
+    <value>The password must contain more distinct characters.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.InvalidUserName">
+    <value>The username contains unsupported characters.</value>
+  </data>
+  <data xml:space="preserve" name="Identity.DuplicateUserName">
+    <value>The username is already in use.</value>
+  </data>
+</root>

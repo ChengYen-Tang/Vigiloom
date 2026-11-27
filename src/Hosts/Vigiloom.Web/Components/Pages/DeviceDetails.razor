@@ -19,62 +19,63 @@
 @inject TimeProvider Clock
 @inject NavigationManager Navigation
 @inject ILogger<DeviceDetails> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<DeviceText> L
 
-<PageTitle>設備詳情 - Vigiloom</PageTitle>
+<PageTitle>@L["設備詳情"] - Vigiloom</PageTitle>
 <main class="device-page">
-    <a href="/devices">← 返回設備清單</a>
-    @if (error) { <p class="device-alert" role="alert">無法載入設備，請稍後重試。</p> }
-    else if (device is null) { <section class="device-panel"><h1>找不到設備</h1><p>此設備不存在，請返回清單。</p></section> }
+    <a href="/devices">@L["← 返回設備清單"]</a>
+    @if (error) { <p class="device-alert" role="alert">@L["無法載入設備，請稍後重試。"]</p> }
+    else if (device is null) { <section class="device-panel"><h1>@L["找不到設備"]</h1><p>@L["此設備不存在，請返回清單。"]</p></section> }
     else
     {
-        <header class="device-heading"><div><h1>@device.Name</h1><p>@(device.DeepMonitoring ? "深入監控" : "僅 Ping") · @(device.Archived ? "已封存" : device.Enabled ? "監控已啟用" : "監控已停用")</p></div>
-            <AuthorizeView Policy="Administrator"><Authorized>@if (!device.Archived) { <div class="device-actions"><a href="@($"/settings/publication/devices/{Id:D}")">公開設定</a><a class="device-primary" href="@($"/devices/{Id:D}/edit")">編輯設備</a></div> }</Authorized></AuthorizeView>
+        <header class="device-heading"><div><h1>@device.Name</h1><p>@(device.DeepMonitoring ? L["深入監控"].Value : L["僅 Ping"].Value) · @(device.Archived ? L["已封存"].Value : device.Enabled ? L["監控已啟用"].Value : L["監控已停用"].Value)</p></div>
+            <AuthorizeView Policy="Administrator"><Authorized>@if (!device.Archived) { <div class="device-actions"><a href="@($"/settings/publication/devices/{Id:D}")">@L["公開設定"]</a><a class="device-primary" href="@($"/devices/{Id:D}/edit")">@L["編輯設備"]</a></div> }</Authorized></AuthorizeView>
         </header>
-        <section class="device-panel"><h2>監測資訊</h2><p><a href="@($"/devices/{Id:D}/ping-history")">查看 Ping 歷史</a></p><dl class="device-details"><div><dt>主要目標</dt><dd>@device.Address</dd></div><div><dt>額外目標</dt><dd>@(device.AdditionalTargets.Count == 0 ? "無" : string.Join("、", device.AdditionalTargets))</dd></div><div><dt>Ping 狀態</dt><dd>@(device.Archived ? "已封存" : !device.Enabled ? "已停用" : pingError ? "無法讀取" : pingStatus?.Targets.FirstOrDefault(x => x.Target == device.Address)?.DisplayState ?? "尚無量測資料")</dd></div><div><dt>建立時間（UTC）</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+        <section class="device-panel"><h2>@L["監測資訊"]</h2><p><a href="@($"/devices/{Id:D}/ping-history")">@L["查看 Ping 歷史"]</a></p><dl class="device-details"><div><dt>@L["主要目標"]</dt><dd>@device.Address</dd></div><div><dt>@L["額外目標"]</dt><dd>@(device.AdditionalTargets.Count == 0 ? L["無"].Value : string.Join(", ", device.AdditionalTargets))</dd></div><div><dt>@L["Ping 狀態"]</dt><dd>@L[device.Archived ? "已封存" : !device.Enabled ? "已停用" : pingError ? "無法讀取" : pingStatus?.Targets.FirstOrDefault(x => x.Target == device.Address)?.DisplayState ?? "尚無量測資料"]</dd></div><div><dt>@L["建立時間（UTC）"]</dt><dd>@device.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
             @if (device.DeepMonitoring)
             {
-                <div><dt>Agent 狀態</dt><dd>@(agentError ? "無法讀取" : AgentState(agentStatus?.State))</dd></div>
-                <div><dt>Agent 最後回報（UTC）</dt><dd>@(agentStatus?.LastHeartbeatAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
-                <div><dt>Agent CPU（單一邏輯處理器為 100%）</dt><dd>@(agentStatus?.Process?.CpuPercent is { } cpu ? $"{cpu:F1}%" : "尚無資料")</dd></div>
-                <div><dt>Agent 記憶體工作集</dt><dd>@(agentStatus?.Process?.WorkingSetBytes is { } memory ? QueueBytes(memory) : "尚無資料")</dd></div>
-                <div><dt>Agent 資源回報（UTC）</dt><dd>@(agentStatus?.Process?.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
+                <div><dt>@L["Agent 狀態"]</dt><dd>@L[agentError ? "無法讀取" : AgentState(agentStatus?.State)]</dd></div>
+                <div><dt>@L["Agent 最後回報（UTC）"]</dt><dd>@(agentStatus?.LastHeartbeatAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚無資料"].Value)</dd></div>
+                <div><dt>@L["Agent CPU（單一邏輯處理器為 100%）"]</dt><dd>@(agentStatus?.Process?.CpuPercent is { } cpu ? $"{cpu:F1}%" : L["尚無資料"].Value)</dd></div>
+                <div><dt>@L["Agent 記憶體工作集"]</dt><dd>@(agentStatus?.Process?.WorkingSetBytes is { } memory ? QueueBytes(memory) : L["尚無資料"].Value)</dd></div>
+                <div><dt>@L["Agent 資源回報（UTC）"]</dt><dd>@(agentStatus?.Process?.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚無資料"].Value)</dd></div>
             }
         </dl>
             @if (device.DeepMonitoring)
             {
-                <h3>本次 Agent 執行期間的最近採集錯誤</h3>
-                @if (agentStatus?.Process?.ModuleFailures is not { } failures) { <p>尚無資料。</p> }
-                else if (failures.Count == 0) { <p>尚無回報的採集錯誤。</p> }
-                else { <ul>@foreach (var failure in failures) { <li>@ModuleName(failure.Module)：@failure.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</li> }</ul> }
+                <h3>@L["本次 Agent 執行期間的最近採集錯誤"]</h3>
+                @if (agentStatus?.Process?.ModuleFailures is not { } failures) { <p>@L["尚無資料。"]</p> }
+                else if (failures.Count == 0) { <p>@L["尚無回報的採集錯誤。"]</p> }
+                else { <ul>@foreach (var failure in failures) { <li>@L[ModuleName(failure.Module)]：@failure.OccurredAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</li> }</ul> }
             }
-            @if (device.DeepMonitoring) { <p>Agent 狀態與設備 Ping 分開判斷；@(agentStatus?.OfflineAfterSeconds ?? 90) 秒未回報顯示失聯。重新整理頁面可查看最新狀態。</p><a href="@($"/devices/{Id:D}/agent-version")">查看 Agent 版本</a> <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">管理 Agent 身分</a> <a href="@($"/devices/{Id:D}/log-sources")">管理主機日誌來源</a> <a href="@($"/devices/{Id:D}/integrity-scopes")">管理完整性監控</a></Authorized></AuthorizeView> }
+            @if (device.DeepMonitoring) { <p>@L["Agent 狀態與設備 Ping 分開判斷；{0} 秒未回報顯示失聯。重新整理頁面可查看最新狀態。", agentStatus?.OfflineAfterSeconds ?? 90]</p><a href="@($"/devices/{Id:D}/agent-version")">@L["查看 Agent 版本"]</a> <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent")">@L["管理 Agent 身分"]</a> <a href="@($"/devices/{Id:D}/log-sources")">@L["管理主機日誌來源"]</a> <a href="@($"/devices/{Id:D}/integrity-scopes")">@L["管理完整性監控"]</a></Authorized></AuthorizeView> }
         </section>
         @if (device.DeepMonitoring)
         {
             <Vigiloom.Web.Client.Components.HostMonitoring.HostDetails DeviceId="Id" InitialTab="@Tab" InitialSearch="@Search" @rendermode="InteractiveAuto" />
             <BaselinePanel DeviceId="Id" />
             <section class="device-panel">
-                <h2>Agent 本機傳送佇列</h2>
-                @if (capacityError) { <p class="device-alert" role="alert">無法讀取佇列容量設定狀態。</p> }
+                <h2>@L["Agent 本機傳送佇列"]</h2>
+                @if (capacityError) { <p class="device-alert" role="alert">@L["無法讀取佇列容量設定狀態。"]</p> }
                 else if (capacityStatus is { } capacity)
                 {
                     <dl class="device-details">
-                        <div><dt>容量設定狀態</dt><dd>@SettingsState(capacity.State)</dd></div>
-                        <div><dt>目標容量</dt><dd>@QueueBytes(capacity.Desired.Capacity.PayloadBytes)／@capacity.Desired.Capacity.BatchCount 批</dd></div>
-                        <div><dt>Agent 已套用容量</dt><dd>@(capacity.Applied is { } appliedCapacity ? $"{QueueBytes(appliedCapacity.Capacity.PayloadBytes)}／{appliedCapacity.Capacity.BatchCount} 批" : "尚無已套用回報")</dd></div>
+                        <div><dt>@L["容量設定狀態"]</dt><dd>@L[SettingsState(capacity.State)]</dd></div>
+                        <div><dt>@L["目標容量"]</dt><dd>@L["{0}／{1} 批", QueueBytes(capacity.Desired.Capacity.PayloadBytes), capacity.Desired.Capacity.BatchCount]</dd></div>
+                        <div><dt>@L["Agent 已套用容量"]</dt><dd>@(capacity.Applied is { } appliedCapacity ? L["{0}／{1} 批", QueueBytes(appliedCapacity.Capacity.PayloadBytes), appliedCapacity.Capacity.BatchCount].Value : L["尚無已套用回報"].Value)</dd></div>
                     </dl>
-                    @if (capacity.Failure is { } capacityFailure) { <p class="device-alert" role="status">@SettingsFailure(capacityFailure)</p> }
+                    @if (capacity.Failure is { } capacityFailure) { <p class="device-alert" role="status">@L[SettingsFailure(capacityFailure)]</p> }
                 }
-                @if (agentError) { <p role="alert">無法讀取傳送狀態，請稍後重新整理。</p> }
+                @if (agentError) { <p role="alert">@L["無法讀取傳送狀態，請稍後重新整理。"]</p> }
                 else
                 {
-                    <dl class="device-details"><div><dt>目前 Agent 最後提交批次（UTC）</dt><dd>@(agentStatus?.LastCommittedBatchAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "保留範圍內無資料")</dd></div></dl>
-                    <p>顯示平台已提交的批次，不代表 Agent 已收到確認；重送相同批次不會更新時間。</p>
+                    <dl class="device-details"><div><dt>@L["目前 Agent 最後提交批次（UTC）"]</dt><dd>@(agentStatus?.LastCommittedBatchAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["保留範圍內無資料"].Value)</dd></div></dl>
+                    <p>@L["顯示平台已提交的批次，不代表 Agent 已收到確認；重送相同批次不會更新時間。"]</p>
                     @if (agentStatus?.LastReplayIssue is { } replayIssue)
                     {
                         <div class="device-alert" role="status">
-                            <p>最近記錄的時間拒收：@(replayIssue.Reason switch { AgentReplayIssue.ClockUncertain => "平台時間異常，請確認平台時鐘", AgentReplayIssue.TimestampAhead => "批次入列時間超前，請核對 Agent 與平台時鐘", AgentReplayIssue.Expired => "平台拒收超過補送期限的批次", _ => "未知原因" })。</p>
-                            <p>記錄時間（UTC）：@replayIssue.ObservedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")。這是歷史紀錄，不代表問題目前仍持續。</p>
+                            <p>@L["最近記錄的時間拒收：{0}。", L[replayIssue.Reason switch { AgentReplayIssue.ClockUncertain => "平台時間異常，請確認平台時鐘", AgentReplayIssue.TimestampAhead => "批次入列時間超前，請核對 Agent 與平台時鐘", AgentReplayIssue.Expired => "平台拒收超過補送期限的批次", _ => "未知原因" }].Value]</p>
+                            <p>@L["記錄時間（UTC）：{0}。這是歷史紀錄，不代表問題目前仍持續。", replayIssue.ObservedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")]</p>
                         </div>
                     }
                     @if (agentStatus?.LastBatchTime is { } batchTime)
@@ -82,130 +83,130 @@
                         @if (batchTime.EnqueuedAheadOfReceipt)
                         {
                             <div class="device-alert batch-time-notice" role="status">
-                                <p>此批次回報的入列時間，比平台記錄的接收時間超前超過 5 分鐘；請核對 Agent 與平台時鐘。</p>
-                                <p>入列（UTC）：@batchTime.EnqueuedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")<br />接收（UTC）：@batchTime.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</p>
-                                <p>這是歷史批次觀察，不代表目前時鐘狀態。</p>
+                                <p>@L["此批次回報的入列時間，比平台記錄的接收時間超前超過 5 分鐘；請核對 Agent 與平台時鐘。"]</p>
+                                <p>@L["入列（UTC）："]@batchTime.EnqueuedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")<br />@L["接收（UTC）："]@batchTime.ReceivedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</p>
+                                <p>@L["這是歷史批次觀察，不代表目前時鐘狀態。"]</p>
                             </div>
                         }
                         @if (batchTime.ReceivedAt > Clock.GetUtcNow())
-                        { <p class="device-alert" role="status">批次接收時間晚於目前平台時間，請確認平台時鐘。</p> }
+                        { <p class="device-alert" role="status">@L["批次接收時間晚於目前平台時間，請確認平台時鐘。"]</p> }
                     }
-                    @if (agentStatus?.Queue is not { } queue) { <p>尚無佇列回報。</p> }
+                    @if (agentStatus?.Queue is not { } queue) { <p>@L["尚無佇列回報。"]</p> }
                     else
                     {
                     var observedAt = Clock.GetUtcNow();
                     <dl class="device-details">
-                        <div><dt>最後佇列回報（UTC）</dt><dd>@queue.ReportedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+                        <div><dt>@L["最後佇列回報（UTC）"]</dt><dd>@queue.ReportedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
                         @if (queue.Snapshot is { } snapshot)
                         {
-                            <div><dt>等待傳送</dt><dd>@(snapshot.TotalBatches - snapshot.QuarantinedBatches) 批</dd></div>
-                            <div><dt>已隔離</dt><dd>@snapshot.QuarantinedBatches 批</dd></div>
-                            <div><dt>佇列容量</dt><dd>@QueueBytes(snapshot.TotalBytes) / @QueueBytes(snapshot.CapacityBytes)</dd></div>
-                            <div><dt>批次容量</dt><dd>@snapshot.TotalBatches / @snapshot.CapacityBatches 批</dd></div>
+                            <div><dt>@L["等待傳送"]</dt><dd>@L["{0} 批", snapshot.TotalBatches - snapshot.QuarantinedBatches]</dd></div>
+                            <div><dt>@L["已隔離"]</dt><dd>@L["{0} 批", snapshot.QuarantinedBatches]</dd></div>
+                            <div><dt>@L["佇列容量"]</dt><dd>@QueueBytes(snapshot.TotalBytes) / @QueueBytes(snapshot.CapacityBytes)</dd></div>
+                            <div><dt>@L["批次容量"]</dt><dd>@L["{0} / {1} 批", snapshot.TotalBatches, snapshot.CapacityBatches]</dd></div>
                         }
                     </dl>
-                    @if (queue.Snapshot is null) { <p class="device-alert" role="status">Agent 無法讀取佇列，資料狀態未知。</p> }
+                    @if (queue.Snapshot is null) { <p class="device-alert" role="status">@L["Agent 無法讀取佇列，資料狀態未知。"]</p> }
                     else if (queue.Snapshot.TotalBytes >= queue.Snapshot.CapacityBytes || queue.Snapshot.TotalBatches >= queue.Snapshot.CapacityBatches)
-                    { <p class="device-alert" role="status">佇列已達容量，新資料可能需要等待空間。</p> }
+                    { <p class="device-alert" role="status">@L["佇列已達容量，新資料可能需要等待空間。"]</p> }
                     @if (queue.Snapshot is { QuarantinedBatches: > 0 })
                     {
-                        @if (queue.Quarantine is not { } reasons) { <p>隔離原因摘要尚未提供。</p> }
+                        @if (queue.Quarantine is not { } reasons) { <p>@L["隔離原因摘要尚未提供。"]</p> }
                         else
                         {
-                            <p>隔離批次仍保留在 Agent，暫停自動傳送：</p>
+                            <p>@L["隔離批次仍保留在 Agent，暫停自動傳送："]</p>
                             <ul>
-                                @if (reasons.InvalidLocalBatch > 0) { <li>本機批次格式無效：@reasons.InvalidLocalBatch 批</li> }
-                                @if (reasons.BadRequest > 0) { <li>平台拒絕無效內容：@reasons.BadRequest 批</li> }
-                                @if (reasons.Conflict > 0) { <li>批次內容衝突：@reasons.Conflict 批</li> }
-                                @if (reasons.PayloadTooLarge > 0) { <li>批次超過平台大小限制：@reasons.PayloadTooLarge 批</li> }
-                                @if (reasons.UnsupportedMediaType > 0) { <li>平台不支援批次格式：@reasons.UnsupportedMediaType 批</li> }
-                                @if (reasons.Expired > 0) { <li>平台拒絕過期批次：@reasons.Expired 批</li> }
-                                @if (reasons.Other > 0) { <li>其他或未知原因：@reasons.Other 批</li> }
+                                @if (reasons.InvalidLocalBatch > 0) { <li>@L["本機批次格式無效：{0} 批", reasons.InvalidLocalBatch]</li> }
+                                @if (reasons.BadRequest > 0) { <li>@L["平台拒絕無效內容：{0} 批", reasons.BadRequest]</li> }
+                                @if (reasons.Conflict > 0) { <li>@L["批次內容衝突：{0} 批", reasons.Conflict]</li> }
+                                @if (reasons.PayloadTooLarge > 0) { <li>@L["批次超過平台大小限制：{0} 批", reasons.PayloadTooLarge]</li> }
+                                @if (reasons.UnsupportedMediaType > 0) { <li>@L["平台不支援批次格式：{0} 批", reasons.UnsupportedMediaType]</li> }
+                                @if (reasons.Expired > 0) { <li>@L["平台拒絕過期批次：{0} 批", reasons.Expired]</li> }
+                                @if (reasons.Other > 0) { <li>@L["其他或未知原因：{0} 批", reasons.Other]</li> }
                             </ul>
                         }
                     }
-                    <p>數值是 Agent 最後一次回報的快照，可能不是目前狀態；隔離批次仍占用容量。</p>
+                    <p>@L["數值是 Agent 最後一次回報的快照，可能不是目前狀態；隔離批次仍占用容量。"]</p>
                     @if (queue.ReportedAt > observedAt || observedAt - queue.ReportedAt >= TimeSpan.FromSeconds(agentStatus.OfflineAfterSeconds))
-                    { <p class="device-alert" role="status">佇列回報已過時或時間異常，請確認 Agent 傳送狀態。</p> }
+                    { <p class="device-alert" role="status">@L["佇列回報已過時或時間異常，請確認 Agent 傳送狀態。"]</p> }
                     }
                 }
             </section>
             <section class="device-panel" aria-labelledby="metric-loss-title">
-                <h2 id="metric-loss-title">Agent 指標資料完整性</h2>
-                @if (agentError) { <p role="alert">無法讀取資料完整性狀態，請稍後重新整理。</p> }
-                else if (agentStatus?.MetricLoss is not { } loss) { <p>目前沒有可用的指標遺失統計，無法判定是否有資料遺失。</p> }
+                <h2 id="metric-loss-title">@L["Agent 指標資料完整性"]</h2>
+                @if (agentError) { <p role="alert">@L["無法讀取資料完整性狀態，請稍後重新整理。"]</p> }
+                else if (agentStatus?.MetricLoss is not { } loss) { <p>@L["目前沒有可用的指標遺失統計，無法判定是否有資料遺失。"]</p> }
                 else
                 {
                     <dl class="device-details">
-                        <div><dt>目前統計帳本已確認遺失</dt><dd>至少 @loss.Snapshot.Records 筆指標（@loss.Snapshot.Batches 批）</dd></div>
-                        <div><dt>統計起點（Agent 時間，UTC）</dt><dd>@loss.Snapshot.StartedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
-                        <div><dt>最後回報（平台時間，UTC）</dt><dd>@loss.ReportedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+                        <div><dt>@L["目前統計帳本已確認遺失"]</dt><dd>@L["至少 {0} 筆指標（{1} 批）", loss.Snapshot.Records, loss.Snapshot.Batches]</dd></div>
+                        <div><dt>@L["統計起點（Agent 時間，UTC）"]</dt><dd>@loss.Snapshot.StartedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+                        <div><dt>@L["最後回報（平台時間，UTC）"]</dt><dd>@loss.ReportedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
                     </dl>
                     @if (loss.Snapshot.CompletenessUnknown)
-                    { <p class="device-alert" role="status">部分資料的完整性無法確認，實際遺失數可能更多。</p> }
-                    <p>此數字只包含統計起點後已確認遺失的指標。等待傳送或隔離的批次仍有保留，不視為已遺失。</p>
+                    { <p class="device-alert" role="status">@L["部分資料的完整性無法確認，實際遺失數可能更多。"]</p> }
+                    <p>@L["此數字只包含統計起點後已確認遺失的指標。等待傳送或隔離的批次仍有保留，不視為已遺失。"]</p>
                     @if (loss.ReportedAt > Clock.GetUtcNow() || Clock.GetUtcNow() - loss.ReportedAt >= TimeSpan.FromSeconds(agentStatus.OfflineAfterSeconds))
-                    { <p class="device-alert" role="status">以上為最後一次回報；統計已過時或平台時間異常，請確認 Agent 狀態。</p> }
+                    { <p class="device-alert" role="status">@L["以上為最後一次回報；統計已過時或平台時間異常，請確認 Agent 狀態。"]</p> }
                 }
             </section>
             <section class="device-panel central-receipts">
-                <h2>中央收據容量</h2>
-                @if (agentError) { <p role="alert">無法讀取中央收據容量，請稍後重新整理。</p> }
-                else if (agentStatus?.ReceiptCapacity is not { } receipts) { <p>目前沒有可用的中央收據容量資訊。</p> }
+                <h2>@L["中央收據容量"]</h2>
+                @if (agentError) { <p role="alert">@L["無法讀取中央收據容量，請稍後重新整理。"]</p> }
+                else if (agentStatus?.ReceiptCapacity is not { } receipts) { <p>@L["目前沒有可用的中央收據容量資訊。"]</p> }
                 else
                 {
                     <dl class="device-details">
-                        <div><dt>中央收據筆數</dt><dd>@receipts.RetainedBatches / @receipts.MaximumBatches 筆</dd></div>
-                        <div><dt>原始批次長度累計</dt><dd>@QueueBytes(receipts.OriginalPayloadBytes) / @QueueBytes(receipts.MaximumPayloadBytes)</dd></div>
+                        <div><dt>@L["中央收據筆數"]</dt><dd>@L["{0} / {1} 筆", receipts.RetainedBatches, receipts.MaximumBatches]</dd></div>
+                        <div><dt>@L["原始批次長度累計"]</dt><dd>@QueueBytes(receipts.OriginalPayloadBytes) / @QueueBytes(receipts.MaximumPayloadBytes)</dd></div>
                     </dl>
-                    <p>這是查詢時的收據用量；原始批次長度不代表 SQL 磁碟用量，也不代表平台保留完整批次內容。</p>
+                    <p>@L["這是查詢時的收據用量；原始批次長度不代表 SQL 磁碟用量，也不代表平台保留完整批次內容。"]</p>
                     @if (receipts.RetainedBatches >= receipts.MaximumBatches || receipts.OriginalPayloadBytes >= receipts.MaximumPayloadBytes)
-                    { <p class="device-alert" role="status">中央新批次接收已達限制；既有收據仍可確認重送，目前尚無自動清理。</p> }
+                    { <p class="device-alert" role="status">@L["中央新批次接收已達限制；既有收據仍可確認重送，目前尚無自動清理。"]</p> }
                 }
             </section>
             <section class="device-panel">
-                <h2>Agent 設定同步</h2>
-                @if (settingsError) { <p role="alert">無法讀取設定狀態，請稍後重新整理。</p> }
-                else if (settingsStatus is null) { <p>尚無設定狀態。</p> }
+                <h2>@L["Agent 設定同步"]</h2>
+                @if (settingsError) { <p role="alert">@L["無法讀取設定狀態，請稍後重新整理。"]</p> }
+                else if (settingsStatus is null) { <p>@L["尚無設定狀態。"]</p> }
                 else
                 {
                     <dl class="device-details">
-                        <div><dt>同步狀態</dt><dd>@SettingsState(settingsStatus.State)</dd></div>
-                        <div><dt>期望心跳間隔</dt><dd>@settingsStatus.Desired.Settings.HeartbeatSeconds 秒</dd></div>
-                        <div><dt>Agent 已套用心跳間隔</dt><dd>@(settingsStatus.Applied?.Settings.HeartbeatSeconds is { } seconds ? $"{seconds} 秒" : "尚無資料")</dd></div>
-                        <div><dt>Agent 已套用設定同步間隔</dt><dd>@(settingsStatus.Applied?.Settings.SettingsPollSeconds is { } poll ? $"{poll} 秒" : "尚無資料")</dd></div>
-                        <div><dt>Agent 已套用資料傳送間隔</dt><dd>@(settingsStatus.Applied?.Settings.BatchIntervalSeconds is { } batch ? $"{batch} 秒" : "尚無資料")</dd></div>
-                        <div><dt>最後設定回報（UTC）</dt><dd>@(settingsStatus.ReportedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</dd></div>
+                        <div><dt>@L["同步狀態"]</dt><dd>@L[SettingsState(settingsStatus.State)]</dd></div>
+                        <div><dt>@L["期望心跳間隔"]</dt><dd>@L["{0} 秒", settingsStatus.Desired.Settings.HeartbeatSeconds]</dd></div>
+                        <div><dt>@L["Agent 已套用心跳間隔"]</dt><dd>@(settingsStatus.Applied?.Settings.HeartbeatSeconds is { } seconds ? L["{0} 秒", seconds].Value : L["尚無資料"].Value)</dd></div>
+                        <div><dt>@L["Agent 已套用設定同步間隔"]</dt><dd>@(settingsStatus.Applied?.Settings.SettingsPollSeconds is { } poll ? L["{0} 秒", poll].Value : L["尚無資料"].Value)</dd></div>
+                        <div><dt>@L["Agent 已套用資料傳送間隔"]</dt><dd>@(settingsStatus.Applied?.Settings.BatchIntervalSeconds is { } batch ? L["{0} 秒", batch].Value : L["尚無資料"].Value)</dd></div>
+                        <div><dt>@L["最後設定回報（UTC）"]</dt><dd>@(settingsStatus.ReportedAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚無資料"].Value)</dd></div>
                     </dl>
-                    @if (settingsStatus.Failure is { } failure) { <p class="device-alert" role="status">@SettingsFailure(failure)</p> }
-                    <p>設定由 Agent 定期同步；離線時顯示最後回報的狀態，不代表設定已更新。</p>
+                    @if (settingsStatus.Failure is { } failure) { <p class="device-alert" role="status">@L[SettingsFailure(failure)]</p> }
+                    <p>@L["設定由 Agent 定期同步；離線時顯示最後回報的狀態，不代表設定已更新。"]</p>
                 }
-                <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent-settings")">編輯此設備的 Agent 設定</a></Authorized></AuthorizeView>
+                <AuthorizeView Policy="Administrator"><Authorized><a href="@($"/devices/{Id:D}/agent-settings")">@L["編輯此設備的 Agent 設定"]</a></Authorized></AuthorizeView>
             </section>
         }
-        <section class="device-panel"><h2>Ping 量測</h2>
-            <p>每個目標分別量測，DNS 或監測器錯誤不代表設備不可達。</p>
-            @if (pingStatus?.Policy is { } policy) { <p>目前每 @policy.IntervalSeconds 秒一次，逾時 @policy.TimeoutSeconds 秒；連續 @policy.FailureThreshold 次失敗判不可達、@policy.SuccessThreshold 次成功恢復。</p> }
-            @if (pingError) { <p role="alert">無法讀取 Ping 資料，請稍後再試。</p> }
-            else if (device.Archived || !device.Enabled) { <p>設備@(device.Archived ? "已封存" : "已停用")，不排入新量測。</p> }
+        <section class="device-panel"><h2>@L["Ping 量測"]</h2>
+            <p>@L["每個目標分別量測，DNS 或監測器錯誤不代表設備不可達。"]</p>
+            @if (pingStatus?.Policy is { } policy) { <p>@L["目前每 {0} 秒一次，逾時 {1} 秒；連續 {2} 次失敗判不可達、{3} 次成功恢復。", policy.IntervalSeconds, policy.TimeoutSeconds, policy.FailureThreshold, policy.SuccessThreshold]</p> }
+            @if (pingError) { <p role="alert">@L["無法讀取 Ping 資料，請稍後再試。"]</p> }
+            else if (device.Archived || !device.Enabled) { <p>@(device.Archived ? L["設備已封存，不排入新量測。"].Value : L["設備已停用，不排入新量測。"].Value)</p> }
             else if (pingStatus is not null)
             {
-                <div class="device-table-wrap"><table><thead><tr><th>目標</th><th>實際位址</th><th>目前狀態</th><th>最近結果</th><th>成功延遲</th><th>量測時間（UTC）</th><th>位置</th></tr></thead><tbody>
+                <div class="device-table-wrap"><table><thead><tr><th>@L["目標"]</th><th>@L["實際位址"]</th><th>@L["目前狀態"]</th><th>@L["最近結果"]</th><th>@L["成功延遲"]</th><th>@L["量測時間（UTC）"]</th><th>@L["位置"]</th></tr></thead><tbody>
                 @foreach (var result in pingStatus.Targets)
                 {
-                    <tr><td>@result.Target</td><td>@(result.ResolvedAddress ?? "—")</td><td><PingStatusBadge Status="result" /></td><td>@Outcome(result.LastOutcome)</td><td>@(result.LatencyMilliseconds is { } latency ? $"{latency:0.###} ms" : "—")</td><td>@(result.MeasuredAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚無資料")</td><td>@result.Location</td></tr>
+                    <tr><td>@result.Target</td><td>@(result.ResolvedAddress ?? "—")</td><td><PingStatusBadge Status="result" /></td><td>@L[Outcome(result.LastOutcome)]</td><td>@(result.LatencyMilliseconds is { } latency ? $"{latency:0.###} ms" : "—")</td><td>@(result.MeasuredAt?.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? L["尚無資料"].Value)</td><td>@result.Location</td></tr>
                 }
                 </tbody></table></div>
             }
         </section>
         <AuthorizeView Policy="Administrator"><Authorized Context="administrator">
-            <section class="device-panel"><h2>@(device.Archived ? "恢復設備" : "封存設備")</h2>
-                <p>@(device.Archived ? "恢復後保留原設備身分，監控維持停用；需要時可編輯啟用。" : "封存會停止後續監測並保留設備與歷史資料。應用服務不會因此刪除。")</p>
+            <section class="device-panel"><h2>@(device.Archived ? L["恢復設備"].Value : L["封存設備"].Value)</h2>
+                <p>@(device.Archived ? L["恢復後保留原設備身分，監控維持停用；需要時可編輯啟用。"].Value : L["封存會停止後續監測並保留設備與歷史資料。應用服務不會因此刪除。"].Value)</p>
                 @if (actionError is not null) { <p class="device-alert" role="alert">@actionError</p> }
                 <EditForm Model="Action" FormName="device-archive" method="post" OnValidSubmit="ChangeArchiveAsync">
                     <InputHidden @bind-Value="Action.Version" />
-                    <label><InputCheckbox @bind-Value="Action.Confirm" /> 我了解以上影響</label>
-                    <button type="submit">@(device.Archived ? "確認恢復" : "確認封存")</button>
+                    <label><InputCheckbox @bind-Value="Action.Confirm" /> @L["我了解以上影響"]</label>
+                    <button type="submit">@(device.Archived ? L["確認恢復"].Value : L["確認封存"].Value)</button>
                 </EditForm>
             </section>
         </Authorized></AuthorizeView>
@@ -258,15 +259,15 @@
     {
         if (!HttpContext.User.IsInRole(BuiltInRoles.Administrator) || device is null ||
             !Guid.TryParse(HttpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
-        if (!Action.Confirm) { actionError = "請先確認操作影響。"; return; }
+        if (!Action.Confirm) { actionError = L["請先確認操作影響。"].Value; return; }
         var succeeded = false;
         try
         {
             var result = await DevicesService.SetArchivedAsync(Id, !device.Archived, Action.Version, actor, HttpContext.RequestAborted);
             if (result.Status == DeviceResultStatus.Success) succeeded = true;
-            else actionError = "設備狀態已變更，請重新整理後再試。";
+            else actionError = L["設備狀態已變更，請重新整理後再試。"].Value;
         }
-        catch (Exception exception) { Logger.LogWarning("Could not change device archival state: {ExceptionType}", exception.GetType().Name); actionError = "無法確認操作結果，請重新整理並檢查設備狀態。"; }
+        catch (Exception exception) { Logger.LogWarning("Could not change device archival state: {ExceptionType}", exception.GetType().Name); actionError = L["無法確認操作結果，請重新整理並檢查設備狀態。"].Value; }
         if (succeeded) Navigation.NavigateTo($"/devices/{Id:D}", forceLoad: true);
     }
     private sealed class ArchiveInput { public string? Version { get; set; } public bool Confirm { get; set; } }
@@ -305,6 +306,6 @@
         AgentModule.Metrics => "資源指標", AgentModule.Logs => "日誌", AgentModule.Inventory => "資產盤點",
         AgentModule.Integrity => "完整性監控", AgentModule.Baseline => "安全基線", _ => "未知模組"
     };
-    private static string QueueBytes(long bytes) => bytes < 1024 * 1024
-        ? $"{bytes:N0} 位元組" : $"{bytes / 1048576d:N2} MiB";
+    private string QueueBytes(long bytes) => bytes < 1024 * 1024
+        ? L["{0} 位元組", bytes.ToString("N0")].Value : $"{bytes / 1048576d:N2} MiB";
 }

@@ -3,37 +3,37 @@
 @attribute [ExcludeFromInteractiveRouting]
 @using System.Security.Claims
 @using Vigiloom.Contracts.Operations
-@using Vigiloom.Modules.AlertingOperations.Application.Retention
-@inject AuditRetentionSettings Retention
+@inject Vigiloom.Web.Operations.AuditRetentionAccess Retention
 @inject ILogger<AuditRetentionPage> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<AuditText> L
 
-<PageTitle>操作紀錄保存 - Vigiloom</PageTitle>
+<PageTitle>@L["操作紀錄保存"] - Vigiloom</PageTitle>
 <main class="device-page device-form-page">
-    <header class="device-heading"><div><h1>操作紀錄保存</h1><p>管理操作紀錄、告警、通知與安全變更歷史的保存期限。</p></div></header>
+    <header class="device-heading"><div><h1>@L["操作紀錄保存"]</h1><p>@L["管理操作紀錄、告警、通知與安全變更歷史的保存期限。"]</p></div></header>
     <section class="device-panel">
-        <p>此期限適用於中央設定、設備、Agent、安全設定、事件查詢與匯出、背景工作、帳號與 API 憑證的操作紀錄，以及告警、通知、已結束的背景工作、YARA 掃描結果（含規則與輸出）、盤點與檔案完整性變更歷史、漏洞評估歷史與安全基準觀測歷史。目前的盤點快照、完整性狀態、漏洞評估及各基準版本最新觀測會保留。GitHub Advisory 不再使用的舊版本及已完成或放棄的匯入暫存也依期限清理；目前及前一可用版本、共享來源與已發布的撤回紀錄會保留。其他安全事件證據不在此期限內。首次管理員初始化紀錄、進行中的告警、尚未排入派送的通知與未結束的工作會保留。到期後定期清理，延長期限無法還原已刪除資料。</p>
-        <p>SigmaHQ、Signature-Base、CISA KEV、FIRST EPSS 與 Debian 的舊情報內容也依此期限清理；目前使用、上一個可用、最新候選及仍被事件引用的版本會保留。版本及啟用紀錄仍可查詢；已清理內容的舊版本無法直接回復。</p>
-        <p>Ubuntu 與 Microsoft 安全情報的舊封存檔與不再使用的內容也依此期限清理；仍被其他版本使用的共用文件，以及已發布的撤回資訊會保留。</p>
-        <p>此期限也適用於已停止重試的 Hangfire 失敗工作；執行中及等待重試的工作會保留。</p>
-        @if (loadError) { <p class="device-alert" role="alert">無法讀取保存設定，請重新整理後再試。</p> }
+        <p>@L["此期限適用於中央設定、設備、Agent、安全設定、事件查詢與匯出、背景工作、帳號與 API 憑證的操作紀錄，以及告警、通知、已結束的背景工作、YARA 掃描結果（含規則與輸出）、盤點與檔案完整性變更歷史、漏洞評估歷史與安全基準觀測歷史。目前的盤點快照、完整性狀態、漏洞評估及各基準版本最新觀測會保留。GitHub Advisory 不再使用的舊版本及已完成或放棄的匯入暫存也依期限清理；目前及前一可用版本、共享來源與已發布的撤回紀錄會保留。其他安全事件證據不在此期限內。首次管理員初始化紀錄、進行中的告警、尚未排入派送的通知與未結束的工作會保留。到期後定期清理，延長期限無法還原已刪除資料。"]</p>
+        <p>@L["SigmaHQ、Signature-Base、CISA KEV、FIRST EPSS 與 Debian 的舊情報內容也依此期限清理；目前使用、上一個可用、最新候選及仍被事件引用的版本會保留。版本及啟用紀錄仍可查詢；已清理內容的舊版本無法直接回復。"]</p>
+        <p>@L["Ubuntu 與 Microsoft 安全情報的舊封存檔與不再使用的內容也依此期限清理；仍被其他版本使用的共用文件，以及已發布的撤回資訊會保留。"]</p>
+        <p>@L["此期限也適用於已停止重試的 Hangfire 失敗工作；執行中及等待重試的工作會保留。"]</p>
+        @if (loadError) { <p class="device-alert" role="alert">@L["無法讀取保存設定，請重新整理後再試。"]</p> }
         else if (snapshot is not null)
         {
             @if (message is not null) { <p role="status">@message</p> }
             <EditForm Model="Input" FormName="audit-retention" method="post" OnValidSubmit="SubmitAsync">
                 <InputHidden @bind-Value="Input.Version" />
                 <InputHidden @bind-Value="Input.ConfirmationToken" />
-                <label for="audit-retention-days">保存天數（1～3650 天）</label>
+                <label for="audit-retention-days">@L["保存天數（1～3650 天）"]</label>
                 <InputNumber id="audit-retention-days" @bind-Value="Input.Days" min="1" max="3650" required />
                 @if (preview is { } impact)
                 {
-                    <p role="status">以 @impact.PreviewedAt.ToString("u") 為準，預計有 @impact.AffectedRecords 筆操作紀錄、安全歷史與情報資料符合清理條件。清理可能解除其他舊情報的引用，讓它們接續符合清理條件；實際數量可能變動。</p>
-                    <p>預計清理 @impact.AlertEpisodes 筆已恢復告警及 @impact.Notifications 筆通知。</p>
-                    <p>預計清理 @impact.BackgroundJobs 筆已結束的背景工作及其派送紀錄。</p>
-                    <p>Hangfire 失敗工作的數量未包含在上述預覽中，符合期限的紀錄也會清理。</p>
-                    <p>確認後將依排程清理；預覽在 5 分鐘內有效。</p>
-                    <div class="device-actions"><button type="submit">確認儲存</button><a href="/settings/audit/retention">取消</a></div>
+                    <p role="status">@L["以 {0} 為準，預計有 {1} 筆操作紀錄、安全歷史與情報資料符合清理條件。清理可能解除其他舊情報的引用，讓它們接續符合清理條件；實際數量可能變動。", impact.PreviewedAt.ToString("u"), impact.AffectedRecords]</p>
+                    <p>@L["預計清理 {0} 筆已恢復告警及 {1} 筆通知。", impact.AlertEpisodes, impact.Notifications]</p>
+                    <p>@L["預計清理 {0} 筆已結束的背景工作及其派送紀錄。", impact.BackgroundJobs]</p>
+                    <p>@L["Hangfire 失敗工作的數量未包含在上述預覽中，符合期限的紀錄也會清理。"]</p>
+                    <p>@L["確認後將依排程清理；預覽在 5 分鐘內有效。"]</p>
+                    <div class="device-actions"><button type="submit">@L["確認儲存"]</button><a href="/settings/audit/retention">@L["取消"]</a></div>
                 }
-                else { <div class="device-actions"><button type="submit">預覽變更</button><a href="/settings/audit">返回操作稽核</a></div> }
+                else { <div class="device-actions"><button type="submit">@L["預覽變更"]</button><a href="/settings/audit">@L["返回操作稽核"]</a></div> }
             </EditForm>
         }
     </section>
@@ -61,25 +61,25 @@
     private async Task SubmitAsync()
     {
         if (!Guid.TryParse(HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var actor)) return;
-        if (!AuditRetentionLimits.IsValid(Input.Days) || Input.Version is null) { message = "請輸入有效的保存天數。"; return; }
+        if (!AuditRetentionLimits.IsValid(Input.Days) || Input.Version is null) { message = L["請輸入有效的保存天數。"].Value; return; }
         try
         {
             if (string.IsNullOrEmpty(Input.ConfirmationToken))
             {
                 preview = await Retention.PreviewAsync(new(Input.Days, Input.Version), actor, HttpContext.RequestAborted);
-                if (preview is null) { message = "設定已被其他操作變更，請重新整理後再試。"; return; }
+                if (preview is null) { message = L["設定已被其他操作變更，請重新整理後再試。"].Value; return; }
                 Input.ConfirmationToken = preview.ConfirmationToken;
             }
             else if (await Retention.UpdateAsync(new(Input.Days, Input.Version, Input.ConfirmationToken), actor, HttpContext.RequestAborted) is { } saved)
             {
                 snapshot = saved;
                 Input = new() { Days = saved.Days, Version = saved.Version };
-                message = "保存設定已儲存。";
+                message = L["保存設定已儲存。"].Value;
             }
-            else { Input.ConfirmationToken = null; message = "設定已被其他操作變更，請重新整理後再試。"; }
+            else { Input.ConfirmationToken = null; message = L["設定已被其他操作變更，請重新整理後再試。"].Value; }
         }
-        catch (ArgumentException) { Input.ConfirmationToken = null; message = "預覽已過期或天數已變更，請重新預覽。"; }
-        catch (Exception ex) { Logger.LogWarning("Could not update audit retention: {ErrorType}", ex.GetType().Name); message = "無法確認儲存結果，請重新整理後檢查。"; }
+        catch (ArgumentException) { Input.ConfirmationToken = null; message = L["預覽已過期或天數已變更，請重新預覽。"].Value; }
+        catch (Exception ex) { Logger.LogWarning("Could not update audit retention: {ErrorType}", ex.GetType().Name); message = L["無法確認儲存結果，請重新整理後檢查。"].Value; }
     }
 
     private sealed class RetentionForm

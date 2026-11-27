@@ -7,23 +7,24 @@
 @inject Vigiloom.Web.HostMonitoring.SigmaRuleAccess Inventory
 @inject Vigiloom.Web.HostMonitoring.SigmaRuleAccess Rules
 @inject ILogger<SigmaSavedRule> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<ServiceAdminText> L
 
-<PageTitle>規則設定 - Vigiloom</PageTitle>
+<PageTitle>@L["規則設定"] - Vigiloom</PageTitle>
 <main class="device-page">
-    <a href="@($"/settings/sigma?statePage={Page ?? 1}")">← 返回行為規則</a>
-    <header class="device-heading"><div><h1>已儲存的規則設定</h1><p>來源不可用時仍可停用規則。</p></div></header>
+    <a href="@($"/settings/sigma?statePage={Page ?? 1}")">← @L["返回行為規則"]</a>
+    <header class="device-heading"><div><h1>@L["已儲存的規則設定"]</h1><p>@L["來源不可用時仍可停用規則。"]</p></div></header>
     @if (message is not null) { <p role="status">@message</p> }
     @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
     @if (setting is not null)
     {
-        <section class="device-panel"><h2>@setting.Path</h2><p>狀態：@(setting.Enabled ? "已設定啟用" : "已停用")</p>
+        <section class="device-panel"><h2>@setting.Path</h2><p>@L["狀態：{0}", setting.Enabled ? L["已設定啟用"].Value : L["已停用"].Value]</p>
             @if (setting.Enabled)
             {
                 <EditForm Model="Input" FormName="sigma-saved-disable" method="post" OnSubmit="DisableAsync">
                     <input type="hidden" name="Input.SourceId" value="@Input.SourceId" />
                     <input type="hidden" name="Input.Path" value="@Input.Path" />
                     <input type="hidden" name="Input.Version" value="@Input.Version" />
-                    <button type="submit">停用規則</button>
+                    <button type="submit">@L["停用規則"]</button>
                 </EditForm>
             }
         </section>
@@ -54,12 +55,12 @@
         {
             var page = await Inventory.GetStatesAsync(Math.Clamp(Page ?? 1, 1, 1000), HttpContext.RequestAborted);
             setting = page.Items.SingleOrDefault(x => x.SourceId == SourceId && string.Equals(x.Path, Path, StringComparison.Ordinal));
-            if (setting is null) error = "找不到此設定，請回到清單重新選擇。";
+            if (setting is null) error = L["找不到此設定，請回到清單重新選擇。"].Value;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.LogWarning("Could not load Sigma setting: {ErrorType}", ex.GetType().Name);
-            error = "無法讀取規則設定，請稍後再試。";
+            error = L["無法讀取規則設定，請稍後再試。"].Value;
         }
     }
 
@@ -67,19 +68,19 @@
     {
         if (!Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) || actor.Version != 7 ||
             Input.SourceId != SourceId || !string.Equals(Input.Path, Path, StringComparison.Ordinal))
-        { error = "規則設定已變更，請重新載入。"; return; }
+        { error = L["規則設定已變更，請重新載入。"].Value; return; }
         try
         {
             var request = new SigmaRuleStateRequest(Input.SourceId, Input.Path, null, false, Input.Version);
-            if (!SigmaRuleService.Valid(request)) { error = "規則設定無效，請重新載入。"; return; }
+            if (!SigmaRuleService.Valid(request)) { error = L["規則設定無效，請重新載入。"].Value; return; }
             var result = await Rules.SetAsync(request, actor, HttpContext.RequestAborted);
-            message = result is SigmaRuleChangeStatus.Changed or SigmaRuleChangeStatus.Unchanged ? "規則已停用。" : "設定已變更或來源不存在，請重新載入。";
+            message = result is SigmaRuleChangeStatus.Changed or SigmaRuleChangeStatus.Unchanged ? L["規則已停用。"].Value : L["設定已變更或來源不存在，請重新載入。"].Value;
             await LoadAsync();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.LogWarning("Could not disable Sigma setting: {ErrorType}", ex.GetType().Name);
-            error = "無法停用規則，請稍後再試。";
+            error = L["無法停用規則，請稍後再試。"].Value;
         }
     }
 

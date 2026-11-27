@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="@System.Globalization.CultureInfo.CurrentUICulture.Name">
 
 <head>
     <meta charset="utf-8" />
@@ -18,7 +18,8 @@
     <ReconnectModal />
     <script src="@Assets["_content/Vizor.ECharts/js/vizor-echarts-bundle-min.js"]"></script>
     <script src="@Assets["_content/MudBlazor/MudBlazor.min.js"]"></script>
-    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="@Assets["_framework/blazor.web.js"]" autostart="false"></script>
+    <script src="@Assets["culture-start.js"]"></script>
 </body>
 
 </html>

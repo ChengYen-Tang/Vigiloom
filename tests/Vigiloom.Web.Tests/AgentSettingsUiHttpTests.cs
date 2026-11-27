@@ -298,6 +298,19 @@ public sealed class AgentSettingsUiHttpTests
             Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
             var saved = await created.Content.ReadFromJsonAsync<IntegrityScopeView>(cancellationToken: token);
             Assert.IsNotNull(saved);
+            var scopePage = $"/devices/{first.Id:D}/integrity-scopes";
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync(scopePage, token))
+            {
+                var text = await BodyTextAsync(english, token);
+                Assert.Contains("Integrity monitoring settings", text);
+                Assert.Contains("/srv/app", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync(scopePage, token))
+                Assert.Contains("完整性监控设置", await BodyTextAsync(simplified, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", firstToken);
             using var firstResponse = await agent.GetAsync("/api/v1/agent/integrity-settings", token);
             Assert.AreEqual(HttpStatusCode.OK, firstResponse.StatusCode);
@@ -440,6 +453,28 @@ public sealed class AgentSettingsUiHttpTests
             Assert.IsNotNull(created.Headers.Location);
             var source = await created.Content.ReadFromJsonAsync<HostLogSourceView>(cancellationToken: token);
             Assert.IsNotNull(source);
+            var editUrl = $"/devices/{first.Id:D}/log-sources/{source.Settings.SourceId:D}";
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync(editUrl, token))
+            {
+                var text = await BodyTextAsync(english, token);
+                Assert.Contains("Edit log source", text);
+                Assert.Contains("Current source location: local", text);
+            }
+            using (var englishList = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
+            {
+                var text = await BodyTextAsync(englishList, token);
+                Assert.Contains("Host log sources", text);
+                Assert.Contains("No status for current settings", text);
+                Assert.Contains("local", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync(editUrl, token))
+                Assert.Contains("编辑日志来源", await BodyTextAsync(simplified, token));
+            using (var simplifiedList = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
+                Assert.Contains("主机日志来源", await BodyTextAsync(simplifiedList, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var detail = await admin.GetAsync(created.Headers.Location, token)) Assert.AreEqual(HttpStatusCode.OK, detail.StatusCode);
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", firstToken);
             using (var denied = await agent.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
@@ -558,6 +593,24 @@ public sealed class AgentSettingsUiHttpTests
             Assert.IsNotNull(initial);
             Assert.AreEqual(20, initial.SourceRate);
             using (var denied = await admin.PutAsJsonAsync("/api/v1/log-quota/", initial, token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishLog = await admin.GetAsync("/settings/log-quota", token))
+            {
+                var englishText = await BodyTextAsync(englishLog, token);
+                Assert.Contains("Log ingestion quota", englishText);
+                Assert.Contains("authenticated host or application source", englishText);
+            }
+            using (var englishTrace = await admin.GetAsync("/settings/trace-quota", token))
+            {
+                var englishText = await BodyTextAsync(englishTrace, token);
+                Assert.Contains("Trace ingestion quota", englishText);
+                Assert.Contains("authenticated application source and service pair", englishText);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync("/settings/log-quota", token))
+                Assert.Contains("Log 收集配额", await BodyTextAsync(simplified, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var page = await admin.GetAsync("/settings/log-quota", token);
             var fields = await FieldsAsync(page, token, "log-quota");
             fields["Form.SourceRate"] = "35";
@@ -645,6 +698,20 @@ public sealed class AgentSettingsUiHttpTests
             using (var denied = await anonymous.GetAsync("/api/v1/service-instances/policy", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
             using (var denied = await reader.GetAsync("/api/v1/service-instances/policy", token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             using (var denied = await admin.PutAsJsonAsync("/api/v1/service-instances/policy", new InstancePolicyInput(2, 5, ""), token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishPage = await admin.GetAsync(url, token))
+            {
+                var text = await BodyTextAsync(englishPage, token);
+                Assert.Contains("Service instances", text);
+                Assert.Contains("Confirm retirement", text);
+                Assert.Contains("Orders", text);
+                Assert.Contains("node", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplifiedPage = await admin.GetAsync(url, token))
+                Assert.Contains("服务实例", await BodyTextAsync(simplifiedPage, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var page = await admin.GetAsync(url, token);
             var fields = await FieldsAsync(page, token, "instance-policy");
             fields["PolicyForm.PerService"] = "2"; fields["PolicyForm.Total"] = "5";
@@ -800,6 +867,20 @@ public sealed class AgentSettingsUiHttpTests
             Assert.AreEqual(CandidateObservation.Recorded, await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ObserveAsync(sourceId, "orders", "prod", "Orders", token));
             var other = await scope.ServiceProvider.GetRequiredService<SourceAdministration>().IssueAsync("billing collector", Guid.CreateVersion7(), token);
             Assert.AreEqual(CandidateObservation.Recorded, await scope.ServiceProvider.GetRequiredService<CandidateDiscovery>().ObserveAsync(other.SourceId, "billing", "prod", "Billing", token));
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync(url, token))
+            {
+                var englishText = await BodyTextAsync(english, token);
+                Assert.Contains("Service candidates", englishText);
+                Assert.Contains("Source credential management", englishText);
+                Assert.Contains("Orders", englishText);
+                Assert.Contains("orders collector", englishText);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync(url, token))
+                Assert.Contains("服务候选清单", await BodyTextAsync(simplified, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var candidates = await admin.GetAsync(url, token);
             var text = await candidates.Content.ReadAsStringAsync(token);
             Assert.Contains("orders collector", text);
@@ -839,6 +920,20 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.Contains(service.Id.ToString("D"), approvedText);
             }
             var observationUrl = $"/api/v1/service-reception/collector-observations/{monitoredServiceId:D}";
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishReports = await admin.GetAsync($"/settings/collector-reports?service={monitoredServiceId:D}", token))
+            {
+                var englishText = await BodyTextAsync(englishReports, token);
+                Assert.Contains("Collector reports", englishText);
+                Assert.Contains("Instance reports", englishText);
+                Assert.Contains("Orders", englishText);
+                Assert.Contains("There are no identifiable instances on this page.", englishText);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplifiedReports = await admin.GetAsync($"/settings/collector-reports?service={monitoredServiceId:D}", token))
+                Assert.Contains("实例回报", await BodyTextAsync(simplifiedReports, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var reportPage = await admin.GetAsync($"/settings/collector-reports?service={monitoredServiceId:D}", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, reportPage.StatusCode);
@@ -885,6 +980,21 @@ public sealed class AgentSettingsUiHttpTests
             }
             using var mapped = await admin.PostAsync(mappingsUrl, new FormUrlEncodedContent(addMapping), token);
             Assert.Contains("來源對應已加入", await BodyTextAsync(mapped, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishMappings = await admin.GetAsync(mappingsUrl, token))
+            {
+                var mappingText = await BodyTextAsync(englishMappings, token);
+                Assert.Contains("Collector source mappings", mappingText);
+                Assert.Contains("billing collector", mappingText);
+                Assert.Contains("otlp_http/source-b", mappingText);
+            }
+            using (var englishCounters = await admin.GetAsync(countersUrl, token))
+                Assert.Contains("Collector source forwarding", await BodyTextAsync(englishCounters, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplifiedMappings = await admin.GetAsync(mappingsUrl, token))
+                Assert.Contains("Collector 来源对应", await BodyTextAsync(simplifiedMappings, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var staleMapping = await admin.PostAsync(mappingsUrl, new FormUrlEncodedContent(addMapping), token))
                 Assert.Contains("資料已變更", await BodyTextAsync(staleMapping, token));
             var removeMapping = await HiddenFieldsAsync(mapped, token, "collector-route-remove");
@@ -1167,6 +1277,27 @@ public sealed class AgentSettingsUiHttpTests
             using (var deniedMetricAudit = await reader.GetAsync("/settings/audit?source=agent-metric-settings", token))
                 Assert.AreEqual(HttpStatusCode.Redirect, deniedMetricAudit.StatusCode);
             var platformUrl = "/settings/agents";
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync(platformUrl, token))
+            {
+                var text = await BodyTextAsync(english, token);
+                Assert.Contains("Agent platform settings", text);
+                Assert.Contains("Heartbeat interval (10–300 seconds)", text);
+                Assert.Contains("Current target:", text);
+                Assert.Contains("Arguments are not sent to the platform.", text);
+            }
+            using (var englishDevice = await admin.GetAsync($"/devices/{device.Id:D}/agent-settings", token))
+                Assert.Contains("Settings status: Agent not registered", await BodyTextAsync(englishDevice, token));
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync(platformUrl, token))
+            {
+                var text = await BodyTextAsync(simplified, token);
+                Assert.Contains("Agent 平台设置", text);
+                Assert.Contains("当前目标值：", text);
+                Assert.Contains("参数不会发送到平台。", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var page = await admin.GetAsync(platformUrl, token))
             {
                 var inventoryPlatformFields = await FieldsAsync(page, token, "agent-inventory");
@@ -1229,6 +1360,15 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode);
                 Assert.Contains("設定已儲存", await BodyTextAsync(saved, token));
             }
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishAudit = await admin.GetAsync("/settings/audit?source=agent-settings", token))
+            {
+                var auditText = await BodyTextAsync(englishAudit, token);
+                Assert.Contains("Change Agent settings", auditText);
+                Assert.Contains("Effective heartbeat: 60 seconds", auditText);
+                Assert.Contains("Inherited", auditText);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var audit = await admin.GetAsync("/settings/audit?source=agent-settings", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, audit.StatusCode);

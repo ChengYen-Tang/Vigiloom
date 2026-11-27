@@ -1,0 +1,359 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="群組">
+    <value>Groups</value>
+  </data>
+  <data xml:space="preserve" name="依地點、環境或系統整理設備和應用服務。群組不改變公開設定。">
+    <value>Organize devices and services by location, environment or system. Groups do not change public visibility.</value>
+  </data>
+  <data xml:space="preserve" name="新增群組">
+    <value>Add group</value>
+  </data>
+  <data xml:space="preserve" name="編輯群組">
+    <value>Edit group</value>
+  </data>
+  <data xml:space="preserve" name="搜尋群組">
+    <value>Search groups</value>
+  </data>
+  <data xml:space="preserve" name="名稱或說明">
+    <value>Name or description</value>
+  </data>
+  <data xml:space="preserve" name="搜尋">
+    <value>Search</value>
+  </data>
+  <data xml:space="preserve" name="未分組設備">
+    <value>Ungrouped devices</value>
+  </data>
+  <data xml:space="preserve" name="未分組服務">
+    <value>Ungrouped services</value>
+  </data>
+  <data xml:space="preserve" name="無法載入群組，請稍後重新整理。">
+    <value>Unable to load groups. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的群組。">
+    <value>No groups match your search.</value>
+  </data>
+  <data xml:space="preserve" name="共 {0} 個群組">
+    <value>Groups: {0}</value>
+  </data>
+  <data xml:space="preserve" name="左右滑動查看完整表格。">
+    <value>Scroll horizontally to view the full table.</value>
+  </data>
+  <data xml:space="preserve" name="名稱">
+    <value>Name</value>
+  </data>
+  <data xml:space="preserve" name="說明">
+    <value>Description</value>
+  </data>
+  <data xml:space="preserve" name="設備">
+    <value>Devices</value>
+  </data>
+  <data xml:space="preserve" name="應用服務">
+    <value>Application services</value>
+  </data>
+  <data xml:space="preserve" name="查看群組">
+    <value>View group</value>
+  </data>
+  <data xml:space="preserve" name="群組分頁">
+    <value>Group pages</value>
+  </data>
+  <data xml:space="preserve" name="上一頁">
+    <value>Previous</value>
+  </data>
+  <data xml:space="preserve" name="下一頁">
+    <value>Next</value>
+  </data>
+  <data xml:space="preserve" name="第 {0} 頁">
+    <value>Page {0}</value>
+  </data>
+  <data xml:space="preserve" name="← 返回">
+    <value>← Back</value>
+  </data>
+  <data xml:space="preserve" name="使用群組整理資源，不影響公開或監控設定。">
+    <value>Groups organize resources without changing visibility or monitoring.</value>
+  </data>
+  <data xml:space="preserve" name="無法載入群組，請返回清單確認。">
+    <value>Unable to load the group. Return to the list and check.</value>
+  </data>
+  <data xml:space="preserve" name="群組名稱">
+    <value>Group name</value>
+  </data>
+  <data xml:space="preserve" name="說明（選填）">
+    <value>Description (optional)</value>
+  </data>
+  <data xml:space="preserve" name="儲存群組">
+    <value>Save group</value>
+  </data>
+  <data xml:space="preserve" name="取消">
+    <value>Cancel</value>
+  </data>
+  <data xml:space="preserve" name="請重新登入後再試。">
+    <value>Sign in again and try again.</value>
+  </data>
+  <data xml:space="preserve" name="資料已過期，請重新整理。">
+    <value>The data is outdated. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="群組已變更或不存在，請重新整理後再試。">
+    <value>The group changed or no longer exists. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="無法確認儲存結果，請返回清單確認後再試。">
+    <value>Unable to confirm the save result. Check the group list before retrying.</value>
+  </data>
+  <data xml:space="preserve" name="請輸入 1 至 256 個字元的群組名稱。">
+    <value>Enter a group name of 1 to 256 characters.</value>
+  </data>
+  <data xml:space="preserve" name="說明最多 1024 個字元。">
+    <value>Description must be at most 1024 characters.</value>
+  </data>
+  <data xml:space="preserve" name="請重新整理後再試。">
+    <value>Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="已有相同名稱的群組，請使用其他名稱。">
+    <value>A group with this name already exists. Choose another name.</value>
+  </data>
+  <data xml:space="preserve" name="群組詳情">
+    <value>Group details</value>
+  </data>
+  <data xml:space="preserve" name="← 返回群組">
+    <value>← Back to groups</value>
+  </data>
+  <data xml:space="preserve" name="無法載入群組，請稍後再試。">
+    <value>Unable to load the group. Try again later.</value>
+  </data>
+  <data xml:space="preserve" name="找不到群組">
+    <value>Group not found</value>
+  </data>
+  <data xml:space="preserve" name="此群組不存在。">
+    <value>This group does not exist.</value>
+  </data>
+  <data xml:space="preserve" name="尚無說明">
+    <value>No description</value>
+  </data>
+  <data xml:space="preserve" name="公開設定">
+    <value>Public settings</value>
+  </data>
+  <data xml:space="preserve" name="群組中有 {0} 台設備。">
+    <value>Devices in this group: {0}.</value>
+  </data>
+  <data xml:space="preserve" name="另有 {0} 台已封存。">
+    <value>Archived devices: {0}.</value>
+  </data>
+  <data xml:space="preserve" name="搜尋名稱或目標">
+    <value>Search by name or target</value>
+  </data>
+  <data xml:space="preserve" name="範圍">
+    <value>Scope</value>
+  </data>
+  <data xml:space="preserve" name="群組設備">
+    <value>Group devices</value>
+  </data>
+  <data xml:space="preserve" name="可加入設備">
+    <value>Available devices</value>
+  </data>
+  <data xml:space="preserve" name="全部設備">
+    <value>All devices</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的設備。">
+    <value>No devices match your search.</value>
+  </data>
+  <data xml:space="preserve" name="選取">
+    <value>Select</value>
+  </data>
+  <data xml:space="preserve" name="主要目標">
+    <value>Primary target</value>
+  </data>
+  <data xml:space="preserve" name="監控模式">
+    <value>Monitoring mode</value>
+  </data>
+  <data xml:space="preserve" name="群組歸屬">
+    <value>Membership</value>
+  </data>
+  <data xml:space="preserve" name="選取 {0}">
+    <value>Select {0}</value>
+  </data>
+  <data xml:space="preserve" name="深入監控">
+    <value>Host monitoring</value>
+  </data>
+  <data xml:space="preserve" name="僅 Ping">
+    <value>Ping only</value>
+  </data>
+  <data xml:space="preserve" name="已加入">
+    <value>Added</value>
+  </data>
+  <data xml:space="preserve" name="未加入">
+    <value>Not added</value>
+  </data>
+  <data xml:space="preserve" name="加入所選設備">
+    <value>Add selected devices</value>
+  </data>
+  <data xml:space="preserve" name="移出所選設備">
+    <value>Remove selected devices</value>
+  </data>
+  <data xml:space="preserve" name="設備分頁">
+    <value>Device pages</value>
+  </data>
+  <data xml:space="preserve" name="群組中有 {0} 個服務。">
+    <value>Services in this group: {0}.</value>
+  </data>
+  <data xml:space="preserve" name="搜尋服務或環境">
+    <value>Search services or environments</value>
+  </data>
+  <data xml:space="preserve" name="群組服務">
+    <value>Group services</value>
+  </data>
+  <data xml:space="preserve" name="可加入服務">
+    <value>Available services</value>
+  </data>
+  <data xml:space="preserve" name="全部服務">
+    <value>All services</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的服務。">
+    <value>No services match your search.</value>
+  </data>
+  <data xml:space="preserve" name="環境">
+    <value>Environment</value>
+  </data>
+  <data xml:space="preserve" name="健康狀態">
+    <value>Health status</value>
+  </data>
+  <data xml:space="preserve" name="加入所選服務">
+    <value>Add selected services</value>
+  </data>
+  <data xml:space="preserve" name="移出所選服務">
+    <value>Remove selected services</value>
+  </data>
+  <data xml:space="preserve" name="服務分頁">
+    <value>Service pages</value>
+  </data>
+  <data xml:space="preserve" name="刪除群組">
+    <value>Delete group</value>
+  </data>
+  <data xml:space="preserve" name="將移除 {0} 台設備、{1} 個服務的群組歸屬。">
+    <value>Membership will be removed from {0} devices and {1} services.</value>
+  </data>
+  <data xml:space="preserve" name="另有 {0} 台已封存設備的歸屬也會移除。">
+    <value>Membership will also be removed from {0} archived devices.</value>
+  </data>
+  <data xml:space="preserve" name="不會刪除資源或歷史，也不會變更監控或公開設定。">
+    <value>Resources and history will not be deleted; monitoring and public settings will not change.</value>
+  </data>
+  <data xml:space="preserve" name="我了解以上影響">
+    <value>I understand these effects</value>
+  </data>
+  <data xml:space="preserve" name="確認刪除群組">
+    <value>Confirm group deletion</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取">
+    <value>Unable to load</value>
+  </data>
+  <data xml:space="preserve" name="未知或資料不足">
+    <value>Unknown or insufficient data</value>
+  </data>
+  <data xml:space="preserve" name="收集已停止">
+    <value>Collection stopped</value>
+  </data>
+  <data xml:space="preserve" name="來源已撤銷">
+    <value>Source revoked</value>
+  </data>
+  <data xml:space="preserve" name="健康檢查已停用">
+    <value>Health check disabled</value>
+  </data>
+  <data xml:space="preserve" name="正常">
+    <value>Healthy</value>
+  </data>
+  <data xml:space="preserve" name="降級">
+    <value>Degraded</value>
+  </data>
+  <data xml:space="preserve" name="異常">
+    <value>Unhealthy</value>
+  </data>
+  <data xml:space="preserve" name="請先選取服務。">
+    <value>Select a service first.</value>
+  </data>
+  <data xml:space="preserve" name="選取的服務無效或超過數量上限。">
+    <value>The selected services are invalid or exceed the limit.</value>
+  </data>
+  <data xml:space="preserve" name="請選擇要加入或移出的操作。">
+    <value>Choose whether to add or remove items.</value>
+  </data>
+  <data xml:space="preserve" name="無法確認操作結果，請重新整理並檢查。">
+    <value>Unable to confirm the result. Refresh and check.</value>
+  </data>
+  <data xml:space="preserve" name="請先選取設備。">
+    <value>Select a device first.</value>
+  </data>
+  <data xml:space="preserve" name="選取的設備無效或超過數量上限。">
+    <value>The selected devices are invalid or exceed the limit.</value>
+  </data>
+  <data xml:space="preserve" name="請先確認操作影響。">
+    <value>Confirm that you understand the effects first.</value>
+  </data>
+  <data xml:space="preserve" name="服務不存在，請重新整理後再試。">
+    <value>The service does not exist. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="設備不存在或已封存，請重新整理後再試。">
+    <value>The device does not exist or is archived. Refresh and try again.</value>
+  </data>
+  <data xml:space="preserve" name="每次最多處理 100 筆，且同一設備不能同時加入及移出。">
+    <value>At most 100 devices can be changed at a time; a device cannot be added and removed together.</value>
+  </data>
+  <data name="尚未加入任何群組的應用服務。" xml:space="preserve"><value>Application services not assigned to any group.</value></data>
+  <data name="尚未加入任何群組的設備。" xml:space="preserve"><value>Devices not assigned to any group.</value></data>
+  <data name="無法載入服務，請稍後再試。" xml:space="preserve"><value>Unable to load services. Please try again later.</value></data>
+  <data name="無法載入設備，請稍後再試。" xml:space="preserve"><value>Unable to load devices. Please try again later.</value></data>
+  <data name="沒有符合條件的未分組服務。" xml:space="preserve"><value>No ungrouped services match your search.</value></data>
+  <data name="沒有符合條件的未分組設備。" xml:space="preserve"><value>No ungrouped devices match your search.</value></data>
+  <data name="共 {0} 個服務" xml:space="preserve"><value>{0} services</value></data>
+  <data name="共 {0} 台設備" xml:space="preserve"><value>{0} devices</value></data>
+  <data name="查看所有群組" xml:space="preserve"><value>View all groups</value></data>
+  <data name="所屬群組" xml:space="preserve"><value>Groups</value></data>
+  <data name="無法載入所屬群組，請稍後再試。" xml:space="preserve"><value>Unable to load groups. Please try again later.</value></data>
+  <data name="此服務尚未加入群組。" xml:space="preserve"><value>This service has not joined any groups.</value></data>
+  <data name="此頁沒有群組。" xml:space="preserve"><value>There are no groups on this page.</value></data>
+  <data name="所屬群組分頁" xml:space="preserve"><value>Group pagination</value></data>
+  <data name="應用服務接入導引" xml:space="preserve"><value>Application service onboarding guide</value></data>
+  <data name="← 返回服務詳情" xml:space="preserve"><value>← Back to service details</value></data>
+  <data name="依序設定來源、應用程式與健康檢查，然後確認資料已開始接收。" xml:space="preserve"><value>Set up the source, application and health checks, then confirm data is being received.</value></data>
+  <data name="無法讀取服務資料，請重新整理後再試。" xml:space="preserve"><value>Unable to load service data. Refresh and try again.</value></data>
+  <data name="找不到指定的服務；你仍可閱讀一般接入步驟。" xml:space="preserve"><value>The specified service was not found; you can still read the general onboarding steps.</value></data>
+  <data name="目前服務" xml:space="preserve"><value>Current service</value></data>
+  <data name="顯示名稱" xml:space="preserve"><value>Display name</value></data>
+  <data name="服務識別名稱" xml:space="preserve"><value>Service identity name</value></data>
+  <data name="命名空間" xml:space="preserve"><value>Namespace</value></data>
+  <data name="未設定" xml:space="preserve"><value>Not set</value></data>
+  <data name="最後接收（UTC）" xml:space="preserve"><value>Last received (UTC)</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>No data yet</value></data>
+  <data name="管理員建立受信任來源" xml:space="preserve"><value>Administrator creates a trusted source</value></data>
+  <data name="來源憑證用來辨識應用資料的信任範圍。互不信任的應用請使用不同來源；憑證只在建立或輪替時顯示，請交由部署端的安全儲存機制保管。" xml:space="preserve"><value>Source credentials identify the trust boundary for application data. Use separate sources for applications that do not trust each other. Credentials are shown only when created or rotated; store them securely in the deployment environment.</value></data>
+  <data name="建立來源與管理待加入服務" xml:space="preserve"><value>Create sources and manage pending services</value></data>
+  <data name="請聯絡管理員建立來源並安全交付憑證。" xml:space="preserve"><value>Contact an administrator to create a source and securely deliver its credential.</value></data>
+  <data name="設定應用程式與傳送路徑" xml:space="preserve"><value>Configure the application and delivery path</value></data>
+  <data name="應用程式需加入 OpenTelemetry SDK 或適用的 instrumentation，並由應用或部署管理者設定；安裝主機 Agent 不會自動產生應用 Trace。服務不必綁定設備或 IP。" xml:space="preserve"><value>The application or deployment administrator must configure an OpenTelemetry SDK or suitable instrumentation. Installing the host Agent does not automatically generate application traces. Services do not need to be bound to a device or IP.</value></data>
+  <data name="直接傳送時，OTLP HTTP/protobuf 的平台基本位址為 " xml:space="preserve"><value>For direct delivery, the platform base URL for OTLP HTTP/protobuf is </value></data>
+  <data name="。應用端以受保護的設定提供來源憑證；不要將憑證放在原始碼、命令歷史或截圖中。" xml:space="preserve"><value>. Supply the source credential through protected application configuration; do not put credentials in source code, command history or screenshots.</value></data>
+  <data name="目前使用 HTTP 開啟平台；來源憑證需要安全連線。請改用平台的 HTTPS 位址設定傳送。" xml:space="preserve"><value>The platform is currently open over HTTP. Source credentials require a secure connection; configure delivery using the platform HTTPS URL.</value></data>
+  <data name="也可以透過共用 Collector：應用使用該信任範圍的 Collector 入口憑證，Collector 再以對應的 Vigiloom 來源憑證傳送。這兩種憑證不同，不能互換。" xml:space="preserve"><value>Alternatively, use a shared Collector: the application uses the Collector ingress credential for its trust boundary, and the Collector sends data using the corresponding Vigiloom source credential. These credentials are different and cannot be interchanged.</value></data>
+  <data name="服務識別名稱、命名空間與環境必須與來源回報一致；每個執行個體使用穩定且互不重複的 " xml:space="preserve"><value>The service identity name, namespace and environment must match the source report. Each instance must use a stable and unique </value></data>
+  <data name="，不要用 IP 推定身分。" xml:space="preserve"><value>; do not infer identity from IP addresses.</value></data>
+  <data name="查看 .NET 10 範例與設定說明" xml:space="preserve"><value>View the .NET 10 example and setup instructions</value></data>
+  <data name="核准服務並確認正式資料" xml:space="preserve"><value>Approve the service and verify collected data</value></data>
+  <data name="應用開始回報後，最近三分鐘仍有訊號的未加入服務會出現在待加入清單。管理員核准後才開始保存正式觀測資料；核准前的內容不會補成歷史。" xml:space="preserve"><value>After an application starts reporting, unapproved services with signals in the last three minutes appear in the pending list. Observation data is retained only after administrator approval; earlier data is not backfilled.</value></data>
+  <data name="核准後讓應用持續處理請求，再回服務詳情查看最後接收時間、日誌與追蹤。範例預設使用 10% 根追蹤抽樣，沒有每次請求的 Trace 不代表失敗。" xml:space="preserve"><value>After approval, keep the application processing requests, then check last received times, logs and traces in service details. The example samples 10% of root traces by default, so a missing trace for an individual request does not indicate failure.</value></data>
+  <data name="查看來源與 Collector 接收診斷" xml:space="preserve"><value>View source and Collector reception diagnostics</value></data>
+  <data name="設定獨立健康檢查" xml:space="preserve"><value>Configure independent health checks</value></data>
+  <data name="Health Checks 與 OTLP 是不同訊號：應用需提供可由中央平台到達的健康端點，管理員先允許必要的目的網段，再為已核准服務設定端點與檢查頻率。範例僅示範基本存活檢查；如需確認資料庫等相依服務，應用端須另外註冊對應檢查。" xml:space="preserve"><value>Health Checks and OTLP are separate signals. The application must expose a health endpoint reachable by the central platform; an administrator must allow the destination network and configure the endpoint and frequency for the approved service. The example provides only a basic liveness check; checks for databases and other dependencies must be registered separately.</value></data>
+  <data name="狀態過期、沒有檢查或停止收集都不會自動顯示正常；健康結果不由主機 Ping 或 Collector 連線推定。" xml:space="preserve"><value>Expired status, missing checks or stopped collection do not automatically mean healthy. Health is not inferred from host Ping or Collector connectivity.</value></data>
+  <data name="設定服務健康檢查" xml:space="preserve"><value>Configure service health checks</value></data>
+</root>

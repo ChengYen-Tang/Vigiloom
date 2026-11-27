@@ -36,12 +36,12 @@ public partial class ServiceDeployments
 
     private async Task LoadAsync()
     {
-        if (ServiceId is not { } id || id.Version != 7) { error = "請從服務詳情選擇服務。"; return; }
+        if (ServiceId is not { } id || id.Version != 7) { error = L["請從服務詳情選擇服務。"].Value; return; }
         try
         {
             var token = HttpContext.RequestAborted;
             selected = await Applications.GetServiceAsync(id, token);
-            if (selected is null) { error = "找不到選取的服務。"; return; }
+            if (selected is null) { error = L["找不到選取的服務。"].Value; return; }
             links = await Links.ListAsync(id, linkPage, token);
             instances = await Instances.ListAsync(id, instancePage, token);
             var page = await Devices.ListAsync(null, null, false, false, devicePage, token);
@@ -49,21 +49,21 @@ public partial class ServiceDeployments
             moreDevices = devicePage < 1000 && (long)devicePage * page.PageSize < page.Total;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
-        { Logger.LogWarning("Could not load deployment relationships: {ExceptionType}", ex.GetType().Name); error = "無法讀取部署關聯，請稍後再試。"; }
+        { Logger.LogWarning("Could not load deployment relationships: {ExceptionType}", ex.GetType().Name); error = L["無法讀取部署關聯，請稍後再試。"].Value; }
     }
 
     private async Task CreateAsync(EditContext _)
     {
         if (ServiceId is not { } service || Actor() is not { } actor || !Guid.TryParse(CreateForm.DeviceId, out var device) || !Guid.TryParse(CreateForm.InstanceId, out var instance))
-        { error = "請選擇主機與執行個體。"; return; }
+        { error = L["請選擇主機與執行個體。"].Value; return; }
         try
         {
             var result = await Links.CreateAsync(service, new(device, instance, CreateForm.Evidence ?? ""), actor, HttpContext.RequestAborted);
-            if (result.Status == DeploymentLinkStatus.Saved) { message = "部署關聯已建立。"; CreateForm = new(); }
+            if (result.Status == DeploymentLinkStatus.Saved) { message = L["部署關聯已建立。"].Value; CreateForm = new(); }
             else error = Failure(result.Status);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
-        { Logger.LogWarning("Could not create deployment relationship: {ExceptionType}", ex.GetType().Name); error = "無法確認儲存結果，請重新整理後檢查。"; }
+        { Logger.LogWarning("Could not create deployment relationship: {ExceptionType}", ex.GetType().Name); error = L["無法確認儲存結果，請重新整理後檢查。"].Value; }
         await LoadAsync();
     }
 
@@ -71,25 +71,25 @@ public partial class ServiceDeployments
     {
         var parts = (EndForm.Selection ?? "").Split('|');
         if (ServiceId is not { } service || Actor() is not { } actor || parts.Length != 2 || !Guid.TryParse(parts[0], out var id))
-        { error = "請選擇要結束的關聯。"; return; }
+        { error = L["請選擇要結束的關聯。"].Value; return; }
         try
         {
             var result = await Links.EndAsync(service, id, new(parts[1]), actor, HttpContext.RequestAborted);
-            if (result == DeploymentLinkStatus.Saved) message = "部署關聯已結束。";
+            if (result == DeploymentLinkStatus.Saved) message = L["部署關聯已結束。"].Value;
             else error = Failure(result);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
-        { Logger.LogWarning("Could not end deployment relationship: {ExceptionType}", ex.GetType().Name); error = "無法確認儲存結果，請重新整理後檢查。"; }
+        { Logger.LogWarning("Could not end deployment relationship: {ExceptionType}", ex.GetType().Name); error = L["無法確認儲存結果，請重新整理後檢查。"].Value; }
         await LoadAsync();
     }
 
     private Guid? Actor() => Guid.TryParse(HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var actor) ? actor : null;
     private string PageUrl(int link, int device, int instance) => $"/settings/service-deployments?service={ServiceId:D}&links={link}&devices={device}&instances={instance}";
-    private static string Failure(DeploymentLinkStatus status) => status switch
+    private string Failure(DeploymentLinkStatus status) => status switch
     {
-        DeploymentLinkStatus.Invalid => "請提供有效的主機、執行個體與確認依據（最多 512 字）。",
-        DeploymentLinkStatus.NotFound => "找不到設備或執行個體，請重新整理。",
-        _ => "關聯或資源狀態已變更，請重新整理並確認。"
+        DeploymentLinkStatus.Invalid => L["請提供有效的主機、執行個體與確認依據（最多 512 字）。"].Value,
+        DeploymentLinkStatus.NotFound => L["找不到設備或執行個體，請重新整理。"].Value,
+        _ => L["關聯或資源狀態已變更，請重新整理並確認。"].Value
     };
     private sealed class CreateEditor { public string? DeviceId { get; set; } public string? InstanceId { get; set; } public string? Evidence { get; set; } }
     private sealed class EndEditor { public string? Selection { get; set; } }

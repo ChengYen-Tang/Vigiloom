@@ -1,7 +1,18 @@
+using Microsoft.Extensions.Localization;
+using Vigiloom.Web.Components.Account;
+
 namespace Vigiloom.Web.Authentication;
 
 internal static class AccountOperationMessages
 {
+    public static string DescribeValidation(AccountOperationResult result, IStringLocalizer<SetupText> text) =>
+        string.Join(" ", result.Errors.Select((message, index) =>
+        {
+            if (result.ErrorCodes is not { } codes || index >= codes.Count) return message;
+            var localized = text[$"Identity.{codes[index]}"];
+            return localized.ResourceNotFound ? message : localized.Value;
+        }));
+
     public static string Describe(AccountOperationResult result) => result.Status switch
     {
         AccountOperationStatus.InvalidRole => "請選擇有效的角色。",

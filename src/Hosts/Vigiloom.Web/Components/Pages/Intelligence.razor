@@ -14,20 +14,21 @@
 @inject Vigiloom.Web.HostMonitoring.IntelligenceSettingsAccess Recovery
 @inject Vigiloom.Web.HostMonitoring.CustomBaselineAccess CustomBaselines
 @inject ILogger<Intelligence> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<IntelligenceText> L
 
-<PageTitle>情報來源 - Vigiloom</PageTitle>
+<PageTitle>@L["情報來源 - Vigiloom"]</PageTitle>
 <main class="device-page intelligence-page">
-    <header class="device-heading"><div><h1>情報來源</h1><p>管理來源更新、查看涵蓋範圍與版本。情報資料不代表設備已受影響或安全。</p></div></header>
-    <p><a href="/settings/baseline-checks">建立自訂安全基準</a></p>
+    <header class="device-heading"><div><h1>@L["情報來源"]</h1><p>@L["管理來源更新、查看涵蓋範圍與版本。情報資料不代表設備已受影響或安全。"]</p></div></header>
+    <p><a href="/settings/baseline-checks">@L["建立自訂安全基準"]</a></p>
     <section class="device-panel" aria-labelledby="intelligence-coverage-title">
-        <h2 id="intelligence-coverage-title">情報類型與目前範圍</h2>
+        <h2 id="intelligence-coverage-title">@L["情報類型與目前範圍"]</h2>
         <ul>
-            <li>漏洞與套件公告：提供 CISA KEV 與 GitHub 已審核公告來源；不涵蓋所有漏洞。</li>
-            <li>行為規則：保存 Sigma 原始規則；支援的規則可在<a href="/settings/sigma">行為規則</a>試跑及啟用。</li>
-            <li>IOC／YARA：保存來源檔案與 IOC 分類；IOC 偵測需由管理員啟用。</li>
-            <li>安全設定基準（SCA）：提供兩個已審查的唯讀來源檢查；啟用來源後，可在支援的主機查看檢查結果。</li>
+            <li>@L["漏洞與套件公告：提供 CISA KEV 與 GitHub 已審核公告來源；不涵蓋所有漏洞。"]</li>
+            <li>@L["行為規則：保存 Sigma 原始規則；支援的規則可在"]<a href="/settings/sigma">@L["行為規則"]</a>@L["試跑及啟用。"]</li>
+            <li>@L["IOC／YARA：保存來源檔案與 IOC 分類；IOC 偵測需由管理員啟用。"]</li>
+            <li>@L["安全設定基準（SCA）：提供兩個已審查的唯讀來源檢查；啟用來源後，可在支援的主機查看檢查結果。"]</li>
         </ul>
-        <p>各來源是否啟用、資料是否過期，請查看下方狀態。</p>
+        <p>@L["各來源是否啟用、資料是否過期，請查看下方狀態。"]</p>
     </section>
     @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
     @if (message is not null) { <p class="intelligence-message" role="status">@message</p> }
@@ -35,15 +36,15 @@
     {
         <div class="intelligence-layout">
             <section class="device-panel intelligence-list" aria-labelledby="sources-title">
-                <h2 id="sources-title">情報來源</h2>
-                @if (sources.Items.Count == 0) { <p>尚無來源資料。背景工作啟動後會建立已支援的來源。</p> }
+                <h2 id="sources-title">@L["情報來源"]</h2>
+                @if (sources.Items.Count == 0) { <p>@L["尚無來源資料。背景工作啟動後會建立已支援的來源。"]</p> }
                 @foreach (var item in sources.Items)
                 {
                     <a class="intelligence-source @(selected?.Id == item.Id ? "selected" : "")" href="@SourceUrl(item.Id)" aria-current="@(selected?.Id == item.Id ? "page" : null)">
                         <strong>@(item.Description?.Name ?? item.Key)</strong><span>@SourceState(item)</span>
                     </a>
                 }
-                <nav aria-label="情報來源分頁">@if (sources.Page > 1) { <a href="@($"/settings/intelligence?sourcePage={sources.Page - 1}")">上一頁</a> } @if (sources.HasMore) { <a href="@($"/settings/intelligence?sourcePage={sources.Page + 1}")">下一頁</a> }</nav>
+                <nav aria-label="@L["情報來源分頁"]">@if (sources.Page > 1) { <a href="@($"/settings/intelligence?sourcePage={sources.Page - 1}")">@L["上一頁"]</a> } @if (sources.HasMore) { <a href="@($"/settings/intelligence?sourcePage={sources.Page + 1}")">@L["下一頁"]</a> }</nav>
             </section>
             @if (selected is not null)
             {
@@ -52,58 +53,58 @@
                         <h2>@(selected.Description?.Name ?? selected.Key)</h2>
                         @if (selected.Description is { } description)
                         {
-                            <p>@Coverage(selected)</p><p>類別：@Category(selected)</p>
-                            <p>適用平台與範圍：@PlatformCoverage(selected)</p>
-                            <p>來源：<a href="@description.SourceUrl" target="_blank" rel="noopener noreferrer">@(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? "Vigiloom 自訂檢查" : "官方資料來源")</a></p>
-                            <details><summary>查看來源授權依據</summary><p>@description.LicenseEvidence</p></details>
+                            <p>@Coverage(selected)</p><p>@L["類別："]@Category(selected)</p>
+                            <p>@L["適用平台與範圍："]@PlatformCoverage(selected)</p>
+                            <p>@L["來源："]<a href="@description.SourceUrl" target="_blank" rel="noopener noreferrer">@(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? L["Vigiloom 自訂檢查"].Value : L["官方資料來源"].Value)</a></p>
+                            <details><summary>@L["查看來源授權依據"]</summary><p>@description.LicenseEvidence</p></details>
                         }
-                        else { <p>無法辨識此來源，無法確認資料範圍或授權。</p> }
-                        <p class="intelligence-state @(selected.IsStale || selected.ActiveUnavailable || selected.ActiveVersionOutdated || selected.LastError is not null ? "attention" : "")"><strong>狀態：</strong>@SourceState(selected)</p>
-                        @if (selected.Key is "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss") { <p>啟用來源後，符合條件的新版本會自動選用；手動回復的版本會保留到上游發布新版本。</p> }
-                        @if (selected.ActiveVersionOutdated) { <p>目前選用的版本不是最近確認的上游資料；設備漏洞結果將標示為過期。需要時可選用最近取得的版本。</p> }
-                        <p>@(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? "最近儲存草稿（UTC）" : "最後成功更新（UTC）")：@DisplayTime(selected.LastSuccessfulCheckAt)</p>
-                        @if (!string.IsNullOrEmpty(selected.LastError)) { <p role="alert">最近更新失敗：@ErrorText(selected.LastError)</p> }
+                        else { <p>@L["無法辨識此來源，無法確認資料範圍或授權。"]</p> }
+                        <p class="intelligence-state @(selected.IsStale || selected.ActiveUnavailable || selected.ActiveVersionOutdated || selected.LastError is not null ? "attention" : "")"><strong>@L["狀態："]</strong>@SourceState(selected)</p>
+                        @if (selected.Key is "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss") { <p>@L["啟用來源後，符合條件的新版本會自動選用；手動回復的版本會保留到上游發布新版本。"]</p> }
+                        @if (selected.ActiveVersionOutdated) { <p>@L["目前選用的版本不是最近確認的上游資料；設備漏洞結果將標示為過期。需要時可選用最近取得的版本。"]</p> }
+                        <p>@(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? L["最近儲存草稿（UTC）"].Value : L["最後成功更新（UTC）"].Value)：@DisplayTime(selected.LastSuccessfulCheckAt)</p>
+                        @if (!string.IsNullOrEmpty(selected.LastError)) { <p role="alert">@L["最近更新失敗："]@ErrorText(selected.LastError)</p> }
                         @if (progress is not null)
                         {
-                            <p>公告匯入：@ProgressState(progress.State)；已讀取 @progress.RecordCount 筆、@progress.PageCount 頁。</p>
-                            @if (progress.FailureCode is not null) { <p role="alert">匯入未完成：@FailureText(progress.FailureCode)</p> }
-                            @if (progress.RetryAt is not null) { <p>下次可重試時間（UTC）：@DisplayTime(progress.RetryAt)</p> }
+                            <p>@L["公告匯入：{0}；已讀取 {1} 筆、{2} 頁。", ProgressState(progress.State), progress.RecordCount, progress.PageCount]</p>
+                            @if (progress.FailureCode is not null) { <p role="alert">@L["匯入未完成："]@FailureText(progress.FailureCode)</p> }
+                            @if (progress.RetryAt is not null) { <p>@L["下次可重試時間（UTC）："]@DisplayTime(progress.RetryAt)</p> }
                             @if ((progress.FailureCode is not null || progress.State == "inconsistent") && progress.ImportId is not null && progress.Version is not null)
                             {
                                 <EditForm Model="RecoveryInput" FormName="intelligence-recovery" method="post" OnValidSubmit="RecoverAsync"><DataAnnotationsValidator /><ValidationSummary />
                                     <input type="hidden" name="RecoveryInput.SourceId" value="@RecoveryInput.SourceId" /><input type="hidden" name="RecoveryInput.ImportId" value="@RecoveryInput.ImportId" /><InputHidden @bind-Value="RecoveryInput.Version" />
-                                    <button type="submit">放棄失敗的匯入並重新排程</button>
+                                    <button type="submit">@L["放棄失敗的匯入並重新排程"]</button>
                                 </EditForm>
                             }
                         }
                     </section>
                     <section class="device-panel">
-                        <details open="@policyOpen"><summary><h2>更新設定</h2></summary>
+                        <details open="@policyOpen"><summary><h2>@L["更新設定"]</h2></summary>
                         <EditForm Model="PolicyInput" FormName="intelligence-policy" method="post" OnValidSubmit="SavePolicyAsync" OnInvalidSubmit="InvalidPolicy" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                             <input type="hidden" name="PolicyInput.SourceId" value="@PolicyInput.SourceId" /><InputHidden @bind-Value="PolicyInput.Version" />
-                            <label><InputCheckbox @bind-Value="PolicyInput.Enabled" /> @(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? "啟用此檢查" : "啟用自動更新")</label>
+                            <label><InputCheckbox @bind-Value="PolicyInput.Enabled" /> @(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? L["啟用此檢查"].Value : L["啟用自動更新"].Value)</label>
                             @if (selected.Key == "signature-base")
                             {
-                                <label><InputCheckbox @bind-Value="PolicyInput.IocDetectionEnabled" /> 比對主機事件中的 IOC</label>
-                                <small>命中僅供調查，不會自動隔離主機。</small>
+                                <label><InputCheckbox @bind-Value="PolicyInput.IocDetectionEnabled" /> @L["比對主機事件中的 IOC"]</label>
+                                <small>@L["命中僅供調查，不會自動隔離主機。"]</small>
                             }
                             <div hidden="@selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal)">
-                            <label for="interval">更新間隔（秒）</label><InputNumber id="interval" @bind-Value="PolicyInput.Interval" /><small>例如：3,600 秒是 1 小時。</small>
-                            <label for="stale">資料過期期限（秒）</label><InputNumber id="stale" @bind-Value="PolicyInput.Stale" /><small>例如：86,400 秒是 1 天。</small>
-                            <label for="mib">匯入容量上限（MiB）</label><InputNumber id="mib" step="any" @bind-Value="PolicyInput.MiB" />
-                            <label for="records">紀錄數上限</label><InputNumber id="records" @bind-Value="PolicyInput.Records" />
+                            <label for="interval">@L["更新間隔（秒）"]</label><InputNumber id="interval" @bind-Value="PolicyInput.Interval" /><small>@L["例如：3,600 秒是 1 小時。"]</small>
+                            <label for="stale">@L["資料過期期限（秒）"]</label><InputNumber id="stale" @bind-Value="PolicyInput.Stale" /><small>@L["例如：86,400 秒是 1 天。"]</small>
+                            <label for="mib">@L["匯入容量上限（MiB）"]</label><InputNumber id="mib" step="any" @bind-Value="PolicyInput.MiB" />
+                            <label for="records">@L["紀錄數上限"]</label><InputNumber id="records" @bind-Value="PolicyInput.Records" />
                             </div>
-                            <div><button type="submit">儲存設定</button></div>
+                            <div><button type="submit">@L["儲存設定"]</button></div>
                         </EditForm>
                         @if (selected.Key == "github-reviewed")
                         {
-                            <details><summary>GitHub 來源憑證</summary>
-                                <p>@(selected.HasCredential ? "已設定憑證；內容不會顯示。" : "尚未設定憑證，可使用未登入的來源額度。")</p>
+                            <details><summary>@L["GitHub 來源憑證"]</summary>
+                                <p>@(selected.HasCredential ? L["已設定憑證；內容不會顯示。"].Value : L["尚未設定憑證，可使用未登入的來源額度。"].Value)</p>
                                 <EditForm Model="CredentialInput" FormName="intelligence-credential" method="post" OnValidSubmit="SaveCredentialAsync" OnInvalidSubmit="InvalidCredential" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                                     <input type="hidden" name="CredentialInput.SourceId" value="@CredentialInput.SourceId" /><InputHidden @bind-Value="CredentialInput.Version" />
-                                    <label for="credential">新憑證</label><InputText id="credential" type="password" autocomplete="new-password" @bind-Value="CredentialInput.Value" />
-                                    <label><InputCheckbox @bind-Value="CredentialInput.Clear" /> 清除現有憑證</label>
-                                    <div><button type="submit">儲存憑證設定</button></div>
+                                    <label for="credential">@L["新憑證"]</label><InputText id="credential" type="password" autocomplete="new-password" @bind-Value="CredentialInput.Value" />
+                                    <label><InputCheckbox @bind-Value="CredentialInput.Clear" /> @L["清除現有憑證"]</label>
+                                    <div><button type="submit">@L["儲存憑證設定"]</button></div>
                                 </EditForm>
                             </details>
                         }
@@ -112,70 +113,70 @@
                     @if (selected.Key == "cisa-kev")
                     {
                         <section class="device-panel">
-                            <details><summary><h2>離線匯入</h2></summary>
-                                <p>選擇從可信管道取得的 KEV JSON 檔案。系統會驗證格式與紀錄內容，並標記為管理員匯入；匯入本身不證明檔案由 CISA 簽署，也不會自動啟用。</p>
+                            <details><summary><h2>@L["離線匯入"]</h2></summary>
+                                <p>@L["選擇從可信管道取得的 KEV JSON 檔案。系統會驗證格式與紀錄內容，並標記為管理員匯入；匯入本身不證明檔案由 CISA 簽署，也不會自動啟用。"]</p>
                                 <form method="post" action="@($"/settings/intelligence/{selected.Id:D}/offline-import")" enctype="multipart/form-data" class="intelligence-form">
                                     <AntiforgeryToken />
-                                    <label for="kev-file">KEV JSON 檔案</label><input id="kev-file" type="file" name="file" accept=".json,application/json" required />
-                                    <div><button type="submit">匯入檔案</button></div>
+                                    <label for="kev-file">@L["KEV JSON 檔案"]</label><input id="kev-file" type="file" name="file" accept=".json,application/json" required />
+                                    <div><button type="submit">@L["匯入檔案"]</button></div>
                                 </form>
                             </details>
                             @if (ImportMessage is not null) { <p role="status">@ImportMessage</p> }
                         </section>
                     }
                     <section class="device-panel">
-                        <h2>來源版本</h2>
-                        @if (revisions is null || revisions.Items.Count == 0) { <p>尚無已驗證的版本。</p> }
+                        <h2>@L["來源版本"]</h2>
+                        @if (revisions is null || revisions.Items.Count == 0) { <p>@L["尚無已驗證的版本。"]</p> }
                         else
                         {
-                            <p class="intelligence-scroll-hint">左右滑動可查看完整版本資訊。</p>
-                            <div class="device-table-wrap intelligence-versions" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th><th>版本資訊</th>@if (selected.Key is "sigmahq-rules" or "signature-base") { <th>來源資料</th> }</tr></thead><tbody>
-                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : revision.ContentPurgedAt is not null ? "內容已清理" : selected.Key == "msrc-cvrf" && revision.UpstreamVersion == "staging" ? "下載未完成" : selected.Key == "msrc-cvrf" && !revision.Normalized ? "已下載，尚未支援比對" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td><td><details><summary>查看資訊</summary><p>格式版本：@revision.SchemaVersion</p><p>轉換版本：@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>授權依據：@revision.LicenseEvidence</p>@if (revision.LastOfflineImportAt is { } imported) { <p>管理員離線匯入（UTC）：@DisplayTime(imported)。匯入不代表上游來源已驗證。</p> }</details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td>@if (revision.ContentPurgedAt is null) { <a href="@RulesUrl(revision.Id, 1)">查看來源資料</a> } else { <span>已清理</span> }</td> }</tr> }
+                            <p class="intelligence-scroll-hint">@L["左右滑動可查看完整版本資訊。"]</p>
+                            <div class="device-table-wrap intelligence-versions" role="region" tabindex="0" aria-label="@L["情報版本，可左右捲動"]"><table><thead><tr><th>@L["來源版本"]</th><th>@L["來源時間（UTC）"]</th><th>@L["取得時間（UTC）"]</th><th>@L["紀錄"]</th><th>@L["狀態"]</th><th>@L["版本資訊"]</th>@if (selected.Key is "sigmahq-rules" or "signature-base") { <th>@L["來源資料"]</th> }</tr></thead><tbody>
+                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? L["已撤銷"].Value : revision.ContentPurgedAt is not null ? L["內容已清理"].Value : selected.Key == "msrc-cvrf" && revision.UpstreamVersion == "staging" ? L["下載未完成"].Value : selected.Key == "msrc-cvrf" && !revision.Normalized ? L["已下載，尚未支援比對"].Value : !revision.Normalized ? L["未完成驗證"].Value : revision.Active ? L["目前使用"].Value : L["已保留"].Value)</td><td><details><summary>@L["查看資訊"]</summary><p>@L["格式版本："]@revision.SchemaVersion</p><p>@L["轉換版本："]@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>@L["授權依據："]@revision.LicenseEvidence</p>@if (revision.LastOfflineImportAt is { } imported) { <p>@L["管理員離線匯入（UTC）：{0}。匯入不代表上游來源已驗證。", DisplayTime(imported)]</p> }</details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td>@if (revision.ContentPurgedAt is null) { <a href="@RulesUrl(revision.Id, 1)">@L["查看來源資料"]</a> } else { <span>@L["已清理"]</span> }</td> }</tr> }
                             </tbody></table></div>
-                            <nav aria-label="情報版本分頁">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">上一頁</a> } <span>第 @revisions.Page 頁</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">下一頁</a> }</nav>
+                            <nav aria-label="@L["情報版本分頁"]">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">@L["上一頁"]</a> } <span>@L["第 {0} 頁", revisions.Page]</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">@L["下一頁"]</a> }</nav>
                             @if (selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal))
                             {
-                                <h3>審核檢查內容</h3>
-                                <p>請核對目標、預期值及適用系統，再選擇要啟用的版本。</p>
+                                <h3>@L["審核檢查內容"]</h3>
+                                <p>@L["請核對目標、預期值及適用系統，再選擇要啟用的版本。"]</p>
                                 @foreach (var revision in revisions.Items)
                                 {
                                     @if (localVersions.TryGetValue(revision.Id, out var check))
                                     {
-                                        <details><summary>@revision.UpstreamVersion @(revision.Active ? "（目前使用）" : "")</summary>
-                                            <p>名稱：@check.Title</p><p>作業系統：@string.Join("、", check.Versions)</p>
-                                            <p>目標：@check.Target</p><p>預期值：@check.Expected</p><p>參考：@(string.IsNullOrWhiteSpace(check.SourceUrl) ? "未提供" : check.SourceUrl)</p>
-                                            <p>來源與使用條件：@check.License</p><p class="baseline-guidance">處理建議：@(check.Guidance ?? "未提供")</p>
-                                            <p><a href="@($"/settings/baseline-checks?source={selected.Id:D}&revision={revision.Id:D}")">以此版本編輯草稿</a></p>
+                                        <details><summary>@revision.UpstreamVersion @(revision.Active ? L["（目前使用）"].Value : "")</summary>
+                                            <p>@L["名稱："]@check.Title</p><p>@L["作業系統："]@string.Join("、", check.Versions)</p>
+                                            <p>@L["目標："]@check.Target</p><p>@L["預期值："]@check.Expected</p><p>@L["參考："]@(string.IsNullOrWhiteSpace(check.SourceUrl) ? L["未提供"].Value : check.SourceUrl)</p>
+                                            <p>@L["來源與使用條件："]@check.License</p><p class="baseline-guidance">@L["處理建議："]@(check.Guidance ?? L["未提供"].Value)</p>
+                                            <p><a href="@($"/settings/baseline-checks?source={selected.Id:D}&revision={revision.Id:D}")">@L["以此版本編輯草稿"]</a></p>
                                         </details>
                                     }
                                 }
                             }
                             @if (selected.Key is not ("cisa-kev" or "github-reviewed" or "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss" or "sigmahq-rules" or "signature-base" or "compliance-as-code-shadow" or "powerstig-network-selection") && !selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal))
-                            { <p>此來源目前僅保存規則資料，尚未支援偵測與發布。</p> }
+                            { <p>@L["此來源目前僅保存規則資料，尚未支援偵測與發布。"]</p> }
                             else if (revisions.Items.Any(x => !x.Revoked && x.Normalized && !x.Active))
                             {
-                            @if (selected.Key == "sigmahq-rules") { <p>僅選用符合授權與作者條件的核心來源規則；這不會部署規則或啟用偵測。</p> }
-                            @if (selected.Key == "signature-base") { <p>僅選用符合來源授權及完整性檢查的兩份 IOC 原始檔；發現新的授權聲明時須重新核對。YARA 規則與偵測尚未啟用。</p> }
-                            @if (selected.Key is "compliance-as-code-shadow" or "powerstig-network-selection") { <p>僅支援已審查版本中的指定唯讀檢查；選用來源不代表設備已完成檢查。</p> }
+                            @if (selected.Key == "sigmahq-rules") { <p>@L["僅選用符合授權與作者條件的核心來源規則；這不會部署規則或啟用偵測。"]</p> }
+                            @if (selected.Key == "signature-base") { <p>@L["僅選用符合來源授權及完整性檢查的兩份 IOC 原始檔；發現新的授權聲明時須重新核對。YARA 規則與偵測尚未啟用。"]</p> }
+                            @if (selected.Key is "compliance-as-code-shadow" or "powerstig-network-selection") { <p>@L["僅支援已審查版本中的指定唯讀檢查；選用來源不代表設備已完成檢查。"]</p> }
                             <EditForm Model="ActivationInput" FormName="intelligence-activation" method="post" OnValidSubmit="ActivateAsync" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                                 <input type="hidden" name="ActivationInput.SourceId" value="@ActivationInput.SourceId" /><input type="hidden" name="ActivationInput.ExpectedActiveId" value="@ActivationInput.ExpectedActiveId" /><InputHidden @bind-Value="ActivationInput.ExpectedVersion" />
-                                <label for="revision">選擇要啟用或回復的版本</label><InputSelect id="revision" @bind-Value="ActivationInput.RevisionId"><option value="">請選擇版本</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked && x.Normalized && !x.Active)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
-                                <label><InputCheckbox @bind-Value="ActivationInput.ConfirmReduction" /> 確認接受紀錄數大幅減少</label>
-                                @if (revisions.Items.Any(x => x.MappingVersion == "kev-cve-offline-v1")) { <label><InputCheckbox @bind-Value="ActivationInput.ConfirmOffline" /> 若選擇離線匯入版本，我已自行確認檔案來源與使用條件；系統未驗證上游身分。</label> }
-                                <div><button type="submit">@(selected.Key is "sigmahq-rules" or "signature-base" ? "選用來源版本" : "啟用選擇的版本")</button></div>
+                                <label for="revision">@L["選擇要啟用或回復的版本"]</label><InputSelect id="revision" @bind-Value="ActivationInput.RevisionId"><option value="">@L["請選擇版本"]</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked && x.Normalized && !x.Active)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
+                                <label><InputCheckbox @bind-Value="ActivationInput.ConfirmReduction" /> @L["確認接受紀錄數大幅減少"]</label>
+                                @if (revisions.Items.Any(x => x.MappingVersion == "kev-cve-offline-v1")) { <label><InputCheckbox @bind-Value="ActivationInput.ConfirmOffline" /> @L["若選擇離線匯入版本，我已自行確認檔案來源與使用條件；系統未驗證上游身分。"]</label> }
+                                <div><button type="submit">@(selected.Key is "sigmahq-rules" or "signature-base" ? L["選用來源版本"].Value : L["啟用選擇的版本"].Value)</button></div>
                             </EditForm>
                             }
-                            else { <p>此頁沒有其他可選的版本。</p> }
+                            else { <p>@L["此頁沒有其他可選的版本。"]</p> }
                             @if (revisions.Items.Any(x => !x.Revoked))
                             {
-                                <details><summary>撤銷不可信的版本</summary>
-                                    <p>撤銷後，同內容的版本也無法重新發布；若目前使用相同內容，後續查詢會顯示不可用。需要使用時請選擇其他可信版本。</p>
+                                <details><summary>@L["撤銷不可信的版本"]</summary>
+                                    <p>@L["撤銷後，同內容的版本也無法重新發布；若目前使用相同內容，後續查詢會顯示不可用。需要使用時請選擇其他可信版本。"]</p>
                                     <EditForm Model="RevocationInput" FormName="intelligence-revocation" method="post" OnValidSubmit="RevokeAsync" class="intelligence-form">
                                         <DataAnnotationsValidator /><ValidationSummary />
                                         <input type="hidden" name="RevocationInput.SourceId" value="@RevocationInput.SourceId" />
-                                        <label for="revoke-revision">選擇要撤銷的版本</label><InputSelect id="revoke-revision" @bind-Value="RevocationInput.RevisionId"><option value="">請選擇版本</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
-                                        <label><InputCheckbox @bind-Value="RevocationInput.Confirm" /> 確認撤銷此版本及相同內容的使用資格</label>
-                                        <div><button type="submit">撤銷版本</button></div>
+                                        <label for="revoke-revision">@L["選擇要撤銷的版本"]</label><InputSelect id="revoke-revision" @bind-Value="RevocationInput.RevisionId"><option value="">@L["請選擇版本"]</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
+                                        <label><InputCheckbox @bind-Value="RevocationInput.Confirm" /> @L["確認撤銷此版本及相同內容的使用資格"]</label>
+                                        <div><button type="submit">@L["撤銷版本"]</button></div>
                                     </EditForm>
                                 </details>
                             }
@@ -184,57 +185,57 @@
                     @if (sigmaRules is not null && shownRulesRevision is { } sigmaRevision)
                     {
                         <section class="device-panel">
-                            <h2>規則來源資料</h2>
-                            <p>以下是已保存的上游規則與作者資料。來源符合條件不代表偵測器支援或已啟用。</p>
-                            @if (sigmaRules.Items.Count == 0) { <p>此頁沒有規則。</p> }
+                            <h2>@L["規則來源資料"]</h2>
+                            <p>@L["以下是已保存的上游規則與作者資料。來源符合條件不代表偵測器支援或已啟用。"]</p>
+                            @if (sigmaRules.Items.Count == 0) { <p>@L["此頁沒有規則。"]</p> }
                             else
                             {
-                                <p class="intelligence-scroll-hint">左右滑動可查看完整規則資訊。</p>
-                                <div class="device-table-wrap" role="region" tabindex="0" aria-label="規則來源資料，可左右捲動"><table><thead><tr><th>規則</th><th>上游適用來源</th><th>作者</th><th>來源狀態</th><th>授權聲明</th><th>來源選用條件</th></tr></thead><tbody>
-                                    @foreach (var rule in sigmaRules.Items) { <tr @key="rule.Path"><td><strong>@rule.Title</strong><br /><small>@rule.Path</small></td><td>@(rule.Product ?? "未指定")<br /><small>@string.Join(" / ", new[] { rule.Category, rule.Service }.Where(x => !string.IsNullOrEmpty(x)))</small></td><td>@(rule.Author ?? "未提供")</td><td>@(rule.Status ?? "未提供")</td><td>@(rule.LicenseStatus switch { "repository-drl-1.1" => "來源聲明 DRL-1.1", "declared-drl-1.1" => "規則聲明 DRL-1.1", _ => $"待核對：{rule.License}" })</td><td>@(rule.ExclusionReason switch { null => "符合", "outside-core-rules" => "不在核心規則範圍", "missing-author" => "缺少作者", "unreviewed-license" => "授權待核對", _ => "尚未核對" })</td></tr> }
+                                <p class="intelligence-scroll-hint">@L["左右滑動可查看完整規則資訊。"]</p>
+                                <div class="device-table-wrap" role="region" tabindex="0" aria-label="@L["規則來源資料，可左右捲動"]"><table><thead><tr><th>@L["規則"]</th><th>@L["上游適用來源"]</th><th>@L["作者"]</th><th>@L["來源狀態"]</th><th>@L["授權聲明"]</th><th>@L["來源選用條件"]</th></tr></thead><tbody>
+                                    @foreach (var rule in sigmaRules.Items) { <tr @key="rule.Path"><td><strong>@rule.Title</strong><br /><small>@rule.Path</small></td><td>@(rule.Product ?? L["未指定"].Value)<br /><small>@string.Join(" / ", new[] { rule.Category, rule.Service }.Where(x => !string.IsNullOrEmpty(x)))</small></td><td>@(rule.Author ?? L["未提供"].Value)</td><td>@(rule.Status ?? L["未提供"].Value)</td><td>@(rule.LicenseStatus switch { "repository-drl-1.1" => L["來源聲明 DRL-1.1"].Value, "declared-drl-1.1" => L["規則聲明 DRL-1.1"].Value, _ => L["待核對：{0}", rule.License ?? ""].Value })</td><td>@(rule.ExclusionReason switch { null => L["符合"].Value, "outside-core-rules" => L["不在核心規則範圍"].Value, "missing-author" => L["缺少作者"].Value, "unreviewed-license" => L["授權待核對"].Value, _ => L["尚未核對"].Value })</td></tr> }
                                 </tbody></table></div>
                             }
-                            <nav aria-label="規則資料分頁">@if (sigmaRules.Page > 1) { <a href="@RulesUrl(sigmaRevision, sigmaRules.Page - 1)">上一頁</a> } <span>第 @sigmaRules.Page 頁</span> @if (sigmaRules.HasMore) { <a href="@RulesUrl(sigmaRevision, sigmaRules.Page + 1)">下一頁</a> }</nav>
+                            <nav aria-label="@L["規則資料分頁"]">@if (sigmaRules.Page > 1) { <a href="@RulesUrl(sigmaRevision, sigmaRules.Page - 1)">@L["上一頁"]</a> } <span>@L["第 {0} 頁", sigmaRules.Page]</span> @if (sigmaRules.HasMore) { <a href="@RulesUrl(sigmaRevision, sigmaRules.Page + 1)">@L["下一頁"]</a> }</nav>
                         </section>
                     }
                     @if (signatureFiles is not null && shownRulesRevision is { } signatureRevision)
                     {
                         <section class="device-panel">
-                            <h2>IOC／YARA 來源檔案</h2>
-                            <p>以下是上游原始檔案的摘要；IOC 原始檔可依上方條件選用。YARA 規則授權與相容性仍待核對，尚未啟用偵測。</p>
-                            @if (signatureFiles.Items.Count == 0) { <p>此頁沒有來源檔案。</p> }
+                            <h2>@L["IOC／YARA 來源檔案"]</h2>
+                            <p>@L["以下是上游原始檔案的摘要；IOC 原始檔可依上方條件選用。YARA 規則授權與相容性仍待核對，尚未啟用偵測。"]</p>
+                            @if (signatureFiles.Items.Count == 0) { <p>@L["此頁沒有來源檔案。"]</p> }
                             else
                             {
-                                <p class="intelligence-scroll-hint">左右滑動可查看完整檔案資訊。</p>
-                                <div class="device-table-wrap signature-files" role="region" tabindex="0" aria-label="來源檔案，可左右捲動"><table><thead><tr><th>路徑</th><th>類型</th><th>IOC 分類</th><th>SHA-256</th></tr></thead><tbody>
-                                    @foreach (var file in signatureFiles.Items) { <tr @key="file.Path"><td>@file.Path @if (file.Kind is "yara" or "license-evidence") { <a href="@EvidenceUrl(signatureRevision, file.Path, page: 1)">查看授權線索</a> }</td><td>@(file.Kind switch { "ioc" => "IOC", "yara" => "YARA", "license-evidence" => "授權證據", _ => "未知" })</td><td>@if (file.Entries is { } count) { <span>@count 筆，</span>@if (file.UnsupportedEntries > 0) { <a href="@IocIssuesUrl(signatureRevision, file.Path, 1)">@file.UnsupportedEntries 筆未支援</a> } else { <span>0 筆未支援</span> } } else { <span>不適用</span> }</td><td>@file.Sha256</td></tr> }
+                                <p class="intelligence-scroll-hint">@L["左右滑動可查看完整檔案資訊。"]</p>
+                                <div class="device-table-wrap signature-files" role="region" tabindex="0" aria-label="@L["來源檔案，可左右捲動"]"><table><thead><tr><th>@L["路徑"]</th><th>@L["類型"]</th><th>@L["IOC 分類"]</th><th>SHA-256</th></tr></thead><tbody>
+                                    @foreach (var file in signatureFiles.Items) { <tr @key="file.Path"><td>@file.Path @if (file.Kind is "yara" or "license-evidence") { <a href="@EvidenceUrl(signatureRevision, file.Path, page: 1)">@L["查看授權線索"]</a> }</td><td>@(file.Kind switch { "ioc" => "IOC", "yara" => "YARA", "license-evidence" => L["授權證據"].Value, _ => L["未知"].Value })</td><td>@if (file.Entries is { } count) { <span>@L["{0} 筆，", count]</span>@if (file.UnsupportedEntries > 0) { <a href="@IocIssuesUrl(signatureRevision, file.Path, 1)">@L["{0} 筆未支援", file.UnsupportedEntries]</a> } else { <span>@L["{0} 筆未支援", 0]</span> } } else { <span>@L["不適用"]</span> }</td><td>@file.Sha256</td></tr> }
                                 </tbody></table></div>
                             }
-                            <nav aria-label="來源檔案分頁">@if (signatureFiles.Page > 1) { <a href="@RulesUrl(signatureRevision, signatureFiles.Page - 1)">上一頁</a> } <span>第 @signatureFiles.Page 頁</span> @if (signatureFiles.HasMore) { <a href="@RulesUrl(signatureRevision, signatureFiles.Page + 1)">下一頁</a> }</nav>
+                            <nav aria-label="@L["來源檔案分頁"]">@if (signatureFiles.Page > 1) { <a href="@RulesUrl(signatureRevision, signatureFiles.Page - 1)">@L["上一頁"]</a> } <span>@L["第 {0} 頁", signatureFiles.Page]</span> @if (signatureFiles.HasMore) { <a href="@RulesUrl(signatureRevision, signatureFiles.Page + 1)">@L["下一頁"]</a> }</nav>
                         </section>
                     }
                     @if (signatureEvidence is not null)
                     {
                         <section class="device-panel">
-                            <h2>來源授權線索</h2>
-                            <p>檔案：@signatureEvidence.Path</p><p>SHA-256：@signatureEvidence.Sha256</p>
-                            <p>以下僅列出包含作者或授權字樣的原文行，可能來自註解或字串；規則邊界與授權尚未解析或確認，沒有列出也不代表沒有其他條件。</p>
-                            @if (!signatureEvidence.IntegrityValid) { <p role="alert">檔案與保存的摘要不一致，無法顯示內容。</p> }
-                            else if (signatureEvidence.InvalidEncoding) { <p role="alert">檔案不是有效的 UTF-8，無法顯示內容。</p> }
-                            else if (signatureEvidence.Lines.Count == 0) { <p>沒有找到包含這些字樣的行。</p> }
-                            else { <ol>@foreach (var line in signatureEvidence.Lines) { <li @key="line.Number">第 @line.Number 行：<code class="signature-evidence">@line.Text</code>@if (line.Truncated) { <span>（此行已截斷）</span> } @if (shownRulesRevision is { } revision) { <a href="@EvidenceUrl(revision, signatureEvidence.Path, line.Number)">查看前後內容</a> }</li> }</ol> }
+                            <h2>@L["來源授權線索"]</h2>
+                            <p>@L["檔案："]@signatureEvidence.Path</p><p>SHA-256：@signatureEvidence.Sha256</p>
+                            <p>@L["以下僅列出包含作者或授權字樣的原文行，可能來自註解或字串；規則邊界與授權尚未解析或確認，沒有列出也不代表沒有其他條件。"]</p>
+                            @if (!signatureEvidence.IntegrityValid) { <p role="alert">@L["檔案與保存的摘要不一致，無法顯示內容。"]</p> }
+                            else if (signatureEvidence.InvalidEncoding) { <p role="alert">@L["檔案不是有效的 UTF-8，無法顯示內容。"]</p> }
+                            else if (signatureEvidence.Lines.Count == 0) { <p>@L["沒有找到包含這些字樣的行。"]</p> }
+                            else { <ol>@foreach (var line in signatureEvidence.Lines) { <li @key="line.Number">@L["第 {0} 行：", line.Number]<code class="signature-evidence">@line.Text</code>@if (line.Truncated) { <span>@L["（此行已截斷）"]</span> } @if (shownRulesRevision is { } revision) { <a href="@EvidenceUrl(revision, signatureEvidence.Path, line.Number)">@L["查看前後內容"]</a> }</li> }</ol> }
                             @if (shownRulesRevision is { } evidenceRevision && (signatureEvidence.Page > 1 || signatureEvidence.Truncated))
                             {
-                                <nav aria-label="授權線索分頁">@if (signatureEvidence.Page > 1) { <a href="@EvidenceUrl(evidenceRevision, signatureEvidence.Path, page: signatureEvidence.Page - 1)">上一頁</a> } <span>第 @signatureEvidence.Page 頁</span> @if (signatureEvidence.Truncated) { <a href="@EvidenceUrl(evidenceRevision, signatureEvidence.Path, page: signatureEvidence.Page + 1)">下一頁</a> }</nav>
+                                <nav aria-label="@L["授權線索分頁"]">@if (signatureEvidence.Page > 1) { <a href="@EvidenceUrl(evidenceRevision, signatureEvidence.Path, page: signatureEvidence.Page - 1)">@L["上一頁"]</a> } <span>@L["第 {0} 頁", signatureEvidence.Page]</span> @if (signatureEvidence.Truncated) { <a href="@EvidenceUrl(evidenceRevision, signatureEvidence.Path, page: signatureEvidence.Page + 1)">@L["下一頁"]</a> }</nav>
                             }
                             @if (signatureEvidence.ContextLine is { } center && signatureEvidence.Context is { } surrounding)
                             {
-                                <h3>第 @center 行的前後內容</h3>
-                                @if (surrounding.Count == 0) { <p>找不到此行。</p> }
-                                else { <ol>@foreach (var line in surrounding) { <li @key="line.Number">第 @line.Number 行：<code class="signature-evidence">@line.Text</code>@if (line.Truncated) { <span>（此行已截斷）</span> }</li> }</ol> }
+                                <h3>@L["第 {0} 行的前後內容", center]</h3>
+                                @if (surrounding.Count == 0) { <p>@L["找不到此行。"]</p> }
+                                else { <ol>@foreach (var line in surrounding) { <li @key="line.Number">@L["第 {0} 行：", line.Number]<code class="signature-evidence">@line.Text</code>@if (line.Truncated) { <span>@L["（此行已截斷）"]</span> }</li> }</ol> }
                                 @if (shownRulesRevision is { } contextRevision && surrounding.Count > 0)
                                 {
-                                    <nav aria-label="原文上下文分頁">@if (surrounding[0].Number > 1) { <a href="@EvidenceUrl(contextRevision, signatureEvidence.Path, Math.Max(1, center - 21))">較前內容</a> } @if (signatureEvidence.ContextHasMore) { <a href="@EvidenceUrl(contextRevision, signatureEvidence.Path, Math.Min(1048576, center + 21))">較後內容</a> }</nav>
+                                    <nav aria-label="@L["原文上下文分頁"]">@if (surrounding[0].Number > 1) { <a href="@EvidenceUrl(contextRevision, signatureEvidence.Path, Math.Max(1, center - 21))">@L["較前內容"]</a> } @if (signatureEvidence.ContextHasMore) { <a href="@EvidenceUrl(contextRevision, signatureEvidence.Path, Math.Min(1048576, center + 21))">@L["較後內容"]</a> }</nav>
                                 }
                             }
                         </section>
@@ -242,16 +243,16 @@
                     @if (iocIssues is not null && IocPath is { } iocPath && shownRulesRevision is { } iocRevision)
                     {
                         <section class="device-panel">
-                            <h2>未支援的 IOC 項目</h2>
-                            <p>來源檔案：@iocPath。行號對應原始來源，內容仍保留在該版本中。</p>
-                            @if (iocIssues.Items.Count == 0) { <p>此頁沒有未支援的項目。</p> }
+                            <h2>@L["未支援的 IOC 項目"]</h2>
+                            <p>@L["來源檔案：{0}。行號對應原始來源，內容仍保留在該版本中。", iocPath]</p>
+                            @if (iocIssues.Items.Count == 0) { <p>@L["此頁沒有未支援的項目。"]</p> }
                             else
                             {
-                                <div class="device-table-wrap ioc-issues" role="region" tabindex="0" aria-label="未支援的 IOC 項目，可左右捲動"><table><thead><tr><th>行號</th><th>原因</th></tr></thead><tbody>
+                                <div class="device-table-wrap ioc-issues" role="region" tabindex="0" aria-label="@L["未支援的 IOC 項目，可左右捲動"]"><table><thead><tr><th>@L["行號"]</th><th>@L["原因"]</th></tr></thead><tbody>
                                     @foreach (var issue in iocIssues.Items) { <tr @key="issue.LineNumber"><td>@issue.LineNumber</td><td>@IocIssueReason(issue.Reason)</td></tr> }
                                 </tbody></table></div>
                             }
-                            <nav aria-label="未支援項目分頁">@if (iocIssues.Page > 1) { <a href="@IocIssuesUrl(iocRevision, iocPath, iocIssues.Page - 1)">上一頁</a> } <span>第 @iocIssues.Page 頁</span> @if (iocIssues.HasMore) { <a href="@IocIssuesUrl(iocRevision, iocPath, iocIssues.Page + 1)">下一頁</a> }</nav>
+                            <nav aria-label="@L["未支援項目分頁"]">@if (iocIssues.Page > 1) { <a href="@IocIssuesUrl(iocRevision, iocPath, iocIssues.Page - 1)">@L["上一頁"]</a> } <span>@L["第 {0} 頁", iocIssues.Page]</span> @if (iocIssues.HasMore) { <a href="@IocIssuesUrl(iocRevision, iocPath, iocIssues.Page + 1)">@L["下一頁"]</a> }</nav>
                         </section>
                     }
                 </div>

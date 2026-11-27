@@ -55,8 +55,8 @@ public partial class ServiceOverviewPanel
             await LoadHttpMetricsAsync();
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch (UnauthorizedAccessException) { error = "登入已失效或沒有權限，請重新登入。"; }
-        catch (Exception ex) { Logger.LogWarning(ex, "Failed to load service details"); error = "無法載入服務資料，請稍後再試。"; }
+        catch (UnauthorizedAccessException) { error = L["登入已失效或沒有權限，請重新登入。"].Value; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Failed to load service details"); error = L["無法載入服務資料，請稍後再試。"].Value; }
         finally { loading = false; }
     }
 
@@ -85,7 +85,7 @@ public partial class ServiceOverviewPanel
         var id = ServiceId;
         try { var result = await Client.GetHealthEvidenceAsync(id, targetPage, lifetime.Token); if (id == ServiceId) { healthEvidence = result; healthEvidencePage = targetPage; } }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch (UnauthorizedAccessException) { healthEvidence = null; error = "登入已失效或沒有權限，請重新登入。"; }
+        catch (UnauthorizedAccessException) { healthEvidence = null; error = L["登入已失效或沒有權限，請重新登入。"].Value; }
         catch (Exception ex) { Logger.LogWarning(ex, "Failed to load health evidence"); healthEvidence = null; healthEvidenceError = true; }
         finally { healthEvidenceLoading = false; }
     }
@@ -106,7 +106,7 @@ public partial class ServiceOverviewPanel
         var id = ServiceId;
         try { var result = await Client.GetDeploymentsAsync(id, targetPage, lifetime.Token); if (id == ServiceId) { deployments = result; deploymentsPage = targetPage; } }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch (UnauthorizedAccessException) { deployments = null; error = "登入已失效或沒有權限，請重新登入。"; }
+        catch (UnauthorizedAccessException) { deployments = null; error = L["登入已失效或沒有權限，請重新登入。"].Value; }
         catch (Exception ex) { Logger.LogWarning(ex, "Failed to load deployment relationships"); deployments = null; deploymentsError = true; }
         finally { deploymentsLoading = false; }
     }
@@ -121,9 +121,9 @@ public partial class ServiceOverviewPanel
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (UnauthorizedAccessException) { throw; }
-        catch (ArgumentException) { history = null; historyError = true; rangeError = "請確認時間範圍沒有超過目前時間，且最多 366 天。"; }
+        catch (ArgumentException) { history = null; historyError = true; rangeError = L["請確認時間範圍沒有超過目前時間，且最多 366 天。"].Value; }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
-        { history = null; historyError = true; rangeError = "請確認時間範圍沒有超過目前時間，且最多 366 天。"; }
+        { history = null; historyError = true; rangeError = L["請確認時間範圍沒有超過目前時間，且最多 366 天。"].Value; }
         catch (Exception ex) { Logger.LogWarning(ex, "Failed to load service health history"); history = null; historyError = true; }
     }
 
@@ -141,7 +141,7 @@ public partial class ServiceOverviewPanel
         start = new DateTimeOffset(DateTime.SpecifyKind(from, DateTimeKind.Utc));
         end = new DateTimeOffset(DateTime.SpecifyKind(to, DateTimeKind.Utc));
         if (!validStart || !validEnd || start >= end || end - start > TimeSpan.FromDays(366))
-        { rangeError = "請選擇有效的 UTC 時間範圍：開始須早於結束，最多 366 天。"; return false; }
+        { rangeError = L["請選擇有效的 UTC 時間範圍：開始須早於結束，最多 366 天。"].Value; return false; }
         rangeError = null;
         return true;
     }
@@ -158,7 +158,7 @@ public partial class ServiceOverviewPanel
     private async Task LoadEvidenceAsync(bool trace, int targetPage, string? traceId = null)
     {
         if (!TryRange(out var from, out var to)) return;
-        if (to - from > TimeSpan.FromDays(31)) { evidenceError = "查詢 Logs 或 Traces 時，請將時間範圍縮短至 31 天以內。"; return; }
+        if (to - from > TimeSpan.FromDays(31)) { evidenceError = L["查詢 Logs 或 Traces 時，請將時間範圍縮短至 31 天以內。"].Value; return; }
         ClearEvidence();
         showTraces = trace;
         activeTraceId = trace ? null : traceId;
@@ -183,42 +183,42 @@ public partial class ServiceOverviewPanel
             evidencePage = targetPage;
         }
         catch (OperationCanceledException) when (requestToken.IsCancellationRequested) { }
-        catch (UnauthorizedAccessException) { if (generation == evidenceGeneration) evidenceError = "登入已失效或沒有權限，請重新登入。"; }
-        catch (Exception ex) { if (generation == evidenceGeneration) { Logger.LogWarning(ex, "Failed to load service evidence"); evidenceError = "無法載入證據，請稍後再試。"; } }
+        catch (UnauthorizedAccessException) { if (generation == evidenceGeneration) evidenceError = L["登入已失效或沒有權限，請重新登入。"].Value; }
+        catch (Exception ex) { if (generation == evidenceGeneration) { Logger.LogWarning(ex, "Failed to load service evidence"); evidenceError = L["無法載入證據，請稍後再試。"].Value; } }
         finally { if (generation == evidenceGeneration) evidenceLoading = false; }
     }
     private async Task PreviousAsync() { if (page > 1) { page--; await LoadAsync(); } }
     private async Task NextAsync() { if (instances?.HasMore == true) { page++; await LoadAsync(); } }
     private static string Format(DateTimeOffset value) => value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss");
-    private static string LastReceived(DateTimeOffset? value) => value is { } received ? Format(received) : "尚無資料";
-    private static string MetricStatus(string? state) => state switch
+    private string LastReceived(DateTimeOffset? value) => value is { } received ? Format(received) : L["尚無資料"].Value;
+    private string MetricStatus(string? state) => state switch
     {
-        "Busy" => "目前有其他指標查詢正在執行，請稍後重新載入。",
-        "Changed" => "指標資料正在更新，請稍後重新載入。",
-        "AmbiguousSource" => "指標來源有重疊或無法區分，暫不計算以免重複統計。",
-        "Incomplete" => "指標時間範圍或資料品質不足，暫無法可靠計算。",
-        _ => "尚未收到可用的 HTTP 指標資料。"
+        "Busy" => L["目前有其他指標查詢正在執行，請稍後重新載入。"].Value,
+        "Changed" => L["指標資料正在更新，請稍後重新載入。"].Value,
+        "AmbiguousSource" => L["指標來源有重疊或無法區分，暫不計算以免重複統計。"].Value,
+        "Incomplete" => L["指標時間範圍或資料品質不足，暫無法可靠計算。"].Value,
+        _ => L["尚未收到可用的 HTTP 指標資料。"].Value
     };
-    private static string HealthReasons(ServiceHealthUnknownReason reasons)
+    private string HealthReasons(ServiceHealthUnknownReason reasons)
     {
         var labels = new List<string>();
-        if (reasons.HasFlag(ServiceHealthUnknownReason.NotConfigured)) labels.Add("尚未設定健康檢查");
-        if (reasons.HasFlag(ServiceHealthUnknownReason.Disabled)) labels.Add("健康檢查已停用");
-        if (reasons.HasFlag(ServiceHealthUnknownReason.Waiting)) labels.Add("等待足夠的健康資料");
-        if (reasons.HasFlag(ServiceHealthUnknownReason.Expired)) labels.Add("部分健康資料已過期");
-        if (reasons.HasFlag(ServiceHealthUnknownReason.Invalidated)) labels.Add("健康檢查或授權狀態已變更，等待有效資料");
+        if (reasons.HasFlag(ServiceHealthUnknownReason.NotConfigured)) labels.Add(L["尚未設定健康檢查"].Value);
+        if (reasons.HasFlag(ServiceHealthUnknownReason.Disabled)) labels.Add(L["健康檢查已停用"].Value);
+        if (reasons.HasFlag(ServiceHealthUnknownReason.Waiting)) labels.Add(L["等待足夠的健康資料"].Value);
+        if (reasons.HasFlag(ServiceHealthUnknownReason.Expired)) labels.Add(L["部分健康資料已過期"].Value);
+        if (reasons.HasFlag(ServiceHealthUnknownReason.Invalidated)) labels.Add(L["健康檢查或授權狀態已變更，等待有效資料"].Value);
         return string.Join("；", labels);
     }
     private static string TimelineWidth(ServiceHealthInterval interval) => $"flex-grow:{Math.Max(0.001, (interval.End - interval.Start).TotalSeconds).ToString(CultureInfo.InvariantCulture)}";
     private static string HealthClass(ServiceHealthState? state) => state switch
     { ServiceHealthState.Healthy => "health-healthy", ServiceHealthState.Degraded => "health-degraded", ServiceHealthState.Unhealthy => "health-unhealthy", _ => "health-unknown" };
-    private static string HealthName(ServiceHealthState? state) => state switch
-    { ServiceHealthState.Healthy => "正常", ServiceHealthState.Degraded => "降級", ServiceHealthState.Unhealthy => "異常", _ => "未知或資料不足" };
-    private static string ObservationName(HealthCheckObservationKind kind) => kind switch
+    private string HealthName(ServiceHealthState? state) => state switch
+    { ServiceHealthState.Healthy => L["正常"].Value, ServiceHealthState.Degraded => L["降級"].Value, ServiceHealthState.Unhealthy => L["異常"].Value, _ => L["未知或資料不足"].Value };
+    private string ObservationName(HealthCheckObservationKind kind) => kind switch
     {
-        HealthCheckObservationKind.Healthy => "正常", HealthCheckObservationKind.Degraded => "降級", HealthCheckObservationKind.Unhealthy => "異常",
-        HealthCheckObservationKind.Timeout => "檢查逾時", HealthCheckObservationKind.TransportError => "連線失敗",
-        HealthCheckObservationKind.InvalidResponse => "回應無效", HealthCheckObservationKind.NetworkDenied => "網路政策拒絕", _ => "未知"
+        HealthCheckObservationKind.Healthy => L["正常"].Value, HealthCheckObservationKind.Degraded => L["降級"].Value, HealthCheckObservationKind.Unhealthy => L["異常"].Value,
+        HealthCheckObservationKind.Timeout => L["檢查逾時"].Value, HealthCheckObservationKind.TransportError => L["連線失敗"].Value,
+        HealthCheckObservationKind.InvalidResponse => L["回應無效"].Value, HealthCheckObservationKind.NetworkDenied => L["網路政策拒絕"].Value, _ => L["未知"].Value
     };
     public ValueTask DisposeAsync() { lifetime.Cancel(); ClearEvidence(); lifetime.Dispose(); return ValueTask.CompletedTask; }
 }

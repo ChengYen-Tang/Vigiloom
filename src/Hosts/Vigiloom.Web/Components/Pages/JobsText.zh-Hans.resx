@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="背景工作" xml:space="preserve"><value>后台工作</value></data>
+  <data name="查看排程執行狀態與最近結果。" xml:space="preserve"><value>查看排程执行状态与最近结果。</value></data>
+  <data name="背景工作操作" xml:space="preserve"><value>后台工作操作</value></data>
+  <data name="重新整理" xml:space="preserve"><value>刷新</value></data>
+  <data name="進階管理" xml:space="preserve"><value>高级管理</value></data>
+  <data name="平台健康" xml:space="preserve"><value>平台健康</value></data>
+  <data name="目前無法取得平台健康資料，請稍後重新整理。" xml:space="preserve"><value>当前无法获取平台健康数据，请稍后刷新。</value></data>
+  <data name="觀察時間：{0}；各項狀態彼此獨立。" xml:space="preserve"><value>观察时间：{0}；各项状态彼此独立。</value></data>
+  <data name="資料庫連線" xml:space="preserve"><value>数据库连接</value></data>
+  <data name="Operations 資料庫連線" xml:space="preserve"><value>Operations 数据库连接</value></data>
+  <data name="排程服務心跳" xml:space="preserve"><value>排程服务心跳</value></data>
+  <data name="Agent 批次接收" xml:space="preserve"><value>Agent 批次接收</value></data>
+  <data name="應用遙測接收" xml:space="preserve"><value>应用遥测接收</value></data>
+  <data name="無法取得接收資料。" xml:space="preserve"><value>无法获取接收数据。</value></data>
+  <data name="目前沒有來源，接收狀態未知。" xml:space="preserve"><value>当前没有来源，接收状态未知。</value></data>
+  <data name="顯示最新建立的來源；沒有資料不代表接收故障。" xml:space="preserve"><value>显示最新建立的来源；没有数据不代表接收故障。</value></data>
+  <data name="查看所有來源與接收拒絕摘要" xml:space="preserve"><value>查看所有来源与接收拒绝摘要</value></data>
+  <data name="應用遙測接收摘要" xml:space="preserve"><value>应用遥测接收摘要</value></data>
+  <data name="{0}：Logs {1}；Metrics {2}；Traces {3}" xml:space="preserve"><value>{0}：Logs {1}；Metrics {2}；Traces {3}</value></data>
+  <data name="接收時間只代表保留範圍內已提交的新批次，沒有紀錄不代表接收故障。" xml:space="preserve"><value>接收时间只代表保留范围内已提交的新批次，没有记录不代表接收故障。</value></data>
+  <data name="Worker 掃描摘要" xml:space="preserve"><value>Worker 扫描摘要</value></data>
+  <data name="排程心跳不代表掃描成功；此處顯示最近狀態，不是完整失敗歷史。" xml:space="preserve"><value>排程心跳不代表扫描成功；此处显示最近状态，不是完整失败历史。</value></data>
+  <data name="目前無法取得 Worker 診斷。" xml:space="preserve"><value>当前无法获取 Worker 诊断。</value></data>
+  <data name="目前沒有 Worker 診斷資料。" xml:space="preserve"><value>当前没有 Worker 诊断数据。</value></data>
+  <data name="← 左右滑動查看完整表格 →" xml:space="preserve"><value>← 左右滑动查看完整表格 →</value></data>
+  <data name="Worker 掃描摘要，可左右捲動" xml:space="preserve"><value>Worker 扫描摘要，可左右滚动</value></data>
+  <data name="程序識別" xml:space="preserve"><value>程序标识</value></data>
+  <data name="診斷租約" xml:space="preserve"><value>诊断租约</value></data>
+  <data name="Ping 掃描" xml:space="preserve"><value>Ping 扫描</value></data>
+  <data name="測速掃描" xml:space="preserve"><value>测速扫描</value></data>
+  <data name="診斷槽位已達上限；新 Worker 可能無法登記診斷。" xml:space="preserve"><value>诊断槽位已达上限；新 Worker 可能无法登记诊断。</value></data>
+  <data name="暫時無法取得背景工作狀態" xml:space="preserve"><value>暂时无法获取后台工作状态</value></data>
+  <data name="請確認資料庫與 Worker 連線後重新整理。" xml:space="preserve"><value>请确认数据库与 Worker 连接后刷新。</value></data>
+  <data name="背景工作檢查頻率已儲存。" xml:space="preserve"><value>后台工作检查频率已保存。</value></data>
+  <data name="設定已被其他管理員修改，請重新整理後再試。" xml:space="preserve"><value>设置已被其他管理员修改，请刷新后再试。</value></data>
+  <data name="設定已儲存，正在等待背景服務套用。" xml:space="preserve"><value>设置已保存，正在等待后台服务应用。</value></data>
+  <data name="無法取得最新設定，請重新整理後再操作。" xml:space="preserve"><value>无法获取最新设置，请刷新后再操作。</value></data>
+  <data name="無法確認儲存結果，請重新整理並檢查設定。" xml:space="preserve"><value>无法确认保存结果，请刷新并检查设置。</value></data>
+  <data name="目前沒有已連線的背景服務。" xml:space="preserve"><value>当前没有已连接的后台服务。</value></data>
+  <data name="工作可能無法執行，請確認 Vigiloom 背景服務狀態。" xml:space="preserve"><value>工作可能无法执行，请确认 Vigiloom 后台服务状态。</value></data>
+  <data name="工作狀態" xml:space="preserve"><value>工作状态</value></data>
+  <data name="已連線背景服務" xml:space="preserve"><value>已连接后台服务</value></data>
+  <data name="排程工作等待中" xml:space="preserve"><value>排程工作等待中</value></data>
+  <data name="執行中" xml:space="preserve"><value>执行中</value></data>
+  <data name="排程工作失敗" xml:space="preserve"><value>排程工作失败</value></data>
+  <data name="待處理內部工作" xml:space="preserve"><value>待处理内部工作</value></data>
+  <data name="內部工作失敗" xml:space="preserve"><value>内部工作失败</value></data>
+  <data name="最近執行結果" xml:space="preserve"><value>最近执行结果</value></data>
+  <data name="時間以 UTC 顯示；進階管理可查看工作詳細資料。" xml:space="preserve"><value>时间以 UTC 显示；高级管理可查看工作详细数据。</value></data>
+  <data name="目前沒有執行結果。" xml:space="preserve"><value>当前没有执行结果。</value></data>
+  <data name="工作" xml:space="preserve"><value>工作</value></data>
+  <data name="結果" xml:space="preserve"><value>结果</value></data>
+  <data name="時間（UTC）" xml:space="preserve"><value>时间（UTC）</value></data>
+  <data name="說明" xml:space="preserve"><value>说明</value></data>
+  <data name="參考識別" xml:space="preserve"><value>参考标识</value></data>
+  <data name="背景工作檢查頻率" xml:space="preserve"><value>后台工作检查频率</value></data>
+  <data name="設定平台檢查待處理內部工作的頻率；此設定不影響設備 Ping 頻率。" xml:space="preserve"><value>设置平台检查待处理内部工作的频率；此设置不影响设备 Ping 频率。</value></data>
+  <data name="此設定適用於原平台的背景資料處理排程，不影響 Operations 服務的工作檢查或設備 Ping 頻率。" xml:space="preserve"><value>此设置适用于原平台的后台数据处理排程，不影响 Operations 服务的工作检查或设备 Ping 频率。</value></data>
+  <data name="目前排程尚未套用；背景服務啟動後會自動同步。" xml:space="preserve"><value>当前排程尚未应用；后台服务启动后会自动同步。</value></data>
+  <data name="檢查間隔" xml:space="preserve"><value>检查间隔</value></data>
+  <data name="{0} 分鐘" xml:space="preserve"><value>{0} 分钟</value></data>
+  <data name="儲存設定" xml:space="preserve"><value>保存设置</value></data>
+  <data name="正常" xml:space="preserve"><value>正常</value></data>
+  <data name="異常或已過期" xml:space="preserve"><value>异常或已过期</value></data>
+  <data name="未知" xml:space="preserve"><value>未知</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>尚无数据</value></data>
+  <data name="無法取得心跳資料" xml:space="preserve"><value>无法获取心跳数据</value></data>
+  <data name="目前沒有心跳資料" xml:space="preserve"><value>当前没有心跳数据</value></data>
+  <data name="{0}（正常 {1}、過期 {2}、未知 {3}）" xml:space="preserve"><value>{0}（正常 {1}、过期 {2}、未知 {3}）</value></data>
+  <data name="無法取得資料" xml:space="preserve"><value>无法获取数据</value></data>
+  <data name="最近提交：{0}" xml:space="preserve"><value>最近提交：{0}</value></data>
+  <data name="保留範圍內沒有成功批次紀錄" xml:space="preserve"><value>保留范围内没有成功批次记录</value></data>
+  <data name="有效" xml:space="preserve"><value>有效</value></data>
+  <data name="已過期" xml:space="preserve"><value>已过期</value></data>
+  <data name="最近失敗：{0}（連續 {1} 次，{2}）" xml:space="preserve"><value>最近失败：{0}（连续 {1} 次，{2}）</value></data>
+  <data name="時間未知" xml:space="preserve"><value>时间未知</value></data>
+  <data name="最近成功：{0}" xml:space="preserve"><value>最近成功：{0}</value></data>
+  <data name="尚無掃描結果" xml:space="preserve"><value>尚无扫描结果</value></data>
+  <data name="資料庫連線或操作失敗" xml:space="preserve"><value>数据库连接或操作失败</value></data>
+  <data name="掃描逾時" xml:space="preserve"><value>扫描超时</value></data>
+  <data name="掃描失敗" xml:space="preserve"><value>扫描失败</value></data>
+  <data name="背景資料處理" xml:space="preserve"><value>后台数据处理</value></data>
+  <data name="已完成" xml:space="preserve"><value>已完成</value></data>
+  <data name="失敗" xml:space="preserve"><value>失败</value></data>
+  <data name="已停止重試" xml:space="preserve"><value>已停止重试</value></data>
+  <data name="等待重試" xml:space="preserve"><value>等待重试</value></data>
+  <data name="資料庫連線或操作失敗。" xml:space="preserve"><value>数据库连接或操作失败。</value></data>
+  <data name="工作執行逾時。" xml:space="preserve"><value>工作执行超时。</value></data>
+  <data name="工作已取消。" xml:space="preserve"><value>工作已取消。</value></data>
+  <data name="工作執行失敗；請查看進階管理。" xml:space="preserve"><value>工作执行失败；请查看高级管理。</value></data>
+  <data name="無法辨識工作類型" xml:space="preserve"><value>无法识别工作类型</value></data>
+  <data name="已達重試上限" xml:space="preserve"><value>已达重试上限</value></data>
+  <data name="背景資料處理逾時" xml:space="preserve"><value>后台数据处理超时</value></data>
+  <data name="背景資料處理失敗" xml:space="preserve"><value>后台数据处理失败</value></data>
+  <data name="{0}（嘗試 {1} 次）" xml:space="preserve"><value>{0}（尝试 {1} 次）</value></data>
+</root>
