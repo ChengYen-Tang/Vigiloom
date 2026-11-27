@@ -20,4 +20,3 @@ internal sealed class LineDeliverySchedule(IRecurringJobManager jobs) : IHostedS
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
-
