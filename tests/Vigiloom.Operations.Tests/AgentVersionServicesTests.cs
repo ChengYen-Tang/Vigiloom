@@ -95,6 +95,8 @@ public sealed class AgentVersionServicesTests(TestContext context)
             var target = await resourceClient.GetFromJsonAsync<AgentVersionTarget>($"/internal/v1/agents/{agentId:D}/target", token);
             Assert.IsNotNull(target);
             hostClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AgentCredentials.Encode("vla", agentId, secret));
+            var hostTarget = await hostClient.GetFromJsonAsync<AgentVersionTarget>("/api/v1/agent/version-assignment", token);
+            Assert.AreEqual(target, hostTarget);
             var result = new AgentUpdateResult(Guid.CreateVersion7(), target.UpdateId, target.PackageId, target.ManifestSha256, 1, AgentUpdateResultKind.Succeeded, now, false, null);
             using var received = await hostClient.PostAsJsonAsync("/api/v1/agent/update-results", result, token);
             Assert.AreEqual(HttpStatusCode.NoContent, received.StatusCode);
@@ -105,6 +107,8 @@ public sealed class AgentVersionServicesTests(TestContext context)
             Assert.AreEqual(AgentRegistrationStatus.Success, await revoked.Content.ReadFromJsonAsync<AgentRegistrationStatus>(cancellationToken: token));
             using var rejected = await hostClient.PostAsJsonAsync("/api/v1/agent/update-results", result, token);
             Assert.AreEqual(HttpStatusCode.Unauthorized, rejected.StatusCode);
+            using var revokedAssignment = await hostClient.GetAsync("/api/v1/agent/version-assignment", token);
+            Assert.AreEqual(HttpStatusCode.Unauthorized, revokedAssignment.StatusCode);
         }, outerToken), context.CancellationToken);
 
     private sealed class TestOutboxHandler : IOutboxHandler

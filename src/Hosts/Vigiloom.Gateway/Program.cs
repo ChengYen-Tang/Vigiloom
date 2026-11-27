@@ -92,6 +92,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/he
     context.Request.Path.StartsWithSegments("/api/v1/agent/batches") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/update-results") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/version-assignment") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-capacity") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/metric-settings") ||
