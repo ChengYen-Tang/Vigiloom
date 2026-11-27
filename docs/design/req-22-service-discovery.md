@@ -1,6 +1,6 @@
 # REQ-22 service discovery design work in progress
 
-The Administrator uses this page to identify recent candidates, approve them as Private, and manage independently authenticated sources. It uses the [selected Vigiloom visual direction](Vigiloom-UI-Concept-2-Revision-2.png); the [exploration image](req-22-service-discovery-concept.png) contains fictional examples. Its source trust badges and implication that Private is administrator-only are not product behavior. The page explicitly states that the formal telemetry pipeline is not yet available.
+The Administrator uses this page to identify recent candidates, approve them as Private, and manage independently authenticated sources. It uses the [selected Vigiloom visual direction](Vigiloom-UI-Concept-2-Revision-2.png); the exploration image contains fictional examples. Its source trust badges and implication that Private is administrator-only are not product behavior. The page explicitly states that the formal telemetry pipeline is not yet available.
 
 The implementation presents source identifiers and requires a confirmation for approval and revocation, including when sources share a name. It shows a newly issued secret only in the issuance response; later reads do not include it. Source and candidate lists are paged independently. Other roles cannot access the management page.
 

@@ -1,5 +1,7 @@
 # Release capacity validation
 
+Historical record: the manual capacity scripts and synthetic sender described below have been removed from the repository.
+
 This document defines the first repeatable workload for REQ-40. It is a test
 profile, not a capacity claim or a limit on the number of devices. Record the
 tested commit, configuration versions, hardware, OS, SQL Server version and
@@ -131,7 +133,7 @@ fixture data. This is one observation, not a latency percentile, sustained
 load, a network measurement or evidence that the profile above is supported.
 The SQL fixture was cleaned up by the test harness.
 
-On 2026-11-23, `tools/capacity/overview.js` was also exercised against a real
+On 2026-11-23, a former capacity script was exercised against a real
 Kestrel test host and isolated LocalDB, with 30 fixture devices and two readers
 for 10 seconds. A Read only browser session authenticated the k6 requests; all
 four measured checks passed. This was a short integration check of the script
@@ -163,19 +165,9 @@ production Worker, retention, replay, storage-growth or long-running tests.
 The sender measures closed-loop input and cancellation can leave an in-flight
 result unknown. Fixture provisioning for that run was temporary. A subsequent
 SQL Server 2022 integration check verified the repeatable
-`tools/capacity/run-agent-load.ps1` provisioning, TLS, database count checks and
+the former load fixture’s provisioning, TLS, database count checks and
 cleanup with 30 identities for six seconds; it is not a sustained load result.
 Full workload and storage measurements remain necessary before T03 acceptance.
-
-The same script accepts `-IncludeServices` to run one pre-approved application
-service per ten synthetic Agents using the real OTLP HTTP endpoints. A single
-test source credential represents a shared Collector. Each service schedules a
-512-character log per second, ten metric points per minute and one span per
-ten seconds. HTTP errors and OTLP partial rejection fail the run; accepted
-counts are checked against SQL rows. Services send in a closed loop and catch
-up when delayed: compare elapsed time with the requested duration rather than
-assuming a sustained rate. This synthetic producer is not the sample SDK or
-the real Agent's offline queue, and it does not exercise Worker or UI traffic.
 
 On 2026-11-23, the isolated SQL Server 2022 / Kestrel fixture completed a
 10-second smoke run with 30 Agents and three services. The Agent producer
@@ -228,7 +220,7 @@ along with other source and signal checks. This is a functional retry check,
 not a mixed-capacity benchmark, durable-delivery guarantee or measurement of
 Collector loss under a sustained overload.
 
-The manual script also supports `-IncludeServices -Collector`, which uses the
+The former manual script supported `-IncludeServices -Collector`, which used the
 repository's Collector Contrib 0.164.0 configuration and a test-only shared
 Log policy with a per-source rate of 100 records/s, burst 100 (global 1,000/s,
 burst 2,000). Application requests go through Collector; the fixture waits for
@@ -285,7 +277,7 @@ but is not evidence that the intended rate is sustained. Targeted SQL and HTTP
 tests covered namespaces, concurrent approval, stale and revoked source
 credentials, the discovery lock and transactional receiver behavior.
 
-The manual mixed-load script also accepts `-IncludeQueries`. It signs in one
+The former mixed-load script also accepted `-IncludeQueries`. It signed in one
 Read only test client per reader and calls the workspace overview API, with a
 five-second pause after each completed request. The profile uses 2 / 5 / 10 /
 15 readers for 30 / 100 / 300 / 500 Agents. The fixture additionally contains
@@ -331,7 +323,7 @@ not support raising the product's default connection pool as a solution.
 
 ### Initial table and index space measurement
 
-`-MeasureStorage` records before/after SQL partition statistics for the eight
+The former `-MeasureStorage` option recorded before/after SQL partition statistics for the eight
 tables below after fixture provisioning and after successful ingestion and
 count verification. Heap/clustered and nonclustered figures are **reserved**
 bytes, including allocated but unused pages; row counts are approximate DMV

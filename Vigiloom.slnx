@@ -47,8 +47,6 @@
     <Project Path="src/Updater/Vigiloom.Updater/Vigiloom.Updater.csproj" />
   </Folder>
   <Folder Name="/tools/">
-    <Project Path="tools/Vigiloom.CapacitySender/Vigiloom.CapacitySender.csproj" />
-    <Project Path="tools/Vigiloom.SpeedLab/Vigiloom.SpeedLab.csproj" />
     <Project Path="tools/Vigiloom.Testing.AgentHost/Vigiloom.Testing.AgentHost.csproj" />
   </Folder>
   <Folder Name="/tests/">
