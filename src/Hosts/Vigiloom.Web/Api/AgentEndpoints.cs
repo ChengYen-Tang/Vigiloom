@@ -152,15 +152,7 @@ internal static class AgentEndpoints
     }
 }
 
-/// <summary>One-time Agent enrollment data. The verifier is the SHA-256 digest of a locally generated 256-bit secret.</summary>
-public sealed record EnrollmentRequest(string? EnrollmentSecret, byte[]? MachineVerifier);
-/// <summary>Enrollment secret associated with the missing registration response.</summary>
-public sealed record EnrollmentRecoveryRequest(string? EnrollmentSecret);
-/// <summary>SHA-256 verifier of a new 256-bit machine-generated secret.</summary>
-public sealed record RotationRequest(byte[]? MachineVerifier);
 /// <summary>Enrollment secret visible only at issuance.</summary>
 public sealed record EnrollmentSecretResponse(string Secret, DateTimeOffset ExpiresAt);
-/// <summary>The Agent identity created or recovered by enrollment.</summary>
-public sealed record EnrollmentResponse(Guid AgentId);
 /// <summary>The authenticated machine and its bound device.</summary>
 public sealed record AgentIdentityResponse(Guid AgentId, Guid DeviceId);

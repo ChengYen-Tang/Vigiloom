@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Agent.Core.Identity;
 
@@ -61,7 +62,7 @@ public sealed class IdentityClient(HttpClient http)
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "api/v1/agent/enroll"))
             {
-                Content = JsonContent.Create(new EnrollmentPayload(state.EnrollmentSecret!, SHA256.HashData(machine)))
+                Content = JsonContent.Create(new EnrollmentRequest(state.EnrollmentSecret!, SHA256.HashData(machine)))
             };
             using var response = await http.SendAsync(request, token);
             Guid agentId;
@@ -70,7 +71,7 @@ public sealed class IdentityClient(HttpClient http)
                 // Enrollment may have committed before its response was lost and its initial window expired.
                 using var recovery = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "api/v1/agent/recover"))
                 {
-                    Content = JsonContent.Create(new RecoveryPayload(state.EnrollmentSecret!))
+                    Content = JsonContent.Create(new EnrollmentRecoveryRequest(state.EnrollmentSecret!))
                 };
                 recovery.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"vlr_{enrollmentId:D}.{state.MachineSecret}");
                 using var recovered = await http.SendAsync(recovery, token);
@@ -107,7 +108,7 @@ public sealed class IdentityClient(HttpClient http)
             pending = Decode(state.PendingSecret);
             using var start = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "api/v1/agent/rotation/start"))
             {
-                Content = JsonContent.Create(new RotationPayload(SHA256.HashData(pending)))
+                Content = JsonContent.Create(new RotationRequest(SHA256.HashData(pending)))
             };
             start.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{agentId:D}.{state.MachineSecret}");
             using var startResponse = await http.SendAsync(start, token);
@@ -174,8 +175,4 @@ public sealed class IdentityClient(HttpClient http)
         catch (FormatException exception) { throw new InvalidDataException("Invalid machine credential.", exception); }
     }
 
-    private sealed record EnrollmentPayload(string EnrollmentSecret, byte[] MachineVerifier);
-    private sealed record RecoveryPayload(string EnrollmentSecret);
-    private sealed record RotationPayload(byte[] MachineVerifier);
-    private sealed record EnrollmentResponse(Guid AgentId);
 }

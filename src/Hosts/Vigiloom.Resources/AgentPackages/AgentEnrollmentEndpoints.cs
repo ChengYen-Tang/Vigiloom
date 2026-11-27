@@ -15,7 +15,7 @@ internal static class AgentEnrollmentEndpoints
             var result = await registrations.RedeemAsync(request.EnrollmentSecret, request.MachineVerifier, token);
             return result.Status == AgentRegistrationStatus.Success ? Results.Ok(new EnrollmentResponse(result.AgentId!.Value)) : Results.Unauthorized();
         }).AllowAnonymous().WithMetadata(new RequestSizeLimitAttribute(2048));
-        agent.MapPost("/recover", async (RecoveryRequest request, HttpContext context, AgentRegistration registrations, CancellationToken token) =>
+        agent.MapPost("/recover", async (EnrollmentRecoveryRequest request, HttpContext context, AgentRegistration registrations, CancellationToken token) =>
         {
             var result = await registrations.RecoverAsync(request.EnrollmentSecret, Bearer(context), token);
             return result.Status == AgentRegistrationStatus.Success ? Results.Ok(new EnrollmentResponse(result.AgentId!.Value)) : Results.Unauthorized();
@@ -38,8 +38,4 @@ internal static class AgentEnrollmentEndpoints
         return context.Request.IsHttps && header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header[7..] : null;
     }
 
-    private sealed record EnrollmentRequest(string? EnrollmentSecret, byte[]? MachineVerifier);
-    private sealed record RecoveryRequest(string? EnrollmentSecret);
-    private sealed record RotationRequest(byte[]? MachineVerifier);
-    private sealed record EnrollmentResponse(Guid AgentId);
 }
