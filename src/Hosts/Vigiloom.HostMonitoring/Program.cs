@@ -22,6 +22,7 @@ using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddScoped<HostAuditRetention>();
 builder.Services.AddOpenApi(options =>
 {
     options.ShouldInclude = description => description.RelativePath?.StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase) == true;
@@ -140,6 +141,10 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
     builder.Services.AddHostedService<WorkDispatcher>();
 }
 var app = builder.Build();
+app.MapPost("/internal/v1/audit/retention/count", async (HostAuditRetentionRequest request, HostAuditRetention retention, CancellationToken token) =>
+    request.Cutoff.Offset != TimeSpan.Zero ? Results.BadRequest() : Results.Ok(await retention.CountAsync(request, token)));
+app.MapPost("/internal/v1/audit/retention/delete", async (HostAuditRetentionRequest request, HostAuditRetention retention, CancellationToken token) =>
+    request.Cutoff.Offset != TimeSpan.Zero || request.BatchSize is < 1 or > 500 ? Results.BadRequest() : Results.Ok(await retention.DeleteAsync(request, token)));
 if (app.Environment.IsDevelopment()) app.MapOpenApi();
 var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
