@@ -219,7 +219,7 @@ public sealed record ResetCodeResult(AccountOperationResult Result, string? Code
 public sealed record AccountSummary(Guid Id, string UserName, IReadOnlyList<string> Roles);
 public sealed record AccountPage(IReadOnlyList<AccountSummary> Accounts, int TotalCount, int Page, int PageSize);
 public enum AccountOperationStatus { Success, NotFound, InvalidRole, LastAdministrator, SelfDeletion, SelfTwoFactorReset, InvalidCredentials, ValidationFailed }
-public sealed record AccountOperationResult(AccountOperationStatus Status, IReadOnlyList<string> Errors)
+public sealed record AccountOperationResult(AccountOperationStatus Status, IReadOnlyList<string> Errors, IReadOnlyList<string>? ErrorCodes = null)
 {
     public static AccountOperationResult Success { get; } = new(AccountOperationStatus.Success, []);
     public static AccountOperationResult NotFound { get; } = new(AccountOperationStatus.NotFound, []);
@@ -229,5 +229,5 @@ public sealed record AccountOperationResult(AccountOperationStatus Status, IRead
     public static AccountOperationResult SelfTwoFactorReset { get; } = new(AccountOperationStatus.SelfTwoFactorReset, []);
     public static AccountOperationResult InvalidCredentials { get; } = new(AccountOperationStatus.InvalidCredentials, []);
     public static AccountOperationResult Failed(IdentityResult result) => new(AccountOperationStatus.ValidationFailed,
-        result.Errors.Select(error => error.Description).ToArray());
+        result.Errors.Select(error => error.Description).ToArray(), result.Errors.Select(error => error.Code).ToArray());
 }
