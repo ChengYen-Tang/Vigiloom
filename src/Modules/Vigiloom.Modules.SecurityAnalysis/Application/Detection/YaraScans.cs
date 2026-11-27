@@ -76,5 +76,6 @@ public sealed class YaraScans(IDbContextFactory<SecurityAnalysisDbContext> conte
 
     private static YaraScanJob View(YaraScan scan) => new(scan.Id, scan.AgentId, scan.DeviceId, scan.RequestedBy,
         new(scan.FilePath, scan.Rules, scan.MaximumBytes, scan.TimeoutSeconds), scan.RequestedAt,
-        scan.Outcome is { } result ? new((YaraScanOutcome)result, scan.Output ?? "", scan.Error ?? "", scan.OutputTruncated ?? false, scan.CompletedAt!.Value, scan.EngineVersion) : null);
+        scan.Outcome is { } result ? new((YaraScanOutcome)result, scan.Output ?? "", scan.Error ?? "", scan.OutputTruncated ?? false, scan.CompletedAt!.Value, scan.EngineVersion) : null,
+        scan.StartedAt);
 }

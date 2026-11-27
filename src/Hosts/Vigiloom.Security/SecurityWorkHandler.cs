@@ -25,6 +25,30 @@ public sealed class SecurityWorkHandler(IConfiguration configuration, IHttpClien
 {
     public async Task<string?> ExecuteAsync(ServiceWork work, CancellationToken cancellationToken)
     {
+        if (work.Kind == nameof(YaraScanStarted))
+        {
+            var started = JsonSerializer.Deserialize<YaraScanStarted>(work.Payload) ?? throw new InvalidOperationException("Missing scan start.");
+            if (started.ScanId.Version != 7 || started.AgentId.Version != 7 || started.DeviceId.Version != 7 ||
+                started.StartedAt == default || started.StartedAt.Offset != TimeSpan.Zero)
+                throw new ArgumentException("Invalid scan start.");
+            var connectionString = configuration.GetConnectionString("Security") ?? throw new InvalidOperationException("ConnectionStrings:Security is required.");
+            var consumer = new TransactionalWorkHandler(connectionString, async (_, sql, transaction, token) =>
+            {
+                var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(sql,
+                    sqlOptions => sqlOptions.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)).Options;
+                await using var db = new SecurityAnalysisDbContext(options);
+                await db.Database.UseTransactionAsync(transaction, token);
+                var scan = await db.YaraScans.FromSqlInterpolated($"SELECT * FROM [security].[YaraScans] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {started.ScanId} AND [AgentId] = {started.AgentId} AND [DeviceId] = {started.DeviceId}").SingleOrDefaultAsync(token);
+                if (scan is null) throw new InvalidOperationException("Scan start does not match a known scan.");
+                if (scan.Outcome is null && scan.StartedAt is null)
+                {
+                    scan.StartedAt = started.StartedAt;
+                    await db.SaveChangesAsync(token);
+                }
+                return null;
+            });
+            return await consumer.ExecuteAsync(work, cancellationToken);
+        }
         if (work.Kind is HostLogDispatch.MessageType or HostLogDispatch.IocMessageType or HostLogDispatch.CombinedMessageType)
         {
             var connectionString = configuration.GetConnectionString("Security") ?? throw new InvalidOperationException("ConnectionStrings:Security is required.");

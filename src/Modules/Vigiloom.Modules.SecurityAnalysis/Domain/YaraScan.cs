@@ -13,6 +13,7 @@ public sealed class YaraScan
     public long MaximumBytes { get; set; }
     public int TimeoutSeconds { get; set; }
     public DateTimeOffset RequestedAt { get; set; }
+    public DateTimeOffset? StartedAt { get; set; }
     public int? Outcome { get; set; }
     public string? Output { get; set; }
     public string? Error { get; set; }

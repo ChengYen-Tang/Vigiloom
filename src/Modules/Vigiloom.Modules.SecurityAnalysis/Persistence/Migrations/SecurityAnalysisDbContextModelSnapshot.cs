@@ -2930,6 +2930,9 @@ namespace Vigiloom.Modules.SecurityAnalysis.Persistence.Migrations
                         .HasMaxLength(65536)
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<int>("TimeoutSeconds")
                         .HasColumnType("int");
 
