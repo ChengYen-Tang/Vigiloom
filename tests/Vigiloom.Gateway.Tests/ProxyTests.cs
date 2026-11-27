@@ -131,6 +131,7 @@ public sealed class ProxyTests
     {
         await using var web = await StartUpstreamAsync("web", TestContext.CancellationToken);
         await using var network = await StartUpstreamAsync("network", TestContext.CancellationToken);
+        await using var resources = await StartUpstreamAsync("resources", TestContext.CancellationToken);
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         await using var identity = builder.Build();
@@ -142,6 +143,7 @@ public sealed class ProxyTests
             {
                 ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web),
                 ["ReverseProxy:Clusters:network:Destinations:network:Address"] = Address(network),
+                ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = Address(resources),
                 ["Services:Identity:Url"] = Address(identity)
             })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
@@ -153,7 +155,7 @@ public sealed class ProxyTests
         Assert.AreEqual("network", await client.GetStringAsync($"/api/v1/devices/{id:D}/ping", TestContext.CancellationToken));
         Assert.AreEqual("network", await client.GetStringAsync($"/api/v1/devices/{id:D}/ping/history", TestContext.CancellationToken));
         Assert.AreEqual("network", await client.GetStringAsync("/api/v1/speed-tests", TestContext.CancellationToken));
-        Assert.AreEqual("web", await client.GetStringAsync($"/api/v1/devices/{id:D}", TestContext.CancellationToken));
+        Assert.AreEqual("resources", await client.GetStringAsync($"/api/v1/devices/{id:D}", TestContext.CancellationToken));
         using (var response = await client.GetAsync("/api/v1/settings/ping", TestContext.CancellationToken))
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using (var response = await client.PostAsync($"/api/v1/speed-tests/{id:D}/cancel", null, TestContext.CancellationToken))

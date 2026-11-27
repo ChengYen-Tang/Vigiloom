@@ -124,7 +124,8 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             using var secondGateway = new WebApplicationFactory<GatewayHost::Program>().WithWebHostBuilder(builder =>
             {
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(secondWeb.Services), ["Services:Identity:Url"] = identityAddress }));
+                { ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(secondWeb.Services), ["Services:Identity:Url"] = identityAddress,
+                  ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = resourcesAddress }));
                 builder.ConfigureTestServices(services => { services.RemoveAll<IDataProtectionProvider>(); services.AddSingleton<IDataProtectionProvider>(keys); });
             });
             using var secondInstance = secondGateway.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = options.BaseAddress, AllowAutoRedirect = false, HandleCookies = false });

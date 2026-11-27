@@ -8,7 +8,8 @@ internal static class DeviceEndpoints
 {
     public static void MapDeviceManagement(this WebApplication app)
     {
-        var devices = app.MapGroup("/api/v1/devices");
+        var devices = app.MapGroup("/api/v1/devices").RequireRateLimiting("api-client");
+        devices.ProducesProblem(StatusCodes.Status429TooManyRequests);
         devices.MapGet("/", async (string? search, string? sort, bool? descending, bool? archived, int? page, DeviceManagement service, CancellationToken token) =>
             search?.Length > 256 || page is < 1 or > 42949672 || sort is not (null or "name" or "address" or "created")
                 ? Results.BadRequest() : Results.Ok(await service.ListAsync(search, sort, descending ?? false, archived ?? false, page ?? 1, token)))
