@@ -145,6 +145,8 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Operations:Url"])
     !string.IsNullOrWhiteSpace(builder.Configuration["Services:Web:Url"]) && builder.Configuration.GetValue("Hangfire:Enabled", true))
 {
     builder.Services.AddHostedService<OutboxSchedule>();
+    builder.Services.AddScoped<Vigiloom.Web.Scheduling.LegacyWorkerRetirement>();
+    builder.Services.AddHostedService<Vigiloom.Web.Scheduling.SchedulerCutover>();
     builder.Services.AddHangfireServer(options =>
     {
         options.Queues = [OutboxScheduleManager.Queue];

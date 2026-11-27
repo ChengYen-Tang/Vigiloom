@@ -1,4 +1,5 @@
 using Hangfire;
+using Hangfire.Common;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -10,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
+using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Web.Tests;
@@ -56,6 +58,26 @@ public sealed class OutboxWebWorkerTests(TestContext context)
             while (await StateAsync(platform.ConnectionString, deadline.Token) != 2)
                 await Task.Delay(200, deadline.Token);
             Assert.AreEqual(0, await StateAsync(operations.ConnectionString, token));
+            web.Services.GetRequiredService<IRecurringJobManager>().AddOrUpdate("test-network-scheduler",
+                Job.FromExpression<NetworkAutomaticSpeedJob>(job => job.RunAsync(CancellationToken.None), "network"),
+                Cron.Minutely(), new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+            await using (var connection = new SqlConnection(platform.ConnectionString))
+            {
+                await connection.OpenAsync(token);
+                await using var command = connection.CreateCommand();
+                command.CommandText = """
+                    UPDATE [hangfire].[Hash] SET [Value] = @past WHERE [Key] = 'recurring-job:test-network-scheduler' AND [Field] = 'LastExecution';
+                    IF @@ROWCOUNT = 0 INSERT INTO [hangfire].[Hash] ([Key], [Field], [Value]) VALUES ('recurring-job:test-network-scheduler', 'LastExecution', @past);
+                    UPDATE [hangfire].[Set] SET [Score] = 0 WHERE [Key] = 'recurring-jobs' AND [Value] = 'test-network-scheduler';
+                    """;
+                command.Parameters.AddWithValue("@past", DateTime.UtcNow.AddMinutes(-2).ToString("O"));
+                await command.ExecuteNonQueryAsync(token);
+            }
+            var monitor = web.Services.GetRequiredService<JobStorage>().GetMonitoringApi();
+            using var scheduleDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            scheduleDeadline.CancelAfter(TimeSpan.FromSeconds(60));
+            while (monitor.EnqueuedCount("network") == 0)
+                await Task.Delay(250, scheduleDeadline.Token);
         }, outerToken), context.CancellationToken);
 
     private static async Task<int> StateAsync(string connectionString, CancellationToken token)
