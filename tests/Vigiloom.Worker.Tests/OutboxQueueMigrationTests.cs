@@ -17,12 +17,14 @@ namespace Vigiloom.Worker.Tests;
 [TestClass]
 [TestCategory("Integration")]
 [TestCategory("Database")]
+[DoNotParallelize]
 public sealed class OutboxQueueMigrationTests(TestContext context)
 {
     [TestMethod]
     public Task MovesOldDispatcherJobsWithoutMovingOtherJobs() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
+            GlobalConfiguration.Configuration.UseNoOpLogProvider();
             await HangfireSchemaInstaller.InstallAsync(database.ConnectionString, token);
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             { ["ConnectionStrings:Vigiloom"] = database.ConnectionString }).Build();

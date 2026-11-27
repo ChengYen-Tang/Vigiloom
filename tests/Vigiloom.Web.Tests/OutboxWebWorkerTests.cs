@@ -17,6 +17,7 @@ namespace Vigiloom.Web.Tests;
 [TestClass]
 [TestCategory("Integration")]
 [TestCategory("Database")]
+[DoNotParallelize]
 public sealed class OutboxWebWorkerTests(TestContext context)
 {
     [TestMethod]
@@ -24,6 +25,7 @@ public sealed class OutboxWebWorkerTests(TestContext context)
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (platform, outerToken) =>
         await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (operations, token) =>
         {
+            GlobalConfiguration.Configuration.UseNoOpLogProvider();
             await HangfireSchemaInstaller.InstallAsync(platform.ConnectionString, token);
             foreach (var connectionString in new[] { platform.ConnectionString, operations.ConnectionString })
             {

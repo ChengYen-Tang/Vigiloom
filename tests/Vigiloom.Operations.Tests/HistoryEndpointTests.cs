@@ -23,12 +23,14 @@ namespace Vigiloom.Operations.Tests;
 [TestClass]
 [TestCategory("Integration")]
 [TestCategory("Database")]
+[DoNotParallelize]
 public sealed class HistoryEndpointTests(TestContext context)
 {
     [TestMethod]
     public Task HistoryCanBeQueriedAndRetentionKeepsOpenAlerts() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
+            GlobalConfiguration.Configuration.UseNoOpLogProvider();
             var services = new ServiceCollection();
             services.AddModuleSqlServer<OperationsDbContext>(database.ConnectionString, "operations");
             services.AddModuleSqlServer<SchedulingDbContext>(database.ConnectionString, "scheduling");
@@ -108,6 +110,7 @@ public sealed class HistoryEndpointTests(TestContext context)
                     UPDATE [hangfire].[Set] SET Score = 0 WHERE [Key] = 'recurring-jobs' AND Value = 'vigiloom-operations-retention';
                     """, token);
             }
+            GlobalConfiguration.Configuration.UseNoOpLogProvider();
             using var scheduler = new BackgroundJobServer(new BackgroundJobServerOptions
             { Queues = ["scheduler"], SchedulePollingInterval = TimeSpan.FromSeconds(1) }, host.Services.GetRequiredService<JobStorage>());
             var deadline = DateTimeOffset.UtcNow.AddSeconds(45);

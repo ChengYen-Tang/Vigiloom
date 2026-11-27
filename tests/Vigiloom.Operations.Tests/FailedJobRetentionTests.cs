@@ -22,6 +22,7 @@ namespace Vigiloom.Operations.Tests;
 [TestClass]
 [TestCategory("Integration")]
 [TestCategory("Database")]
+[DoNotParallelize]
 public sealed class FailedJobRetentionTests(TestContext context)
 {
     [TestMethod]
@@ -29,6 +30,7 @@ public sealed class FailedJobRetentionTests(TestContext context)
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, outerToken) =>
         await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (scheduling, token) =>
         {
+            GlobalConfiguration.Configuration.UseNoOpLogProvider();
             await HangfireSchemaInstaller.InstallAsync(scheduling.ConnectionString, token);
             using var host = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
             {
