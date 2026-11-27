@@ -14,7 +14,7 @@ internal static class HostMetricEndpoints
     private static void Map(WebApplication app, string path, bool external)
     {
         var group = app.MapGroup(path);
-        if (external) group.RequireAuthorization("MonitoringApiRead");
+        if (external) group.RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
         group.MapGet("", ReadAsync).Produces<HostMetricPage>().ProducesProblem(400).ProducesProblem(404);
         group.MapGet("/series", SeriesAsync).Produces<HostMetricSeriesPage>().ProducesProblem(400).ProducesProblem(404);
         group.MapGet("/aggregate", AggregateAsync).Produces<HostMetricAggregate>().ProducesProblem(400).ProducesProblem(404);
@@ -27,7 +27,7 @@ internal static class HostMetricEndpoints
         try
         {
             var result = await history.GetAsync(deviceId, from, until, cursor, kind, token);
-            return !await ResourceDevices.ExistsAsync(clients, deviceId, token) || result is null ? Results.NotFound() : Results.Ok(result);
+            return !await ResourceDevices.ExistsAsync(clients, deviceId, token) || result is null ? NotFound(context, "Device not found") : Results.Ok(result);
         }
         catch (ArgumentException) { return Results.Problem(statusCode: 400, title: "Invalid metric query"); }
     }
@@ -39,7 +39,7 @@ internal static class HostMetricEndpoints
         try
         {
             var result = await history.GetSeriesAsync(deviceId, from, until, kind, page ?? 0, token);
-            return !await ResourceDevices.ExistsAsync(clients, deviceId, token) || result is null ? Results.NotFound() : Results.Ok(result);
+            return !await ResourceDevices.ExistsAsync(clients, deviceId, token) || result is null ? NotFound(context, "Device not found") : Results.Ok(result);
         }
         catch (ArgumentException) { return Results.Problem(statusCode: 400, title: "Invalid metric series query"); }
     }
@@ -52,8 +52,11 @@ internal static class HostMetricEndpoints
         try
         {
             var result = await history.AggregateAsync(deviceId, agentId, from, until, kind, source, dimension, bucketSeconds, token);
-            return !await ResourceDevices.ExistsAsync(clients, deviceId, token) || result is null ? Results.NotFound() : Results.Ok(result);
+            return !await ResourceDevices.ExistsAsync(clients, deviceId, token) || result is null ? NotFound(context, "Device or Agent not found") : Results.Ok(result);
         }
         catch (ArgumentException) { return Results.Problem(statusCode: 400, title: "Invalid metric aggregate query"); }
     }
+
+    private static IResult NotFound(HttpContext context, string title) => context.Request.Path.StartsWithSegments("/api/v1")
+        ? Results.Problem(statusCode: StatusCodes.Status404NotFound, title: title) : Results.NotFound();
 }

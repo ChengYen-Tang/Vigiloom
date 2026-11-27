@@ -525,6 +525,13 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, settingsStatus!.State);
             var capacityStatus = await proxyClient.GetFromJsonAsync<AgentQueueCapacityStatus>($"/api/v1/devices/{identity.DeviceId:D}/agent-queue-capacity-status", token);
             Assert.AreEqual(AgentSettingsApplyState.Applied, capacityStatus!.State);
+            var publicMetrics = await proxyClient.GetFromJsonAsync<HostMetricPage>($"/api/v1/devices/{identity.DeviceId:D}/host-metrics?from={from}&until={until}", token);
+            Assert.IsNotNull(publicMetrics);
+            using (var missing = await proxyClient.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/host-metrics?from={from}&until={until}", token))
+            {
+                Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
+                Assert.AreEqual("application/problem+json", missing.Content.Headers.ContentType?.MediaType);
+            }
             using (var response = await proxyClient.PostAsJsonAsync("/internal/v1/agent-connections", new[] { identity.DeviceId }, token))
             {
                 response.EnsureSuccessStatusCode();
@@ -597,6 +604,9 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     new AgentRegistrationSummary(identity.AgentId, identity.DeviceGeneration, DateTimeOffset.UtcNow, null)) }) };
             if (request.Method == HttpMethod.Get)
             {
+                if (request.RequestUri.AbsolutePath.StartsWith("/internal/v1/devices/", StringComparison.Ordinal) &&
+                    !request.RequestUri.AbsolutePath.StartsWith($"/internal/v1/devices/{identity.DeviceId:D}/", StringComparison.OrdinalIgnoreCase))
+                    return new(HttpStatusCode.NotFound);
                 var payload = request.RequestUri!.AbsolutePath.EndsWith("/agents", StringComparison.Ordinal)
                     ? JsonContent.Create(new DeviceAgentRegistrations([new(identity.AgentId, identity.DeviceGeneration, DateTimeOffset.UtcNow, null)], [], identity.DeviceGeneration))
                     : JsonContent.Create(new DeviceAgentState(identity.DeviceId, identity.DeviceGeneration, true));
