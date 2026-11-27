@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent.Security;
+using System.Text.Json;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Work;
@@ -73,9 +75,58 @@ public sealed class HostSecurityBatchTests(TestContext context)
             Assert.AreEqual(1, await check.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM scheduling.Outbox WHERE State = 0").SingleAsync(token));
         }, context.CancellationToken);
 
+    [TestMethod]
+    public Task StartReceiptAndSecurityDeliveryCommitTogether() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            var options = new DbContextOptionsBuilder<HostMonitoringDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable(HostMonitoringDbContext.MigrationHistory, "agent")).Options;
+            var schedulingOptions = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+            var factory = new PooledDbContextFactory<HostMonitoringDbContext>(options);
+            await using (var db = await factory.CreateDbContextAsync(token))
+            {
+                await db.Database.MigrateAsync(token);
+                var now = await db.Database.SqlQuery<DateTimeOffset>($"SELECT TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00') AS [Value]").SingleAsync(token);
+                var policy = new AgentReplayPolicy();
+                policy.InitializeFresh(now);
+                policy.BeginCleanupCutover(now);
+                db.ReplayPolicies.Add(policy);
+                await db.SaveChangesAsync(token);
+            }
+            await using (var scheduling = new SchedulingDbContext(schedulingOptions)) await scheduling.Database.MigrateAsync(token);
+            var writer = new HostSecurityWorkWriter(new TemporalWorkWriter(new OutboxWriter([new TestOutboxHandler()])),
+                new ConfigurationBuilder().AddInMemoryCollection().Build());
+            var receiver = new HostObservationReceiver(factory, TimeProvider.System, security: writer);
+            var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var start = new YaraStartBatch(YaraStartBatchCodec.SchemaVersion, Guid.CreateVersion7(), DateTimeOffset.UtcNow, Guid.CreateVersion7());
+            var payload = YaraStartBatchCodec.Serialize(start);
+            Assert.AreEqual(BatchReceiptStatus.Accepted, await receiver.ReceiveAsync(identity, payload, token));
+            Assert.AreEqual(BatchReceiptStatus.AlreadyAccepted, await receiver.ReceiveAsync(identity, payload, token));
+            await using (var db = await factory.CreateDbContextAsync(token))
+            {
+                Assert.AreEqual(1, await db.ReceivedBatches.CountAsync(token));
+                Assert.AreEqual(0, await db.HostSecurityBatches.CountAsync(token));
+                var work = await db.Database.SqlQueryRaw<string>("SELECT Payload AS [Value] FROM scheduling.Outbox").SingleAsync(token);
+                var request = JsonSerializer.Deserialize<TemporalWorkRequest>(work)!;
+                var delivered = JsonSerializer.Deserialize<YaraScanStarted>(request.Work.Payload)!;
+                Assert.AreEqual(nameof(YaraScanStarted), request.Work.Kind);
+                Assert.AreEqual(start.ScanId, delivered.ScanId);
+                Assert.AreEqual(identity.AgentId, delivered.AgentId);
+                Assert.AreEqual(identity.DeviceId, delivered.DeviceId);
+            }
+            var failing = new HostObservationReceiver(factory, TimeProvider.System, security: new FailingWriter());
+            var failed = start with { BatchId = Guid.CreateVersion7() };
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => failing.ReceiveAsync(identity, YaraStartBatchCodec.Serialize(failed), token));
+            await using var verify = await factory.CreateDbContextAsync(token);
+            Assert.IsFalse(await verify.ReceivedBatches.AnyAsync(x => x.BatchId == failed.BatchId, token));
+        }, context.CancellationToken);
+
     private sealed class FailingWriter : IHostSecurityWorkWriter
     {
         public Task WriteAsync(HostMonitoringDbContext db, HostSecurityBatchReady batch, CancellationToken token) =>
+            throw new InvalidOperationException("Simulated write failure.");
+        public Task WriteStartAsync(HostMonitoringDbContext db, Vigiloom.Contracts.Agent.Security.YaraScanStarted started, CancellationToken token) =>
             throw new InvalidOperationException("Simulated write failure.");
     }
 

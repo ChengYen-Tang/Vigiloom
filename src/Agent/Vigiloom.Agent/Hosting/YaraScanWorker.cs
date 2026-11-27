@@ -122,6 +122,15 @@ internal sealed class YaraScanWorker(AgentYaraClient client, AgentSettingsRuntim
             if (budget.Cpu.Delay() > TimeSpan.Zero || budget.Io.Delay() > TimeSpan.Zero ||
                 SamplingMemoryBudget.IsExceeded(resources.ReadWorkingSetBytes(), (long)policy.WorkingSetLimitMiB * 1024 * 1024)) return null;
         }
+        var startedAt = clock.GetUtcNow();
+        var start = new YaraStartBatch(YaraStartBatchCodec.SchemaVersion, Guid.CreateVersion7(), startedAt, job.Id);
+        var queue = new DurableBatchQueue(new IdentityVault(directory), owner.AgentId);
+        var queued = await queue.EnqueueManyForOwnerAsync([new(start.BatchId, startedAt, 1, YaraStartBatchCodec.Serialize(start))], owner, token);
+        if (queued is not (EnqueueResult.Queued or EnqueueResult.AlreadyQueued))
+        {
+            logger.LogWarning("YARA start could not be queued: {Status}.", queued);
+            return null;
+        }
         var work = Path.Combine(directory, "yara-scans");
         Directory.CreateDirectory(work);
         foreach (var path in Directory.EnumerateFiles(work, "vigiloom-*.yar"))

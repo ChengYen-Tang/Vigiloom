@@ -18,6 +18,8 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
     private long? deferredSince;
     private AgentSettingsOwner? deferredYaraOwner;
     private long? deferredYaraSince;
+    private AgentSettingsOwner? deferredYaraStartOwner;
+    private long? deferredYaraStartSince;
     private AgentSettingsOwner? restoredOwner;
 
     public async Task<BatchSendOutcome> SendNextAsync(IdentityVault vault, Uri server, CancellationToken token)
@@ -35,9 +37,11 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         }
         var skipBaseline = ShouldDeferBaseline(owner);
         var skipYara = ShouldDeferYara(owner);
+        var skipYaraStart = ShouldDeferYaraStart(owner);
         var pending = await queue.PeekAsync(token, skipBaseline ? BaselineBatchCodec.SchemaVersion : null,
-            skipYara ? Vigiloom.Contracts.Agent.Security.YaraResultBatchCodec.SchemaVersion : null);
-        if (pending is null) return new(skipBaseline || skipYara ? BatchSendResult.Deferred : BatchSendResult.NoPendingBatch);
+            skipYara ? Vigiloom.Contracts.Agent.Security.YaraResultBatchCodec.SchemaVersion : null,
+            skipYaraStart ? Vigiloom.Contracts.Agent.Security.YaraStartBatchCodec.SchemaVersion : null);
+        if (pending is null) return new(skipBaseline || skipYara || skipYaraStart ? BatchSendResult.Deferred : BatchSendResult.NoPendingBatch);
         if (!MatchesQueueEntry(pending, out var schemaVersion))
         {
             await queue.QuarantineAsync(pending.BatchId, QueueRejection.InvalidLocalBatch, token);
@@ -67,6 +71,8 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         if (unknownSchema && schemaVersion == BaselineBatchCodec.SchemaVersion) DeferBaseline(owner);
         if (unknownSchema && schemaVersion == Vigiloom.Contracts.Agent.Security.YaraResultBatchCodec.SchemaVersion)
             lock (gate) { deferredYaraOwner = owner; deferredYaraSince = clock.GetTimestamp(); }
+        if (unknownSchema && schemaVersion == Vigiloom.Contracts.Agent.Security.YaraStartBatchCodec.SchemaVersion)
+            lock (gate) { deferredYaraStartOwner = owner; deferredYaraStartSince = clock.GetTimestamp(); }
         var status = response.StatusCode switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => BatchSendResult.Unauthorized,
@@ -130,6 +136,20 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         response.Headers.TryGetValues(AgentMetricBatchCodec.SupportedSchemaHeader, out var values) &&
         values.SelectMany(value => value.Split(',')).Any(value => string.Equals(value.Trim(), schemaVersion.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal));
 
+    private bool ShouldDeferYaraStart(AgentSettingsOwner owner)
+    {
+        lock (gate)
+        {
+            if (deferredYaraStartOwner != owner || deferredYaraStartSince is null || clock.GetElapsedTime(deferredYaraStartSince.Value) >= TimeSpan.FromMinutes(5))
+            {
+                deferredYaraStartOwner = null;
+                deferredYaraStartSince = null;
+                return false;
+            }
+            return true;
+        }
+    }
+
     internal static bool MatchesQueueEntry(QueuedBatch pending, out int schemaVersion)
     {
         schemaVersion = 1;
@@ -168,6 +188,11 @@ public sealed class AgentBatchClient(HttpClient http, TimeProvider clock)
         {
             schemaVersion = Vigiloom.Contracts.Agent.Security.YaraResultBatchCodec.SchemaVersion;
             return yara!.BatchId == pending.BatchId && yara.EnqueuedAt == pending.EnqueuedAt && pending.RecordCount == 1;
+        }
+        if (Vigiloom.Contracts.Agent.Security.YaraStartBatchCodec.TryRead(pending.Payload, out var yaraStart))
+        {
+            schemaVersion = Vigiloom.Contracts.Agent.Security.YaraStartBatchCodec.SchemaVersion;
+            return yaraStart!.BatchId == pending.BatchId && yaraStart.EnqueuedAt == pending.EnqueuedAt && pending.RecordCount == 1;
         }
         return false;
     }
