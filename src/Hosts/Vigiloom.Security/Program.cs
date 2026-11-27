@@ -199,6 +199,7 @@ app.UseAuthorization();
 app.UseRateLimiter();
 app.MapPublicInventory();
 app.MapPublicIntelligenceEndpoints();
+app.MapPublicSigma();
 app.MapPublicInventorySettings();
 app.MapPublicIntegrity();
 app.MapPublicIntegrityScopes();

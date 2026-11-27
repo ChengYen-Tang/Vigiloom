@@ -239,6 +239,11 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     using var adminResponse = await securityApi.GetAsync(path, token);
                     Assert.AreEqual(HttpStatusCode.OK, adminResponse.StatusCode, path);
                 }
+                if (temporalAddress is null)
+                {
+                    using var offlineSigma = await securityApi.GetAsync("/api/v1/admin/sigma/rules", token);
+                    Assert.AreEqual(HttpStatusCode.ServiceUnavailable, offlineSigma.StatusCode);
+                }
                 using (var missingCsrf = await securityApi.PutAsJsonAsync("/api/v1/agent-management/inventory-settings/platform",
                     new InventorySettingsUpdate(new InventorySettingsOverrides(300), ""), token))
                     Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
