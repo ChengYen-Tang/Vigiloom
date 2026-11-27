@@ -818,7 +818,6 @@ app.MapAgentMetricSettingsEndpoints();
 app.MapInventorySettingsEndpoints();
 app.MapBaselineSettingsEndpoints();
 app.MapIntelligenceEndpoints();
-app.MapSigmaDetectionEndpoints();
 app.MapEventTimelineEndpoints();
 app.MapIntelligenceOfflineUiEndpoints();
 app.MapIntegrityScopeEndpoints();

@@ -31,6 +31,7 @@ using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Identity;
+using Vigiloom.Contracts.Intelligence;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Authentication;
@@ -45,6 +46,8 @@ using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Intelligence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Detection;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Operations.Tests;
@@ -130,6 +133,16 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(1, write.GetArrayLength());
                 Assert.IsTrue(write[0].TryGetProperty("BrowserSession", out _));
                 Assert.IsTrue(write[0].TryGetProperty("Antiforgery", out _));
+                var sigmaRead = paths.GetProperty("/api/v1/admin/sigma/rules").GetProperty("get").GetProperty("security");
+                Assert.IsTrue(sigmaRead[0].TryGetProperty("BrowserSession", out _));
+                Assert.IsFalse(sigmaRead[0].TryGetProperty("ApiBearer", out _));
+                foreach (var sigmaPath in new[] { ("/api/v1/admin/sigma/tests", "post"), ("/api/v1/admin/sigma/state", "put") })
+                {
+                    var requirement = paths.GetProperty(sigmaPath.Item1).GetProperty(sigmaPath.Item2).GetProperty("security")[0];
+                    Assert.IsTrue(requirement.TryGetProperty("BrowserSession", out _));
+                    Assert.IsTrue(requirement.TryGetProperty("Antiforgery", out _));
+                    Assert.IsFalse(requirement.TryGetProperty("ApiBearer", out _));
+                }
             }
             var writer = new SecurityWriter();
             using var host = new WebApplicationFactory<HostMonitoring::Program>().WithWebHostBuilder(web =>
@@ -234,11 +247,30 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var process = new InventoryChunk(5, Guid.CreateVersion7(), nowUtc, Guid.CreateVersion7(), 1, InventorySource.HostProcesses,
                 nowUtc, InventoryOutcome.Complete, 0, 1, 1, processMeasured.Bytes, InventoryDigest.Combine([processMeasured.Digest]), processItems);
             await PublishInventoryAsync(process);
+            await using (var db = new SecurityAnalysisDbContext(securityOptions))
+            {
+                var feed = new IntelligenceSource { Key = "private-detection-source", Enabled = true };
+                var revision = new IntelligenceRevision { SourceId = feed.Id, UpstreamVersion = "test", RetrievedAt = nowUtc,
+                    Digest = new byte[32], Artifact = [], SchemaVersion = "test", MappingVersion = "test", LicenseEvidence = "test" };
+                var rule = new SigmaRuleTest { Id = Guid.CreateVersion7(), SourceId = feed.Id, RevisionId = revision.Id,
+                    Path = "rules/private-detection.yml", Digest = new string('a', 64), ActivationVersion = "v1", MatcherVersion = "1",
+                    SamplesJson = "[]", Passed = true, ActorId = Guid.CreateVersion7(), TestedAt = nowUtc };
+                var activation = new SigmaRuleActivation { Id = Guid.CreateVersion7(), SourceId = feed.Id, Path = rule.Path,
+                    TestId = rule.Id, Enabled = true, UpdatedBy = Guid.CreateVersion7(), UpdatedAt = nowUtc };
+                db.IntelligenceSources.Add(feed); db.IntelligenceRevisions.Add(revision); db.SigmaRuleTests.Add(rule); db.SigmaRuleActivations.Add(activation);
+                db.SigmaDetectionResults.Add(new SigmaDetectionResult { AgentId = identity.AgentId, DeviceId = identity.DeviceId,
+                    DeviceGeneration = identity.DeviceGeneration, MessageId = Guid.CreateVersion7(), ActivationId = activation.Id,
+                    TestId = rule.Id, ActivationVersion = new byte[8], Result = (int)SigmaExpectedOutcome.Match,
+                    OccurredAt = nowUtc, ReceivedAt = nowUtc, EvaluatedAt = nowUtc });
+                await db.SaveChangesAsync(token);
+            }
             using (var securityApi = security.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") }))
             {
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/vulnerabilities", token))
+                    Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+                using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/sigma-detections?from={Uri.EscapeDataString(nowUtc.AddMinutes(-1).ToString("O"))}&until={Uri.EscapeDataString(nowUtc.AddMinutes(1).ToString("O"))}", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory/{(int)process.Source}/snapshots/{process.SnapshotId:D}/chunks/0", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
@@ -319,6 +351,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 }
                 var readerChanges = await securityApi.GetFromJsonAsync<InventoryChangePage>($"/api/v1/devices/{identity.DeviceId:D}/inventory/changes?from={start}&until={end}", token);
                 Assert.IsTrue(readerChanges!.Items.Any(item => item.After?.Name == "Private software"));
+                var sigmaContent = await securityApi.GetStringAsync($"/api/v1/devices/{identity.DeviceId:D}/sigma-detections?from={start}&until={end}", token);
+                Assert.Contains("private-detection.yml", sigmaContent);
                 var readerProcess = await securityApi.GetFromJsonAsync<InventorySnapshotChunkView>($"/api/v1/devices/{identity.DeviceId:D}/inventory/{(int)process.Source}/snapshots/{process.SnapshotId:D}/chunks/0", token);
                 Assert.AreEqual(42U, readerProcess!.Items.Single().NumericId);
                 using (var unknown = await securityApi.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/vulnerabilities", token))

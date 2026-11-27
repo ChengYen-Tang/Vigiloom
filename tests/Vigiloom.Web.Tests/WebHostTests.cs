@@ -250,16 +250,6 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsTrue(intelligencePolicy.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.IsTrue(intelligencePolicy.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
         Assert.IsFalse(intelligencePolicy.GetProperty("security")[0].TryGetProperty("ApiBearer", out _));
-        var sigmaRules = paths.GetProperty("/api/v1/admin/sigma/rules").GetProperty("get");
-        Assert.IsTrue(sigmaRules.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
-        Assert.IsFalse(sigmaRules.GetProperty("security")[0].TryGetProperty("ApiBearer", out _));
-        var sigmaTest = paths.GetProperty("/api/v1/admin/sigma/tests").GetProperty("post");
-        Assert.IsTrue(sigmaTest.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
-        Assert.IsTrue(sigmaTest.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
-        Assert.IsFalse(sigmaTest.GetProperty("security")[0].TryGetProperty("ApiBearer", out _));
-        var sigmaState = paths.GetProperty("/api/v1/admin/sigma/state").GetProperty("put");
-        Assert.IsTrue(sigmaState.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
-        Assert.IsTrue(sigmaState.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
         var advisoryProgress = paths.GetProperty("/api/v1/admin/intelligence/sources/{sourceId}/advisory-progress").GetProperty("get");
         Assert.IsTrue(advisoryProgress.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         var advisoryRecovery = paths.GetProperty("/api/v1/admin/intelligence/sources/{sourceId}/advisory-recovery").GetProperty("post");
