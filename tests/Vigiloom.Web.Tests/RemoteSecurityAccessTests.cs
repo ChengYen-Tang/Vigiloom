@@ -13,7 +13,7 @@ public sealed class RemoteSecurityAccessTests
     public async Task RemoteQueriesDoNotRequireLocalSecurityServices()
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        { ["Services:Security:Url"] = "http://security" }).Build();
+        { ["Services:Security:Url"] = "http://security", ["Services:Security:IntelligenceEnabled"] = "true" }).Build();
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(config);
         services.AddHttpClient("security", client => client.BaseAddress = new Uri("http://security/"))
@@ -25,6 +25,9 @@ public sealed class RemoteSecurityAccessTests
         services.AddScoped<IntegritySettingsAccess>();
         services.AddScoped<InventorySettingsAccess>();
         services.AddScoped<BaselineAccess>();
+        services.AddScoped<IntelligenceStatusAccess>();
+        services.AddScoped<IntelligencePublicationAccess>();
+        services.AddScoped<IntelligenceImportAccess>();
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         var id = Guid.CreateVersion7();
@@ -37,6 +40,9 @@ public sealed class RemoteSecurityAccessTests
         await Assert.ThrowsExactlyAsync<HttpRequestException>(() => scope.ServiceProvider.GetRequiredService<IntegritySettingsAccess>().ListAsync(id, CancellationToken.None));
         await Assert.ThrowsExactlyAsync<HttpRequestException>(() => scope.ServiceProvider.GetRequiredService<InventorySettingsAccess>().GetAsync(id, CancellationToken.None));
         await Assert.ThrowsExactlyAsync<HttpRequestException>(() => scope.ServiceProvider.GetRequiredService<BaselineAccess>().GetAsync(id, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => scope.ServiceProvider.GetRequiredService<IntelligenceStatusAccess>().GetSourcesAsync(1, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => scope.ServiceProvider.GetRequiredService<IntelligencePublicationAccess>().ActivateAsync(id, id, null, "", false, id, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => scope.ServiceProvider.GetRequiredService<IntelligenceImportAccess>().ImportAsync(id, new MemoryStream(), id, CancellationToken.None));
     }
 
     private sealed class BadRequestHandler : HttpMessageHandler

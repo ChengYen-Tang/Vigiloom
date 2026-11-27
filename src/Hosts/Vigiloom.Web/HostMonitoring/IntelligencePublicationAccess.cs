@@ -4,7 +4,7 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 
 namespace Vigiloom.Web.HostMonitoring;
 
-internal sealed class IntelligencePublicationAccess(IntelligencePublication publication, IntelligenceRevocation revocation, IHttpClientFactory clients, IConfiguration configuration)
+internal sealed class IntelligencePublicationAccess(IServiceProvider services, IHttpClientFactory clients, IConfiguration configuration)
 {
     private bool Remote => configuration.GetValue("Services:Security:IntelligenceEnabled", false) &&
         !string.IsNullOrWhiteSpace(configuration["Services:Security:Url"]);
@@ -16,7 +16,7 @@ internal sealed class IntelligencePublicationAccess(IntelligencePublication publ
     public async Task<IntelligencePublicationResult> ActivateAsync(Guid sourceId, Guid revisionId, Guid? expectedActiveRevisionId,
         string expectedVersion, bool confirmLargeReduction, bool confirmOfflineSource, Guid actorId, CancellationToken token)
     {
-        if (!Remote) return await publication.ActivateAsync(sourceId, revisionId, expectedActiveRevisionId, expectedVersion, confirmLargeReduction, confirmOfflineSource, actorId, token);
+        if (!Remote) return await services.GetRequiredService<IntelligencePublication>().ActivateAsync(sourceId, revisionId, expectedActiveRevisionId, expectedVersion, confirmLargeReduction, confirmOfflineSource, actorId, token);
         using var response = await clients.CreateClient("security").PostAsJsonAsync($"internal/v1/intelligence/sources/{sourceId:D}/activation",
             new { Input = new IntelligenceActivationRequest(revisionId, expectedActiveRevisionId, expectedVersion, confirmLargeReduction, confirmOfflineSource), ActorId = actorId }, token);
         if (response.StatusCode == System.Net.HttpStatusCode.BadRequest) throw new ArgumentException("Invalid activation request.");
@@ -26,7 +26,7 @@ internal sealed class IntelligencePublicationAccess(IntelligencePublication publ
 
     public async Task<IntelligenceRevocationResult> RevokeAsync(Guid sourceId, Guid revisionId, Guid actorId, CancellationToken token)
     {
-        if (!Remote) return await revocation.RevokeAsync(sourceId, revisionId, actorId, token);
+        if (!Remote) return await services.GetRequiredService<IntelligenceRevocation>().RevokeAsync(sourceId, revisionId, actorId, token);
         using var response = await clients.CreateClient("security").PostAsJsonAsync($"internal/v1/intelligence/sources/{sourceId:D}/revisions/{revisionId:D}/revoke", new { ActorId = actorId }, token);
         if (response.StatusCode == System.Net.HttpStatusCode.BadRequest) throw new ArgumentException("Invalid revocation request.");
         response.EnsureSuccessStatusCode();

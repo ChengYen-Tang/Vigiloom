@@ -4,12 +4,12 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 
 namespace Vigiloom.Web.HostMonitoring;
 
-internal sealed class IntelligenceImportAccess(KevOfflineImport legacy, IHttpClientFactory clients, IConfiguration configuration)
+internal sealed class IntelligenceImportAccess(IServiceProvider services, IHttpClientFactory clients, IConfiguration configuration)
 {
     public async Task<KevOfflineImportResult> ImportAsync(Guid sourceId, Stream input, Guid actorId, CancellationToken token)
     {
         if (!configuration.GetValue("Services:Security:IntelligenceEnabled", false) || string.IsNullOrWhiteSpace(configuration["Services:Security:Url"]))
-            return await legacy.ImportAsync(sourceId, input, actorId, token);
+            return await services.GetRequiredService<KevOfflineImport>().ImportAsync(sourceId, input, actorId, token);
         using var request = new HttpRequestMessage(HttpMethod.Post, $"internal/v1/intelligence/sources/{sourceId:D}/offline-import?actorId={actorId:D}");
         request.Content = new StreamContent(input);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
