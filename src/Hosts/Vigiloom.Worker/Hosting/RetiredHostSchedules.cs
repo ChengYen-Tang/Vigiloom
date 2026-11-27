@@ -2,8 +2,8 @@ using Hangfire;
 
 namespace Vigiloom.Worker.Hosting;
 
-/// <summary>Removes legacy metric schedules after the host service takes ownership.</summary>
-internal sealed class RetiredHostMetricSchedule(IRecurringJobManager jobs) : IHostedService
+/// <summary>Removes legacy host schedules after the host service takes ownership.</summary>
+internal sealed class RetiredHostSchedules(IRecurringJobManager jobs) : IHostedService
 {
     public Task StartAsync(CancellationToken token)
     {

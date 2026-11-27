@@ -224,7 +224,7 @@ public static class WorkerHost
             builder.Services.AddHostedService<HostMetricRollupSchedule>();
             builder.Services.AddHostedService<HostMetricRetentionSchedule>();
         }
-        else builder.Services.AddHostedService<RetiredHostMetricSchedule>();
+        else builder.Services.AddHostedService<RetiredHostSchedules>();
         builder.Services.AddHostedService<AuditRetentionSchedule>();
         if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Observability:Url"]))
         {

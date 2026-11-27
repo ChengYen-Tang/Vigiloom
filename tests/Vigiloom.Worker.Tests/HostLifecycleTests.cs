@@ -91,7 +91,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         Assert.DoesNotContain("HostMetricRollupSchedule", hosted);
         Assert.DoesNotContain("HostMetricRetentionSchedule", hosted);
         Assert.DoesNotContain("AgentInboxRetentionSchedule", hosted);
-        Assert.Contains("RetiredHostMetricSchedule", hosted);
+        Assert.Contains("RetiredHostSchedules", hosted);
     }
 
     [TestMethod]
