@@ -51,4 +51,6 @@
   <data name="請至自己的雙重驗證設定頁停用。" xml:space="preserve"><value>请至自己的双重验证设置页停用。</value></data>
   <data name="管理員密碼不正確。" xml:space="preserve"><value>管理员密码不正确。</value></data>
   <data name="無法完成操作，請稍後重試。" xml:space="preserve"><value>无法完成操作，请稍后重试。</value></data>
+  <data name="唯讀" xml:space="preserve"><value>只读</value></data>
+  <data name="管理員" xml:space="preserve"><value>管理员</value></data>
 </root>

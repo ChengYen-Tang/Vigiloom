@@ -51,4 +51,6 @@
   <data name="請至自己的雙重驗證設定頁停用。" xml:space="preserve"><value>Disable two-factor authentication in your own settings.</value></data>
   <data name="管理員密碼不正確。" xml:space="preserve"><value>Incorrect administrator password.</value></data>
   <data name="無法完成操作，請稍後重試。" xml:space="preserve"><value>Unable to complete the operation. Try again later.</value></data>
+  <data name="唯讀" xml:space="preserve"><value>Read only</value></data>
+  <data name="管理員" xml:space="preserve"><value>Administrator</value></data>
 </root>

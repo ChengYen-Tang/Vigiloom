@@ -27,7 +27,7 @@
             <DataAnnotationsValidator />
             <div class="management-form">
                 <div class="account-field"><label for="new-name">@L["帳號"]</label><InputText id="new-name" @bind-Value="Input.UserName" maxlength="256" required /><ValidationMessage For="() => Input.UserName" /></div>
-                <div class="account-field"><label for="new-role">@L["角色"]</label><InputSelect id="new-role" @bind-Value="Input.Role"><option value="@BuiltInRoles.ReadOnly">Read only</option><option value="@BuiltInRoles.Administrator">Administrator</option></InputSelect></div>
+                <div class="account-field"><label for="new-role">@L["角色"]</label><InputSelect id="new-role" @bind-Value="Input.Role"><option value="@BuiltInRoles.ReadOnly">@L["唯讀"]</option><option value="@BuiltInRoles.Administrator">@L["管理員"]</option></InputSelect></div>
                 <button class="management-button" type="submit">@L["建立帳號"]</button>
             </div>
         </EditForm>
@@ -37,7 +37,7 @@
         <div class="management-table-wrap"><table><thead><tr><th scope="col">@L["帳號"]</th><th scope="col">@L["角色"]</th><th scope="col"><span class="visually-hidden">@L["操作"]</span></th></tr></thead><tbody>
             @foreach (var account in accounts.Accounts)
             {
-                <tr><td>@account.UserName</td><td>@string.Join("、", account.Roles)</td><td><a href="@($"/account/manage/{account.Id}")">@L["管理"]</a></td></tr>
+                <tr><td>@account.UserName</td><td>@string.Join(", ", account.Roles.Select(RoleName))</td><td><a href="@($"/account/manage/{account.Id}")">@L["管理"]</a></td></tr>
             }
         </tbody></table></div>
         <nav class="management-pagination" aria-label="@L["帳號列表分頁"]">
@@ -49,6 +49,7 @@
 </main>
 
 @code {
+    private string RoleName(string role) => role switch { BuiltInRoles.ReadOnly => L["唯讀"].Value, BuiltInRoles.Administrator => L["管理員"].Value, _ => role };
     private string? error;
     private string? code;
     private AccountPage accounts = new([], 0, 1, 50);
