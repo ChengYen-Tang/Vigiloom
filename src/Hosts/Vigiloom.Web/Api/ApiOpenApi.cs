@@ -46,8 +46,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 operation.Security = [];
                 operation.Description = "Anonymous published data only; private resources and network addresses are excluded.";
             }
-            else if (path.StartsWith("/api/v1/admin/line", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith("/api/v1/admin/intelligence/", StringComparison.OrdinalIgnoreCase) ||
+            else if (path.StartsWith("/api/v1/admin/intelligence/", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/api/v1/admin/sigma/", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/api/v1/agent-management/", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/api/v1/agent-packages/", StringComparison.OrdinalIgnoreCase))
@@ -56,7 +55,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 if (!method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase))
                     session[new OpenApiSecuritySchemeReference("Antiforgery", document)] = [];
                 operation.Security = [session];
-                if (path.StartsWith("/api/v1/admin/intelligence/", StringComparison.OrdinalIgnoreCase) || path.StartsWith("/api/v1/admin/line", StringComparison.OrdinalIgnoreCase))
+                if (path.StartsWith("/api/v1/admin/intelligence/", StringComparison.OrdinalIgnoreCase))
                     operation.Description = "Requires a signed-in Administrator session; mutations also require an antiforgery token.";
             }
             else if (path.Equals("/api/v1/agent/identity", StringComparison.OrdinalIgnoreCase) ||

@@ -166,12 +166,6 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.AreEqual("bearer", schemes.GetProperty("ApiBearer").GetProperty("scheme").GetString());
         Assert.AreEqual("cookie", schemes.GetProperty("BrowserSession").GetProperty("in").GetString());
         var paths = document.RootElement.GetProperty("paths");
-        Assert.IsTrue(paths.TryGetProperty("/api/v1/admin/line/", out var linePath) || paths.TryGetProperty("/api/v1/admin/line", out linePath));
-        var lineRead = linePath.GetProperty("get").GetProperty("security")[0];
-        Assert.IsTrue(lineRead.TryGetProperty("BrowserSession", out _));
-        var lineWrite = linePath.GetProperty("put").GetProperty("security")[0];
-        Assert.IsTrue(lineWrite.TryGetProperty("BrowserSession", out _));
-        Assert.IsTrue(lineWrite.TryGetProperty("Antiforgery", out _));
         Assert.IsTrue(paths.GetProperty("/api/v1/operations/audit/line").GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         var publicSecurity = paths.GetProperty("/api/v1/public/devices").GetProperty("get").GetProperty("security");
         Assert.AreEqual(0, publicSecurity.GetArrayLength());

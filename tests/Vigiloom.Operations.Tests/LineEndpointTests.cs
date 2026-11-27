@@ -128,10 +128,17 @@ public sealed class LineEndpointTests(TestContext context)
             client.DefaultRequestHeaders.Add("RequestVerificationToken", antiforgery.RequestToken);
             using (var saved = await client.PutAsJsonAsync("/api/v1/admin/line", update, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, saved.StatusCode);
+            using (var invalidUpdate = await client.PutAsJsonAsync("/api/v1/admin/line", new { AccessToken = "replacement" }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidUpdate.StatusCode);
+            var publicSettings = await client.GetStringAsync("/api/v1/admin/line", token);
+            Assert.DoesNotContain("secret", publicSettings);
+            Assert.DoesNotContain("token", publicSettings);
             var current = await client.GetFromJsonAsync<LineChannelView>("/api/v1/admin/line", token);
             Assert.AreEqual(20, current!.AggregationSeconds);
             using (var changed = await client.PutAsJsonAsync($"/api/v1/admin/line/groups/{group.Id:D}", new { Name = "Operations", Approved = true }, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, changed.StatusCode);
+            using (var invalidGroup = await client.PutAsJsonAsync($"/api/v1/admin/line/groups/{group.Id:D}", new { Name = "No approval" }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidGroup.StatusCode);
             using (var testDelivery = await client.PostAsync($"/api/v1/admin/line/groups/{group.Id:D}/test", null, token))
             {
                 Assert.AreEqual(HttpStatusCode.Accepted, testDelivery.StatusCode);
