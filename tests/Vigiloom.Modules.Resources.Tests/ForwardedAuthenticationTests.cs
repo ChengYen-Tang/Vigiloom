@@ -28,7 +28,8 @@ public sealed class ForwardedAuthenticationTests
             web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Resources"] = "Server=127.0.0.1;Database=test;User ID=test;Password=test;TrustServerCertificate=True",
-                ["Vigiloom:Gateway:TrustedProxies:0"] = trusted ? "127.0.0.1" : "192.0.2.1"
+                ["Vigiloom:Gateway:TrustedProxies:0"] = trusted ? "127.0.0.1" : "192.0.2.1",
+                ["Vigiloom:Authentication:ApiRequestsPerMinute"] = "1"
             }));
             web.ConfigureTestServices(services =>
             {
@@ -44,6 +45,15 @@ public sealed class ForwardedAuthenticationTests
         request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
         using var response = await client.SendAsync(request, TestContext.CancellationToken);
         Assert.AreEqual(expected, response.StatusCode);
+        if (trusted)
+        {
+            using var second = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent-packages?page=0");
+            second.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_test");
+            second.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
+            using var limited = await client.SendAsync(second, TestContext.CancellationToken);
+            Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
+            Assert.AreEqual("60", limited.Headers.RetryAfter?.ToString());
+        }
     }
 
     private sealed class AllowCredential : IApiCredentialValidation

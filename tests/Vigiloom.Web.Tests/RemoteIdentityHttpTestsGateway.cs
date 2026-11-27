@@ -72,11 +72,14 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             {
                 builder.UseUrls("http://127.0.0.1:0");
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ConnectionStrings:Resources"] = resourceDb.ConnectionString, ["Services:Identity:Url"] = identityAddress }));
+                { ["ConnectionStrings:Resources"] = resourceDb.ConnectionString, ["Services:Identity:Url"] = identityAddress,
+                  ["Vigiloom:Gateway:TrustedProxies:0"] = "127.0.0.1" }));
                 builder.ConfigureTestServices(services =>
                 {
                     var dispatcher = services.SingleOrDefault(item => item.ImplementationType?.Name == "WorkDispatcher");
                     if (dispatcher is not null) services.Remove(dispatcher);
+                    services.RemoveAll<IDataProtectionProvider>();
+                    services.AddSingleton<IDataProtectionProvider>(keys);
                 });
             });
             resources.UseKestrel(0);
@@ -99,7 +102,8 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             using var gateway = new WebApplicationFactory<GatewayHost::Program>().WithWebHostBuilder(builder =>
             {
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web.Services), ["Services:Identity:Url"] = identityAddress }));
+                { ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web.Services), ["Services:Identity:Url"] = identityAddress,
+                  ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = resourcesAddress }));
                 builder.ConfigureTestServices(services => { services.RemoveAll<IDataProtectionProvider>(); services.AddSingleton<IDataProtectionProvider>(keys); });
             });
             var options = new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false };
@@ -108,6 +112,8 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             using var readClient = gateway.CreateClient(options);
             var readerCookie = await LoginAsync(readClient, "gateway-reader", "Reader-Password-123", token);
             using (var read = await readClient.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
+            using (var packages = await readClient.GetAsync("/api/v1/agent-packages", token)) Assert.AreEqual(HttpStatusCode.OK, packages.StatusCode);
+            using (var deniedManagement = await readClient.GetAsync($"/api/v1/agent-management/devices/{Guid.CreateVersion7():D}", token)) Assert.AreEqual(HttpStatusCode.Forbidden, deniedManagement.StatusCode);
             using var secondWeb = web.WithWebHostBuilder(_ => { });
             secondWeb.UseKestrel(0);
             secondWeb.StartServer();
@@ -123,11 +129,14 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             using (var forbidden = await readClient.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("denied", "example.org", [], false), token)) Assert.AreEqual(HttpStatusCode.Forbidden, forbidden.StatusCode);
             using var adminClient = gateway.CreateClient(options);
             await LoginAsync(adminClient, "gateway-admin", "Admin-Password-123", token);
+            using (var missingDevice = await adminClient.GetAsync($"/api/v1/agent-management/devices/{Guid.CreateVersion7():D}", token)) Assert.AreEqual(HttpStatusCode.NotFound, missingDevice.StatusCode);
             using (var anti = await adminClient.GetAsync("/api/v1/session/antiforgery", token))
             {
                 using var json = JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token));
                 adminClient.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
             }
+            using (var missingAgent = await adminClient.PostAsync($"/api/v1/agent-management/agents/{Guid.CreateVersion7():D}/revoke", null, token))
+                Assert.AreEqual(HttpStatusCode.NotFound, missingAgent.StatusCode);
             using (var created = await adminClient.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("gateway device", "example.org", [], false), token)) Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
             await using (var db = await resources.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
                 Assert.IsTrue(await db.Devices.AnyAsync(device => device.Name == "gateway device", token));
@@ -137,6 +146,8 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             using var api = gateway.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vlg_{credential.Id:D}.{WebEncoders.Base64UrlEncode(secret)}");
             using (var valid = await api.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);
+            using (var packages = await api.GetAsync("/api/v1/agent-packages", token)) Assert.AreEqual(HttpStatusCode.OK, packages.StatusCode);
+            using (var deniedManagement = await api.GetAsync($"/api/v1/agent-management/devices/{Guid.CreateVersion7():D}", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, deniedManagement.StatusCode);
             await using (var db = await identityFactory.CreateDbContextAsync(token))
             { var stored = await db.ApiCredentials.SingleAsync(x => x.Id == credential.Id, token); stored.Revoke(DateTimeOffset.UtcNow); await db.SaveChangesAsync(token); }
             using (var revoked = await api.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
