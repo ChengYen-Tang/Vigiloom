@@ -57,7 +57,7 @@ public partial class PingHistoryPanel
         {
             var fetched = await Client.QueryAsync(query, current.Token);
             current.Token.ThrowIfCancellationRequested();
-            if (fetched is null) { result = null; error = "找不到設備或無法讀取 Ping 歷史。"; return; }
+            if (fetched is null) { result = null; error = L["找不到設備或無法讀取 Ping 歷史。"].Value; return; }
             result = fetched;
             var chosen = new PingHistoryOption(query.Target, query.Location);
             var list = fetched.Options.ToList();
@@ -70,8 +70,8 @@ public partial class PingHistoryPanel
             points = series;
         }
         catch (OperationCanceledException) when (current.IsCancellationRequested) { }
-        catch (UnauthorizedAccessException) { result = null; error = "登入已過期或權限已變更，請重新登入。"; }
-        catch (Exception ex) { Logger.LogWarning(ex, "Unable to read Ping history"); result = null; error = "無法載入 Ping 歷史，請稍後再試。"; }
+        catch (UnauthorizedAccessException) { result = null; error = L["登入已過期或權限已變更，請重新登入。"].Value; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Unable to read Ping history"); result = null; error = L["無法載入 Ping 歷史，請稍後再試。"].Value; }
         finally { if (ReferenceEquals(active, current)) { active = null; loading = false; } current.Dispose(); }
     }
 
@@ -79,9 +79,9 @@ public partial class PingHistoryPanel
     private async Task NextAsync() { if (query is not null && query.Page < 10000) { query = query with { Page = query.Page + 1 }; await ReloadAsync(); } }
     private string AverageLatency()
     {
-        if (result is null || result.Buckets.Count == 0) return "無資料";
-        if (result.RollupsPending) return "補算中";
-        if (result.Buckets.Any(x => x.LatencyOverflow)) return "無法計算";
+        if (result is null || result.Buckets.Count == 0) return L["無資料"].Value;
+        if (result.RollupsPending) return L["補算中"].Value;
+        if (result.Buckets.Any(x => x.LatencyOverflow)) return L["無法計算"].Value;
         double count = 0, mean = 0;
         foreach (var bucket in result.Buckets)
         {
@@ -90,23 +90,23 @@ public partial class PingHistoryPanel
             mean += (average - mean) * (bucket.Successes / total);
             count = total;
         }
-        return count == 0 ? "無有效延遲" : $"{mean:0.##} ms";
+        return count == 0 ? L["無有效延遲"].Value : $"{mean:0.##} ms";
     }
     private string ExtremeLatency(bool minimum)
     {
-        if (result is null || result.Buckets.Count == 0) return "無資料";
-        if (result.RollupsPending) return "補算中";
+        if (result is null || result.Buckets.Count == 0) return L["無資料"].Value;
+        if (result.RollupsPending) return L["補算中"].Value;
         var values = result.Buckets.Select(x => minimum ? x.MinimumMilliseconds : x.MaximumMilliseconds).OfType<double>().ToArray();
-        if (values.Length == 0) return "無有效延遲";
+        if (values.Length == 0) return L["無有效延遲"].Value;
         return $"{(minimum ? values.Min() : values.Max()):0.##} ms";
     }
-    private static string OptionName(PingHistoryOption item) => $"{item.Target ?? "舊紀錄（目標未記錄）"} · {item.Location}";
+    private string OptionName(PingHistoryOption item) => $"{item.Target ?? L["舊紀錄（目標未記錄）"].Value} · {item.Location}";
     private bool MatchesOption(PingHistoryOption item) => string.IsNullOrWhiteSpace(optionSearch) || OptionName(item).Contains(optionSearch.Trim(), StringComparison.OrdinalIgnoreCase);
-    private static string OutcomeName(PingHistorySample item) => item.Outcome switch
+    private string OutcomeName(PingHistorySample item) => item.Outcome switch
     {
-        PingOutcome.Success => "成功", PingOutcome.Timeout => "逾時", PingOutcome.Unreachable => "無法抵達",
-        PingOutcome.DnsError => "名稱解析失敗", PingOutcome.PermissionDenied => "量測權限不足",
-        PingOutcome.MonitorError => "監測程序錯誤", _ => item.Succeeded ? "成功" : "失敗（原因未記錄）"
+        PingOutcome.Success => L["成功"].Value, PingOutcome.Timeout => L["逾時"].Value, PingOutcome.Unreachable => L["無法抵達"].Value,
+        PingOutcome.DnsError => L["名稱解析失敗"].Value, PingOutcome.PermissionDenied => L["量測權限不足"].Value,
+        PingOutcome.MonitorError => L["監測程序錯誤"].Value, _ => item.Succeeded ? L["成功"].Value : L["失敗（原因未記錄）"].Value
     };
     public ValueTask DisposeAsync() { lifetime.Cancel(); active?.Cancel(); lifetime.Dispose(); return ValueTask.CompletedTask; }
 }
