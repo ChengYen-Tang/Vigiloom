@@ -1,7 +1,11 @@
 # Vigiloom central platform package
 
-The package contains three self-contained .NET applications: `web`, `worker`
-and `migrator`. It does not install SQL Server or create a production database.
+The package contains the self-contained `web`, `worker` and `migrator`
+applications, along with the `gateway`, `identity`, `resources`, `network`,
+`hostmonitoring`, `observability`, `operations` and `security` service hosts.
+The Compose example below currently configures the Web/Worker deployment; the
+additional service hosts require their own configuration. The package does not
+install SQL Server or create a production database.
 Choose a supported Windows or Linux x64 host and provide a SQL Server database
 at compatibility level 150 or higher. Linux requires the distribution's .NET
 native dependencies, including ICU. Self-contained means the .NET runtime is
