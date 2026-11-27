@@ -654,8 +654,6 @@ public sealed class AgentIdentityHttpTests
                 apiClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vlg_{apiId:D}.{WebEncoders.Base64UrlEncode(secret)}");
                 using var apiEvents = await apiClient.GetAsync(eventUrl, token);
                 Assert.AreEqual(HttpStatusCode.OK, apiEvents.StatusCode);
-                using var apiScans = await apiClient.GetAsync($"/api/v1/devices/{device.Id:D}/yara-scans", token);
-                Assert.AreEqual(HttpStatusCode.OK, apiScans.StatusCode);
             }
             using (var export = await reader.GetAsync(eventUrl.Replace("/api/v1/events?", "/api/v1/events/export?", StringComparison.Ordinal), token))
             {
@@ -726,7 +724,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "host-log" } e && e.EvidenceId == item.MessageId && e.DeviceId == device.Id));
                 Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "sigma-rule" } e && e.EvidenceId == sigmaTestId));
                 Assert.IsTrue(audits.Items.Any(x => x.EventEvidence is { Kind: "yara-scan" } e && e.EvidenceId == oldScanId));
-                Assert.IsTrue(audits.Items.Any(x => x.ActorId == apiId && x.EventEvidence is { Kind: "yara-list" } e && e.DeviceId == device.Id));
                 var auditJson = System.Text.Json.JsonSerializer.Serialize(audits);
                 Assert.DoesNotContain("ignored-user", auditJson);
                 Assert.DoesNotContain("test-condition", auditJson);

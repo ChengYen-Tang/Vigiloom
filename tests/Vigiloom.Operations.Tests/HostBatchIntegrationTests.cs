@@ -352,6 +352,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 using (var yara = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/yara-scans", token))
                     Assert.AreEqual(HttpStatusCode.OK, yara.StatusCode);
                 Assert.AreEqual(1, auditHandler.Calls);
+                Assert.AreEqual(((CredentialValidation)security.Services.GetRequiredService<IApiCredentialValidation>()).Id, auditHandler.LastEvent!.ActorId);
+                Assert.IsTrue(auditHandler.LastEvent.Details is EventEvidenceAccessed { Kind: "yara-list" });
                 securityApi.DefaultRequestHeaders.Authorization = null;
                 var cookieOptions = security.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
                 var claims = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, Guid.CreateVersion7().ToString("D")),
@@ -381,6 +383,10 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
                 using (var missingCsrf = await securityApi.PostAsJsonAsync(exceptionPath, exceptionInput, token))
                     Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+                var yaraPath = $"/api/v1/devices/{identity.DeviceId:D}/yara-scans";
+                var yaraInput = new YaraScanRequest("/tmp/test", "rule test { condition: true }", 1024, 30);
+                using (var missingCsrf = await securityApi.PostAsJsonAsync(yaraPath, yaraInput, token))
+                    Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
                 var adminPrincipal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, sessionHandler.AccountId.ToString("D")),
                     new Claim(ClaimTypes.Role, "Administrator")], IdentityConstants.ApplicationScheme));
                 var antiContext = new DefaultHttpContext { RequestServices = security.Services, User = adminPrincipal };
@@ -399,6 +405,14 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 {
                     Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
                     Assert.IsNotNull(await created.Content.ReadFromJsonAsync<IntegrityScopeView>(cancellationToken: token));
+                }
+                using (var created = await securityApi.PostAsJsonAsync(yaraPath, yaraInput, token))
+                {
+                    Assert.AreEqual(HttpStatusCode.OK, created.StatusCode);
+                    var scan = await created.Content.ReadFromJsonAsync<YaraScanJob>(cancellationToken: token);
+                    Assert.AreEqual(identity.AgentId, scan!.AgentId);
+                    using var cancelled = await securityApi.PostAsync($"{yaraPath}/{scan.Id:D}/cancel", null, token);
+                    Assert.AreEqual(HttpStatusCode.NoContent, cancelled.StatusCode);
                 }
                 using (var recorded = await securityApi.PostAsJsonAsync(exceptionPath, exceptionInput, token))
                     Assert.AreEqual(HttpStatusCode.NoContent, recorded.StatusCode);
@@ -1100,12 +1114,14 @@ public sealed class HostBatchIntegrationTests(TestContext context)
     private sealed class AuditHandler : HttpMessageHandler
     {
         public int Calls { get; private set; }
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        public OperationAudit? LastEvent { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             if (request.Method == HttpMethod.Get)
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<Vigiloom.Contracts.Agent.Baseline.BaselineExceptionNote>()) });
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<Vigiloom.Contracts.Agent.Baseline.BaselineExceptionNote>()) };
             Calls++;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+            LastEvent = await request.Content!.ReadFromJsonAsync<OperationAudit>(cancellationToken: token);
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
         }
     }
 
@@ -1122,8 +1138,9 @@ public sealed class HostBatchIntegrationTests(TestContext context)
 
     private sealed class CredentialValidation : IApiCredentialValidation
     {
+        public Guid Id { get; } = Guid.CreateVersion7();
         public Task<VerifiedApiCredentialResponse?> VerifyAsync(string value, CancellationToken token) =>
-            Task.FromResult<VerifiedApiCredentialResponse?>(value == "valid" ? new(Guid.CreateVersion7(), "test", false) : null);
+            Task.FromResult<VerifiedApiCredentialResponse?>(value == "valid" ? new(Id, "test", false) : null);
     }
 
     private sealed class TargetReader(RecordedAgentUpdateTarget target) : IRecordedAgentTargetReader
