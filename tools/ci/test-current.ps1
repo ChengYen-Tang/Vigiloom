@@ -32,6 +32,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Observability service tests failed with exit code $LASTEXITCODE." }
     & dotnet test (Join-Path $root 'tests/Vigiloom.Worker.Tests/Vigiloom.Worker.Tests.csproj') --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~TemporalNotificationWriterTests|FullyQualifiedName~SecurityCutover'
     if ($LASTEXITCODE -ne 0) { throw "Security notification handoff tests failed with exit code $LASTEXITCODE." }
+    & dotnet test (Join-Path $root 'tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj') --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~LegacyWorkerRetirementTests|FullyQualifiedName~OutboxWebWorkerTests'
+    if ($LASTEXITCODE -ne 0) { throw "Scheduler cutover tests failed with exit code $LASTEXITCODE." }
 } finally {
     if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force -ErrorAction Stop }
 }
