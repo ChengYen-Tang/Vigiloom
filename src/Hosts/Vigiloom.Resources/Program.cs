@@ -20,6 +20,7 @@ using Vigiloom.Resources.Publication;
 using Vigiloom.Resources.DeploymentLinks;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Modules.Resources.Application.Retention;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi(options =>
@@ -72,6 +73,8 @@ builder.Services.AddScoped<ServiceGroupsReader>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<DeviceManagement>();
 builder.Services.AddScoped<DeviceAuditFeed>();
+builder.Services.AddScoped<DeviceAuditRetention>();
+builder.Services.AddScoped<ResourcesAuditRetention>();
 builder.Services.AddScoped<DeviceChangeOutbox>();
 builder.Services.AddScoped<GroupManagement>();
 builder.Services.AddScoped<GroupAuditOutbox>();
@@ -114,6 +117,10 @@ builder.Services.AddHttpClient<ObservationSourceVerifier>((services, client) =>
 builder.Services.AddScoped<IApplicationSourceVerifier>(services => services.GetRequiredService<ObservationSourceVerifier>());
 
 var app = builder.Build();
+app.MapPost("/internal/v1/audit/retention/count", async (ResourcesAuditRetentionRequest request, ResourcesAuditRetention retention, CancellationToken token) =>
+    request.Cutoff.Offset != TimeSpan.Zero ? Results.BadRequest() : Results.Ok(await retention.CountAsync(request, token)));
+app.MapPost("/internal/v1/audit/retention/delete", async (ResourcesAuditRetentionRequest request, ResourcesAuditRetention retention, CancellationToken token) =>
+    request.Cutoff.Offset != TimeSpan.Zero || request.BatchSize is < 1 or > 500 ? Results.BadRequest() : Results.Ok(await retention.DeleteAsync(request, token)));
 if (app.Environment.IsDevelopment()) app.MapOpenApi();
 var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);

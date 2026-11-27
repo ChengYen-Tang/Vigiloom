@@ -82,6 +82,13 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Identity:Url"]))
         .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
     builder.Services.AddScoped<IAuditRetentionSource>(services => services.GetRequiredService<RemoteIdentityAuditRetention>());
 }
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Resources:Url"]))
+{
+    builder.Services.AddHttpClient<RemoteResourcesAuditRetention>((services, client) =>
+        client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+    builder.Services.AddScoped<IAuditRetentionSource>(services => services.GetRequiredService<RemoteResourcesAuditRetention>());
+}
 if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Security:Url"]))
 {
     builder.Services.AddHttpClient<RemoteSecurityRetention>((services, client) =>

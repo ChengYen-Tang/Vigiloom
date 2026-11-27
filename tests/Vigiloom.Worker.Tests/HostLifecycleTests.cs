@@ -38,6 +38,7 @@ using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
 using Vigiloom.BuildingBlocks.Operations;
+using Vigiloom.Modules.Resources.Application.Retention;
 
 namespace Vigiloom.Worker.Tests;
 
@@ -114,6 +115,16 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var split = CountSources("--Services:Operations:Url=http://operations", "--Services:Identity:Url=http://identity");
         Assert.AreEqual(local, mixed);
         Assert.AreEqual(local - 1, split);
+    }
+
+    [TestMethod]
+    public void DeviceRetentionMovesOnlyWhenBothServicesAreConfigured()
+    {
+        static bool HasDeviceSource(params string[] args) => WorkerHost.CreateBuilder(args).Services.Any(item =>
+            item.ServiceType == typeof(IAuditRetentionSource) && item.ImplementationType == typeof(DeviceAuditRetention));
+        Assert.IsTrue(HasDeviceSource("--Services:Operations:Url=", "--Services:Resources:Url="));
+        Assert.IsTrue(HasDeviceSource("--Services:Operations:Url=http://operations", "--Services:Resources:Url="));
+        Assert.IsFalse(HasDeviceSource("--Services:Operations:Url=http://operations", "--Services:Resources:Url=http://resources"));
     }
 
     [TestMethod]
