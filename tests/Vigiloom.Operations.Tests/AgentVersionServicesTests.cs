@@ -58,14 +58,19 @@ public sealed class AgentVersionServicesTests(TestContext context)
             var manifest = JsonSerializer.SerializeToUtf8Bytes(new { schema = 1, version = "1.2.3", rid = "win-x64", size = archive.Length, sha256 = archiveHash });
             var manifestHash = Convert.ToHexStringLower(SHA256.HashData(manifest));
             var package = new Vigiloom.Modules.Resources.Domain.AgentPackage { Id = Guid.CreateVersion7(), Version = "1.2.3", RuntimeIdentifier = "win-x64", Sha256 = archiveHash, ManifestSha256 = manifestHash, Size = archive.Length };
+            var otherDevice = new Device("other server", "other.example", true, now);
+            var otherAgentId = Guid.CreateVersion7();
+            var otherSecret = RandomNumberGenerator.GetBytes(32);
             await using (var db = new ResourcesDbContext(resourcesOptions))
             {
-                db.Devices.Add(device);
+                db.Devices.AddRange(device, otherDevice);
                 db.Agents.Add(new RegisteredAgent { Id = agentId, DeviceId = device.Id, DeviceGeneration = device.AgentAuthorizationGeneration, Verifier = SHA256.HashData(secret), CreatedAt = now });
+                db.Agents.Add(new RegisteredAgent { Id = otherAgentId, DeviceId = otherDevice.Id, DeviceGeneration = otherDevice.AgentAuthorizationGeneration, Verifier = SHA256.HashData(otherSecret), CreatedAt = now });
                 db.AgentPackages.Add(package);
                 await db.SaveChangesAsync(token);
             }
 
+            var cachedPackage = new CachedPackage(manifest, archive);
             using var resources = new WebApplicationFactory<ResourcesHost::Program>().WithWebHostBuilder(web =>
             {
                 web.UseUrls("http://127.0.0.1:0");
@@ -74,7 +79,7 @@ public sealed class AgentVersionServicesTests(TestContext context)
                 {
                     HostWorkers.RemoveBackgroundWork(services);
                     services.RemoveAll<IPackageLibraryTransport>();
-                    services.AddSingleton<IPackageLibraryTransport>(new CachedPackage(manifest, archive));
+                    services.AddSingleton<IPackageLibraryTransport>(cachedPackage);
                     services.RemoveAll<IOutboxHandler>();
                     services.AddScoped<IOutboxHandler, TestOutboxHandler>();
                 });
@@ -94,6 +99,16 @@ public sealed class AgentVersionServicesTests(TestContext context)
             });
             host.UseKestrel(0);
             using var hostClient = host.CreateClient();
+            using (var api = await hostClient.GetFromJsonAsync<JsonDocument>("/openapi/v1.json", token))
+            {
+                var paths = api!.RootElement.GetProperty("paths");
+                foreach (var path in new[] { "/api/v1/agent/update/targets/{name}", "/api/v1/agent/update/packages/{name}" })
+                {
+                    var operation = paths.GetProperty(path).GetProperty("get");
+                    Assert.IsTrue(operation.GetProperty("security")[0].TryGetProperty("AgentBearer", out _));
+                    Assert.IsTrue(operation.GetProperty("responses").TryGetProperty("503", out _));
+                }
+            }
             resources.Services.GetRequiredService<IConfiguration>()["Services:Host:Url"] = hostClient.BaseAddress!.ToString();
             using var gateway = new WebApplicationFactory<GatewayHost::Program>().WithWebHostBuilder(web =>
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -123,14 +138,36 @@ public sealed class AgentVersionServicesTests(TestContext context)
             Assert.AreEqual(target, gatewayTarget);
             CollectionAssert.AreEqual(manifest, await gatewayClient.GetByteArrayAsync($"/api/v1/agent/update/targets/{manifestHash}.json", token));
             CollectionAssert.AreEqual(archive, await gatewayClient.GetByteArrayAsync($"/api/v1/agent/update/packages/{archiveHash}", token));
+            cachedPackage.FailRead = true;
+            using (var unavailable = await hostClient.GetAsync($"/api/v1/agent/update/targets/{manifestHash}.json", token))
+            {
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, unavailable.StatusCode);
+                Assert.AreEqual("application/problem+json", unavailable.Content.Headers.ContentType!.MediaType);
+            }
+            cachedPackage.FailRead = false;
             using (var wrongPackage = await hostClient.GetAsync("/api/v1/agent/update/packages/missing", token))
                 Assert.AreEqual(HttpStatusCode.NotFound, wrongPackage.StatusCode);
+            using (var other = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/agent/update/packages/{archiveHash}"))
+            {
+                other.Headers.Authorization = new AuthenticationHeaderValue("Bearer", AgentCredentials.Encode("vla", otherAgentId, otherSecret));
+                using var denied = await hostClient.SendAsync(other, token);
+                Assert.AreEqual(HttpStatusCode.NotFound, denied.StatusCode);
+            }
             var result = new AgentUpdateResult(Guid.CreateVersion7(), target.UpdateId, target.PackageId, target.ManifestSha256, 1, AgentUpdateResultKind.Succeeded, now, false, null);
             using var received = await hostClient.PostAsJsonAsync("/api/v1/agent/update-results", result, token);
             Assert.AreEqual(HttpStatusCode.NoContent, received.StatusCode);
             var status = await resourceClient.GetFromJsonAsync<AgentVersionAssignmentView>($"/internal/v1/agents/{agentId:D}/assignment", token);
             Assert.AreEqual(AgentUpdateResultKind.Succeeded, status!.LatestResult!.Result);
             Assert.AreEqual(package.Version, status.LatestResult.PackageVersion);
+            cachedPackage.BeforeOpenReturns = async () =>
+            {
+                using var cleared = await resourceClient.PutAsJsonAsync($"/internal/v1/agents/{agentId:D}/assignment",
+                    new AgentVersionAssignmentCommand(null, status.Revision, Guid.CreateVersion7()), token);
+                Assert.AreEqual(VersionAssignmentResult.Saved, await cleared.Content.ReadFromJsonAsync<VersionAssignmentResult>(cancellationToken: token));
+            };
+            using (var clearedDuringDownload = await hostClient.GetAsync($"/api/v1/agent/update/packages/{archiveHash}", token))
+                Assert.AreEqual(HttpStatusCode.NotFound, clearedDuringDownload.StatusCode);
+            Assert.IsFalse(cachedPackage.LastStream!.CanRead);
             using var revoked = await resourceClient.PostAsJsonAsync($"/internal/v1/agents/{agentId:D}/revoke", new AgentRevokeCommand(Guid.CreateVersion7()), token);
             Assert.AreEqual(AgentRegistrationStatus.Success, await revoked.Content.ReadFromJsonAsync<AgentRegistrationStatus>(cancellationToken: token));
             using var rejected = await hostClient.PostAsJsonAsync("/api/v1/agent/update-results", result, token);
@@ -151,9 +188,18 @@ public sealed class AgentVersionServicesTests(TestContext context)
 
     private sealed class CachedPackage(byte[] manifest, byte[] archive) : IPackageLibraryTransport
     {
+        public Func<Task>? BeforeOpenReturns { get; set; }
+        public MemoryStream? LastStream { get; private set; }
+        public bool FailRead { get; set; }
         public bool IsCached(string archiveHash, string manifestHash) => true;
-        public Task<byte[]?> ReadManifestAsync(string hash, CancellationToken token) => Task.FromResult<byte[]?>(manifest);
-        public Task<Stream?> OpenCachedAsync(string hash, long size, CancellationToken token) => Task.FromResult<Stream?>(new MemoryStream(archive, writable: false));
+        public Task<byte[]?> ReadManifestAsync(string hash, CancellationToken token) =>
+            FailRead ? throw new IOException("Package unavailable") : Task.FromResult<byte[]?>(manifest);
+        public async Task<Stream?> OpenCachedAsync(string hash, long size, CancellationToken token)
+        {
+            LastStream = new MemoryStream(archive, writable: false);
+            if (BeforeOpenReturns is not null) await BeforeOpenReturns();
+            return LastStream;
+        }
         public Task SaveAsync(string version, AgentReleaseAsset asset, string manifestHash, byte[] data, GitHubAgentReleases github, CancellationToken token) => throw new NotSupportedException();
         public Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> others, CancellationToken token) => throw new NotSupportedException();
     }

@@ -9,10 +9,14 @@ internal static class AgentUpdateDownloadEndpoints
     {
         app.MapGet("/api/v1/agent/update/targets/{name}",
             (string name, HttpContext context, IHttpClientFactory clients, ILoggerFactory logs, CancellationToken token) =>
-                ForwardAsync("targets", name, context, clients, logs, token));
+                ForwardAsync("targets", name, context, clients, logs, token))
+            .Produces(200, contentType: "application/json").ProducesProblem(401).ProducesProblem(404).ProducesProblem(429).ProducesProblem(503)
+            .WithSummary("Retrieve the assigned Agent manifest");
         app.MapGet("/api/v1/agent/update/packages/{name}",
             (string name, HttpContext context, IHttpClientFactory clients, ILoggerFactory logs, CancellationToken token) =>
-                ForwardAsync("packages", name, context, clients, logs, token));
+                ForwardAsync("packages", name, context, clients, logs, token))
+            .Produces(200, contentType: "application/octet-stream").ProducesProblem(401).ProducesProblem(404).ProducesProblem(429).ProducesProblem(503)
+            .WithSummary("Download the authenticated Agent's assigned package");
     }
 
     private static async Task ForwardAsync(string kind, string name, HttpContext context,
@@ -38,7 +42,7 @@ internal static class AgentUpdateDownloadEndpoints
         {
             logs.CreateLogger("AgentUpdateDownload").LogWarning("Agent update package unavailable: {ErrorType}", error.GetType().Name);
             if (context.Response.HasStarted) throw;
-            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await Results.Problem(statusCode: 503, title: "Agent update package is unavailable.").ExecuteAsync(context);
         }
     }
 }

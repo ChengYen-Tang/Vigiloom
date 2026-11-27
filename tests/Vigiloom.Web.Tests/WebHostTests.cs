@@ -306,12 +306,6 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.AreEqual(1, packageCache.GetProperty("security").GetArrayLength());
         Assert.IsFalse(packages.GetProperty("security")[0].TryGetProperty("AgentBearer", out _));
         Assert.Contains("monitoring.read", packages.GetProperty("description").GetString()!);
-        var agentManifest = paths.GetProperty("/api/v1/agent/update/targets/{name}").GetProperty("get");
-        Assert.IsTrue(agentManifest.GetProperty("security")[0].TryGetProperty("AgentBearer", out _));
-        Assert.IsFalse(agentManifest.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
-        var agentArchive = paths.GetProperty("/api/v1/agent/update/packages/{name}").GetProperty("get");
-        Assert.IsTrue(agentArchive.GetProperty("security")[0].TryGetProperty("AgentBearer", out _));
-        Assert.IsFalse(agentArchive.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         var deviceWrite = paths.GetProperty("/api/v1/devices").GetProperty("post");
         var deviceWriteSecurity = deviceWrite.GetProperty("security");
         Assert.IsTrue(deviceWriteSecurity[0].TryGetProperty("BrowserSession", out _));

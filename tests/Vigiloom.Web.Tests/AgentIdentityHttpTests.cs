@@ -1118,7 +1118,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(AgentConnectionState.NotRegistered, (await apiStatus.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token))!.State);
             }
             using (var apiCannotImpersonate = await api.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotImpersonate.StatusCode);
-            using (var apiCannotReadUpdateManifest = await api.GetAsync($"/api/v1/agent/update/targets/{new string('a', 64)}.json", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotReadUpdateManifest.StatusCode);
             using (var invalidPackagePage = await api.GetAsync("/api/v1/agent-packages?page=0", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalidPackagePage.StatusCode);
             using (var apiCannotAudit = await api.GetAsync("/api/v1/operations/audit?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotAudit.StatusCode);

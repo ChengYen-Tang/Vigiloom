@@ -822,7 +822,6 @@ app.MapPublicationEndpoints();
 app.MapGroupEndpoints();
 app.MapAgentEndpoints();
 app.MapAgentPackageEndpoints();
-app.MapAgentUpdateDownloadEndpoints();
 app.MapAgentPackageUiEndpoints();
 app.MapAgentConfigurationEndpoints();
 app.MapAgentVersionEndpoints();
