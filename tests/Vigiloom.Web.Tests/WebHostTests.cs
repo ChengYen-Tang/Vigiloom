@@ -295,9 +295,6 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsTrue(serviceAction.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.IsTrue(serviceAction.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
         Assert.IsTrue(serviceAction.GetProperty("responses").TryGetProperty("429", out _));
-        var replayMutation = paths.GetProperty("/api/v1/agent-management/replay-policy").GetProperty("put").GetProperty("security")[0];
-        Assert.IsTrue(replayMutation.TryGetProperty("BrowserSession", out _));
-        Assert.IsTrue(replayMutation.TryGetProperty("Antiforgery", out _));
         var feed = paths.GetProperty("/api/v1/operations/audit-feed/{source}").GetProperty("get");
         var feedSecurity = feed.GetProperty("security");
         Assert.AreEqual(1, feedSecurity.GetArrayLength());

@@ -69,6 +69,10 @@ public sealed class ServiceOpenApiTests(TestContext context)
             Assert.IsTrue(integrityStatus.GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json").TryGetProperty("schema", out _));
             var inventoryStatus = paths.GetProperty("/api/v1/devices/{id}/inventory-settings-status").GetProperty("get");
             Assert.IsTrue(inventoryStatus.GetProperty("security").EnumerateArray().Any(item => item.TryGetProperty("ApiBearer", out _)));
+            var replayPath = paths.TryGetProperty("/api/v1/agent-management/replay-policy/", out var replay) ? replay : paths.GetProperty("/api/v1/agent-management/replay-policy");
+            var replayWrite = replayPath.GetProperty("put").GetProperty("security")[0];
+            Assert.IsTrue(replayWrite.TryGetProperty("BrowserSession", out _));
+            Assert.IsTrue(replayWrite.TryGetProperty("Antiforgery", out _));
             var thresholdWrite = paths.GetProperty("/api/v1/devices/{deviceId}/host-metric-threshold").GetProperty("put");
             Assert.AreEqual(1, thresholdWrite.GetProperty("security").GetArrayLength());
             Assert.IsTrue(thresholdWrite.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));

@@ -41,14 +41,14 @@ internal static class HostInboxEndpoints
         {
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok(await policy.GetAsync(token));
-        });
+        }).Produces<AgentReplayPolicyView>().ProducesProblem(401).ProducesProblem(403);
         replay.MapPut("/", async (AgentReplayPolicyUpdate input, HttpContext context, HostReplayPolicy policy, CancellationToken token) =>
         {
             if (input.Target is not (AgentReplayPhase.Grace or AgentReplayPhase.Enforced) || !input.ConfirmedReceiversUpgraded)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["policy"] = ["請先確認所有接收節點已更新，並選擇有效的政策階段。"] });
             return await ApiMutation.ExecuteAsync(context, async actor => await policy.TransitionAsync(input.Target, input.Version, actor, token) is { } saved
                 ? Results.Ok(saved) : Results.Problem(statusCode: 409, title: "政策狀態已變更或過渡期尚未結束，請重新整理。"), allowApiCredential: false);
-        });
+        }).Produces<AgentReplayPolicyView>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409);
         app.MapGet("/internal/v1/agent-inbox", (HostInboxSettings settings, CancellationToken token) => settings.GetAsync(token));
         app.MapPost("/internal/v1/agent-inbox/cutover", async (InboxCutoverCommand command, HostInboxSettings settings, CancellationToken token) =>
         {

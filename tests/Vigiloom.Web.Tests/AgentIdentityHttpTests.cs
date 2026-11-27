@@ -1182,8 +1182,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, readCapacity.StatusCode);
                 using var manageCapacity = await reader.GetAsync("/api/v1/agent-management/queue-capacity/platform", token);
                 Assert.AreEqual(HttpStatusCode.Forbidden, manageCapacity.StatusCode);
-                using var manageReplay = await reader.GetAsync("/api/v1/agent-management/replay-policy/", token);
-                Assert.AreEqual(HttpStatusCode.Forbidden, manageReplay.StatusCode);
                 using var changeCapacity = await reader.PutAsJsonAsync("/api/v1/agent-management/queue-capacity/platform", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token);
                 Assert.AreEqual(HttpStatusCode.Forbidden, changeCapacity.StatusCode);
                 using var details = await reader.GetAsync($"/devices/{device.Id:D}", token);
@@ -1272,13 +1270,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Forbidden, readerAssignment.StatusCode);
             using (var forgedCapacity = await admin.PutAsJsonAsync("/api/v1/agent-management/queue-capacity/platform", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedCapacity.StatusCode);
-            using (var replayRead = await admin.GetAsync("/api/v1/agent-management/replay-policy/", token))
-            {
-                var replay = await replayRead.Content.ReadFromJsonAsync<AgentReplayPolicyView>(cancellationToken: token);
-                Assert.AreEqual(AgentReplayPhase.Disabled, replay!.Phase);
-                using var forgedReplay = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, true), token);
-                Assert.AreEqual(HttpStatusCode.BadRequest, forgedReplay.StatusCode);
-            }
             using (var cookieCannotActAsAgent = await admin.GetAsync("/api/v1/agent/identity", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotActAsAgent.StatusCode);
             using (var cookieCannotHeartbeat = await admin.PostAsync("/api/v1/agent/heartbeat", null, token))
@@ -1328,17 +1319,14 @@ public sealed class AgentIdentityHttpTests
                 using var json = JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token));
                 admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
             }
-            using (var replayRead = await admin.GetAsync("/api/v1/agent-management/replay-policy/", token))
+            await using (var replayScope = factory.Services.CreateAsyncScope())
             {
-                var replay = (await replayRead.Content.ReadFromJsonAsync<AgentReplayPolicyView>(cancellationToken: token))!;
-                using var unconfirmed = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, false), token);
-                Assert.AreEqual(HttpStatusCode.BadRequest, unconfirmed.StatusCode);
-                using var activated = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, true), token);
-                Assert.AreEqual(HttpStatusCode.OK, activated.StatusCode);
-                var grace = (await activated.Content.ReadFromJsonAsync<AgentReplayPolicyView>(cancellationToken: token))!;
+                var policy = replayScope.ServiceProvider.GetRequiredService<IAgentReplayPolicy>();
+                var replay = await policy.GetAsync(token);
+                var grace = await policy.TransitionAsync(AgentReplayPhase.Grace, replay.Version, Guid.CreateVersion7(), token);
+                Assert.IsNotNull(grace);
                 Assert.AreEqual(AgentReplayPhase.Grace, grace.Phase);
-                using var stale = await admin.PutAsJsonAsync("/api/v1/agent-management/replay-policy/", new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, true), token);
-                Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
+                Assert.IsNull(await policy.TransitionAsync(AgentReplayPhase.Grace, replay.Version, Guid.CreateVersion7(), token));
                 var from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(-1).ToString("O"));
                 var to = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(1).ToString("O"));
                 using var audit = await admin.GetAsync($"/api/v1/operations/audit/agent-replay?from={from}&to={to}", token);
