@@ -96,7 +96,15 @@ public sealed class YaraScanWorkerTests(TestContext context)
                 await worker.StartAsync(token);
                 try
                 {
-                    while (await queue.PeekAsync(token, YaraStartBatchCodec.SchemaVersion) is null) await Task.Delay(50, token);
+                    while (true)
+                    {
+                        try
+                        {
+                            if (await queue.PeekAsync(token, YaraStartBatchCodec.SchemaVersion) is not null) break;
+                        }
+                        catch (IOException) { /* The active worker may briefly hold the identity lock. */ }
+                        await Task.Delay(50, token);
+                    }
                 }
                 finally { await worker.StopAsync(token); }
             }
