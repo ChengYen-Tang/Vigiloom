@@ -220,9 +220,6 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsTrue(pingRetention.GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.IsTrue(pingRetention.GetProperty("put").GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
         Assert.IsTrue(paths.GetProperty("/api/v1/settings/ping/retention/preview").GetProperty("post").GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
-        var hostMetricRetention = paths.GetProperty("/api/v1/settings/host-metrics/retention");
-        Assert.IsTrue(hostMetricRetention.GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
-        Assert.IsTrue(hostMetricRetention.GetProperty("put").GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
         Assert.IsTrue(paths.GetProperty("/api/v1/operations/audit/host-metric-retention").GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         var telemetryRetention = paths.GetProperty("/api/v1/settings/telemetry/retention");
         Assert.IsTrue(telemetryRetention.GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));

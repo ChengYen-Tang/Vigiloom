@@ -94,6 +94,11 @@ public sealed class HostRetentionIntegrationTests(TestContext context)
             var change = new AgentReplayPolicyUpdate(AgentReplayPhase.Grace, replay.Version, true);
             using (var missingCsrf = await hostClient.PutAsJsonAsync(replayPath, change, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+            const string metricPath = "/api/v1/settings/host-metrics/retention";
+            var metricSettings = await hostClient.GetFromJsonAsync<HostMetricRetentionSnapshot>(metricPath, token);
+            var metricInput = new HostMetricRetentionPreviewRequest(10, 60, metricSettings!.Version);
+            using (var missingCsrf = await hostClient.PostAsJsonAsync(metricPath + "/preview", metricInput, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
             var antiContext = new DefaultHttpContext { RequestServices = host.Services, User = new ClaimsPrincipal(identity) };
             antiContext.Request.Scheme = "https";
             var anti = host.Services.GetRequiredService<IAntiforgery>().GetAndStoreTokens(antiContext);
@@ -101,6 +106,15 @@ public sealed class HostRetentionIntegrationTests(TestContext context)
             hostClient.DefaultRequestHeaders.Remove("Cookie");
             hostClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={cookie}; {antiCookie}");
             hostClient.DefaultRequestHeaders.Add("RequestVerificationToken", anti.RequestToken);
+            using (var metricPreviewResponse = await hostClient.PostAsJsonAsync(metricPath + "/preview", metricInput, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, metricPreviewResponse.StatusCode);
+                var metricPreview = await metricPreviewResponse.Content.ReadFromJsonAsync<HostMetricRetentionPreview>(cancellationToken: token);
+                using var metricSaved = await hostClient.PutAsJsonAsync(metricPath,
+                    new HostMetricRetentionInput(10, 60, metricSettings.Version, metricPreview!.ConfirmationToken), token);
+                Assert.AreEqual(HttpStatusCode.OK, metricSaved.StatusCode);
+                Assert.AreEqual(10, (await metricSaved.Content.ReadFromJsonAsync<HostMetricRetentionSnapshot>(cancellationToken: token))!.RawDays);
+            }
             using (var unconfirmed = await hostClient.PutAsJsonAsync(replayPath, change with { ConfirmedReceiversUpgraded = false }, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, unconfirmed.StatusCode);
             using (var saved = await hostClient.PutAsJsonAsync(replayPath, change, token))
@@ -122,6 +136,7 @@ public sealed class HostRetentionIntegrationTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
             session.Role = "Read only";
             using (var denied = await hostClient.GetAsync(replayPath, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await hostClient.GetAsync(metricPath, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             using var operations = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
             {
                 web.UseEnvironment("Testing");
