@@ -3,6 +3,7 @@ using Microsoft.Net.Http.Headers;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Infrastructure.Authentication;
 
 namespace Vigiloom.HostMonitoring;
 
@@ -10,6 +11,50 @@ internal static class HostLogSettingsEndpoints
 {
     public static void MapHostLogSettingsEndpoints(this WebApplication app)
     {
+        var admin = app.MapGroup("/api/v1/agent-management/devices/{deviceId:guid}/log-sources")
+            .RequireAuthorization("Administrator").RequireRateLimiting("api-client");
+        admin.MapGet("/", async (Guid deviceId, HostMonitoringLogConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
+            return await settings.ListAsync(deviceId, token) is { } list ? Results.Ok(list) : Results.NotFound();
+        });
+        admin.MapGet("/{sourceId:guid}", async (Guid deviceId, Guid sourceId, HostMonitoringLogConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
+            return (await settings.ListAsync(deviceId, token))?.FirstOrDefault(x => x.Settings.SourceId == sourceId) is { } source ? Results.Ok(source) : Results.NotFound();
+        });
+        admin.MapPost("/", async (Guid deviceId, HostLogSourceCreate input, HostMonitoringLogConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
+                try { return SourceResult(await settings.CreateAsync(deviceId, input, actor, token), deviceId, true); }
+                catch (ArgumentException) { return Invalid(); }
+            }, allowApiCredential: false);
+        });
+        admin.MapPut("/{sourceId:guid}", async (Guid deviceId, Guid sourceId, HostLogSourceUpdate input, HostMonitoringLogConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
+                try { return SourceResult(await settings.UpdateAsync(deviceId, sourceId, input, actor, token), deviceId); }
+                catch (ArgumentException) { return Invalid(); }
+            }, allowApiCredential: false);
+        });
+        admin.MapPost("/{sourceId:guid}/retire", async (Guid deviceId, Guid sourceId, HostLogSourceRetire input, HostMonitoringLogConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            return await ApiMutation.ExecuteAsync(context, async actor =>
+            {
+                if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
+                try { return SourceResult(await settings.RetireAsync(deviceId, sourceId, input.Version, actor, token), deviceId); }
+                catch (ArgumentException) { return Invalid(); }
+            }, allowApiCredential: false);
+        });
         const string root = "/internal/v1/devices/{deviceId:guid}/log-sources";
         app.MapGet(root, async (Guid deviceId, HostMonitoringLogConfiguration settings, IHttpClientFactory clients, CancellationToken token) =>
             await ResourceDevices.ExistsAsync(clients, deviceId, token) ? Results.Ok(await settings.ListAsync(deviceId, token)) : Results.NotFound());
@@ -45,4 +90,17 @@ internal static class HostLogSettingsEndpoints
                 ? Results.StatusCode(StatusCodes.Status304NotModified) : Results.Ok(snapshot);
         });
     }
+
+    private static IResult Invalid() => Results.ValidationProblem(new Dictionary<string, string[]> { ["source"] = ["日誌來源設定無效。"] });
+
+    private static IResult SourceResult(HostLogConfigurationResult result, Guid deviceId, bool created = false) => result.Status switch
+    {
+        HostLogConfigurationStatus.Success when result.Source is { } source => created
+            ? Results.Created($"/api/v1/agent-management/devices/{deviceId:D}/log-sources/{source.Settings.SourceId:D}", source)
+            : Results.Ok(source),
+        HostLogConfigurationStatus.NotFound => Results.NotFound(),
+        HostLogConfigurationStatus.Conflict => Results.Problem(statusCode: 409, title: "Source settings changed; reload and try again."),
+        HostLogConfigurationStatus.LimitReached => Results.Problem(statusCode: 409, title: "The device source limit has been reached."),
+        _ => throw new InvalidOperationException("Unknown source configuration result.")
+    };
 }

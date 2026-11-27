@@ -375,6 +375,7 @@ public sealed class ProxyTests
         Assert.AreEqual("web", await client.GetStringAsync("/api/v1/agent-management/metric-settings/platform", TestContext.CancellationToken));
         Assert.AreEqual("web", await client.GetStringAsync("/api/v1/agent-management/replay-policy", TestContext.CancellationToken));
         Assert.AreEqual("web", await client.GetStringAsync("/api/v1/settings/agent-inbox", TestContext.CancellationToken));
+        Assert.AreEqual("web", await client.GetStringAsync($"/api/v1/agent-management/devices/{Guid.CreateVersion7():D}/log-sources", TestContext.CancellationToken));
         foreach (var adminPath in new[] { "/api/v1/accounts", "/api/v1/agent-management/devices", "/api/v1/settings/ping" })
         {
             using var adminRead = await client.GetAsync(adminPath, TestContext.CancellationToken);
