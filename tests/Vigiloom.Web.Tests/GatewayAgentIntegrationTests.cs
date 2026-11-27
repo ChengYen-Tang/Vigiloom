@@ -53,6 +53,7 @@ public sealed class GatewayAgentIntegrationTests(TestContext context)
                 host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ReverseProxy:Clusters:agent:Destinations:agent:Address"] = address,
+                    ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = address,
                     ["Vigiloom:Gateway:AgentIdentityAddress"] = address
                 })));
             using var client = gateway.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });

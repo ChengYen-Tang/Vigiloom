@@ -24,7 +24,7 @@ builder.Services.AddAuthentication().AddVigiloomApiCredentials()
     .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, SourceAuthentication>(SourceAuthentication.SchemeName, _ => { });
 builder.Services.AddHttpClient(AgentAuthentication.SchemeName, (services, client) =>
 {
-    var address = services.GetRequiredService<IConfiguration>()["Vigiloom:Gateway:AgentIdentityAddress"] ?? "http://vigiloom-agent";
+    var address = services.GetRequiredService<IConfiguration>()["Vigiloom:Gateway:AgentIdentityAddress"] ?? "http://vigiloom-host-monitoring";
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddHttpClient(SourceAuthentication.SchemeName, (services, client) =>
@@ -89,6 +89,7 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/otlp"), 
     }));
 app.UseAuthentication();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/heartbeat") ||
+    context.Request.Path.Equals("/api/v1/agent/identity", StringComparison.OrdinalIgnoreCase) ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/batches") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-session") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/update-results") ||

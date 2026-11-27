@@ -138,6 +138,7 @@ if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/channel") ||
+    context.Request.Path.Equals("/api/v1/agent/identity", StringComparison.OrdinalIgnoreCase) ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/yara-scans") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/inventory-settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/inventory/status") ||
@@ -156,6 +157,12 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/ch
     context.Request.Path.StartsWithSegments("/api/v1/agent/metric-settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/log-settings"), agent => agent.UseMiddleware<AgentAccess>());
 app.MapHub<AgentChannel>("/api/v1/agent/channel");
+app.MapGet("/api/v1/agent/identity", (HttpContext context) =>
+{
+    var identity = (RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!;
+    context.Response.Headers.CacheControl = "no-store";
+    return Results.Ok(new { identity.AgentId, identity.DeviceId });
+});
 app.MapAgentSecuritySettingsEndpoints();
 app.MapGet("/api/v1/agent/yara-scans/next", async (HttpContext context, IHttpClientFactory clients, CancellationToken token) =>
 {
