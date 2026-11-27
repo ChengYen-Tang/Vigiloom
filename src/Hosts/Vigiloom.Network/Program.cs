@@ -22,6 +22,12 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Network;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddOpenApi(options =>
+{
+    options.ShouldInclude = description => description.RelativePath?.StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase) == true;
+    options.AddDocumentTransformer<PublicApiOpenApi>();
+    options.AddOperationTransformer<PublicApiOpenApiOperation>();
+});
 builder.AddVigiloomSelfTelemetry("Vigiloom.Network");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddOptions<IdentityOptions>();
@@ -115,6 +121,7 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", true))
     builder.Services.AddHangfireServer(options => { options.Queues = ["network"]; options.IsLightweightServer = true; });
 }
 var app = builder.Build();
+if (app.Environment.IsDevelopment()) app.MapOpenApi();
 app.MapWorkHistoryEndpoints();
 var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);

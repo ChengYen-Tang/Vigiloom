@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <ProjectReference Include="../../src/Hosts/Vigiloom.Network/Vigiloom.Network.csproj" Aliases="NetworkHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Operations/Vigiloom.Operations.csproj" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.HostMonitoring/Vigiloom.HostMonitoring.csproj" Aliases="HostMonitoring" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Resources/Vigiloom.Resources.csproj" Aliases="ResourcesHost" />

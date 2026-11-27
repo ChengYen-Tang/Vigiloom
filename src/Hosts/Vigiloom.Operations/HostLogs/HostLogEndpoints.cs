@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Vigiloom.Contracts.Agent;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Services;
@@ -38,6 +39,7 @@ internal static class HostLogEndpoints
                 return Results.Ok(page with { RetentionDays = retention.LogDays });
             }
             catch (ArgumentException) { return Results.Problem(statusCode: 400, title: "Invalid host log query"); }
-        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .Produces<HostLogPage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
     }
 }

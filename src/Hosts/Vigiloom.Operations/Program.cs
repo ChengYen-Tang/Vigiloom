@@ -28,6 +28,12 @@ using Vigiloom.Operations.Work;
 using QuotaContract = Vigiloom.Contracts.Operations.LogQuotaSettings;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddOpenApi(options =>
+{
+    options.ShouldInclude = description => description.RelativePath?.StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase) == true;
+    options.AddDocumentTransformer<PublicApiOpenApi>();
+    options.AddOperationTransformer<PublicApiOpenApiOperation>();
+});
 builder.AddVigiloomSelfTelemetry("Vigiloom.Operations");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddOptions<IdentityOptions>();
@@ -152,6 +158,7 @@ builder.Services.AddScoped<ApplicationLogCleanup>();
 builder.Services.AddHostedService<WorkDispatcher>();
 builder.Services.AddHostedService<LineAggregationWorker>();
 var app = builder.Build();
+if (app.Environment.IsDevelopment()) app.MapOpenApi();
 var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
 app.UseAuthentication();

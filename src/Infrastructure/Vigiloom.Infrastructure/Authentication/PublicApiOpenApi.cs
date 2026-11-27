@@ -43,8 +43,8 @@ public sealed class PublicApiOpenApiOperation : IOpenApiOperationTransformer
             if (policies.Contains("DeviceWrite"))
                 operation.Description = "API credentials require monitoring.write; some changes require an administrator session.";
         }
-        else if (context.Description.RelativePath is { } path &&
-            (path.Equals("api/v1/agent/recover", StringComparison.OrdinalIgnoreCase) || path.StartsWith("api/v1/agent/rotation/", StringComparison.OrdinalIgnoreCase)))
+        else if (context.Description.RelativePath is { } path && path.StartsWith("api/v1/agent/", StringComparison.OrdinalIgnoreCase) &&
+            !path.Equals("api/v1/agent/enroll", StringComparison.OrdinalIgnoreCase))
         {
             operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("AgentBearer", document)] = [] }];
             if (path.Equals("api/v1/agent/recover", StringComparison.OrdinalIgnoreCase))

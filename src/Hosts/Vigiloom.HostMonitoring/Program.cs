@@ -22,6 +22,12 @@ using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddOpenApi(options =>
+{
+    options.ShouldInclude = description => description.RelativePath?.StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase) == true;
+    options.AddDocumentTransformer<PublicApiOpenApi>();
+    options.AddOperationTransformer<PublicApiOpenApiOperation>();
+});
 builder.AddVigiloomSelfTelemetry("Vigiloom.Host");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddOptions<IdentityOptions>();
@@ -134,6 +140,7 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
     builder.Services.AddHostedService<WorkDispatcher>();
 }
 var app = builder.Build();
+if (app.Environment.IsDevelopment()) app.MapOpenApi();
 var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
 app.UseAuthentication();

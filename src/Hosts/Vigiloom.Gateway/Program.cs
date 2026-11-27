@@ -68,6 +68,9 @@ if (app.Environment.IsDevelopment())
     {
         new { Service = "web", Document = "/openapi/v1.json" },
         new { Service = "resources", Document = "/openapi/resources.json" },
+        new { Service = "network", Document = "/openapi/network.json" },
+        new { Service = "host", Document = "/openapi/host.json" },
+        new { Service = "operations", Document = "/openapi/operations.json" },
         new { Service = "security", Document = "/openapi/security.json" }
     }));
 app.UseWebSockets();
