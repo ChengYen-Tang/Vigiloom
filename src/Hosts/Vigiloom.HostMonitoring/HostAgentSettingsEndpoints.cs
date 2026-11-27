@@ -16,18 +16,24 @@ internal static class HostAgentSettingsEndpoints
         app.MapPost("/internal/v1/agent-settings/devices/{deviceId:guid}", async (Guid deviceId, AgentSettingsCommand command, HostAgentConfiguration settings, IHttpClientFactory clients, CancellationToken token) =>
             await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateInternalAsync(settings, deviceId, command, token) : Results.NotFound());
         var admin = app.MapGroup("/api/v1/agent-management/settings").RequireAuthorization("Administrator").RequireRateLimiting("api-client");
-        admin.MapGet("/platform", (HostAgentConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token));
-        admin.MapPut("/platform", (AgentSettingsUpdate input, HostAgentConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token));
+        admin.MapGet("/platform", (HostAgentConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token))
+            .Produces<AgentSettingsView>().ProducesProblem(401).ProducesProblem(403).WithSummary("Read platform Agent scheduling settings");
+        admin.MapPut("/platform", (AgentSettingsUpdate input, HostAgentConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token))
+            .Produces<AgentSettingsView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).WithSummary("Update platform Agent scheduling settings");
         admin.MapGet("/devices/{deviceId:guid}", async (Guid deviceId, HostAgentConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
-            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await ReadAsync(settings, deviceId, context, token) : Results.NotFound());
+            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await ReadAsync(settings, deviceId, context, token) : Results.NotFound())
+            .Produces<AgentSettingsView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).WithSummary("Read device Agent scheduling overrides");
         admin.MapPut("/devices/{deviceId:guid}", async (Guid deviceId, AgentSettingsUpdate input, HostAgentConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
-            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateAsync(settings, deviceId, input, context, token) : Results.NotFound());
+            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateAsync(settings, deviceId, input, context, token) : Results.NotFound())
+            .Produces<AgentSettingsView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).WithSummary("Update device Agent scheduling overrides");
         app.MapGet("/api/v1/devices/{deviceId:guid}/agent-settings", async (Guid deviceId, HostAgentConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
         {
             if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok((await settings.GetAsync(deviceId, token)).Effective);
-        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .Produces<AgentSettingsSnapshot>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Read effective Agent scheduling settings for a device");
     }
 
     private static async Task<IResult> UpdateInternalAsync(HostAgentConfiguration settings, Guid? deviceId, AgentSettingsCommand command, CancellationToken token)

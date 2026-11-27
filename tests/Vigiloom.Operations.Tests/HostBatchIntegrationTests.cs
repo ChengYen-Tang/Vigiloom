@@ -913,6 +913,10 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.IsTrue(create.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
                 Assert.IsTrue(create.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
                 Assert.IsTrue(create.GetProperty("responses").TryGetProperty("201", out _));
+                var settingsOperation = paths.GetProperty("/api/v1/agent-management/settings/devices/{deviceId}").GetProperty("put");
+                Assert.IsTrue(settingsOperation.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+                Assert.IsTrue(settingsOperation.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
+                Assert.IsTrue(settingsOperation.GetProperty("responses").TryGetProperty("409", out _));
             }
             var logSourcesPath = $"/api/v1/agent-management/devices/{identity.DeviceId:D}/log-sources/";
             using (var anonymous = await proxyClient.GetAsync(logSourcesPath, token))
@@ -1007,6 +1011,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var capacityAdminPath = $"/api/v1/agent-management/queue-capacity/devices/{identity.DeviceId:D}";
             var capacityView = await proxyClient.GetFromJsonAsync<AgentQueueCapacityView>(capacityAdminPath, token);
             var capacityUpdate = new AgentQueueCapacityUpdate(new(1048576, 100), capacityView!.Version);
+            var settingsAdminPath = $"/api/v1/agent-management/settings/devices/{identity.DeviceId:D}";
+            var settingsBefore = await proxyClient.GetFromJsonAsync<AgentSettingsView>(settingsAdminPath, token);
+            Assert.IsNotNull(settingsBefore);
+            var settingsUpdate = new AgentSettingsUpdate(new(60, null, null), settingsBefore.Version);
+            using (var missingCsrf = await proxyClient.PutAsJsonAsync(settingsAdminPath, settingsUpdate, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
             using (var missingCsrf = await proxyClient.PutAsJsonAsync(capacityAdminPath, capacityUpdate, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
             using (var missingCsrf = await proxyClient.PostAsJsonAsync(inboxPath + "/preview", inboxInput, token))
@@ -1020,6 +1030,22 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             proxyClient.DefaultRequestHeaders.Remove("Cookie");
             proxyClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={adminCookie}; {antiCookie}");
             proxyClient.DefaultRequestHeaders.Add("RequestVerificationToken", anti.RequestToken);
+            using (var changedSettings = await proxyClient.PutAsJsonAsync(settingsAdminPath, settingsUpdate, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, changedSettings.StatusCode);
+                var savedSettings = await changedSettings.Content.ReadFromJsonAsync<AgentSettingsView>(cancellationToken: token);
+                Assert.AreEqual(60, savedSettings!.Effective.Settings.HeartbeatSeconds);
+                Assert.AreNotEqual(settingsBefore.Version, savedSettings.Version);
+            }
+            using (var staleSettings = await proxyClient.PutAsJsonAsync(settingsAdminPath, settingsUpdate, token))
+                Assert.AreEqual(HttpStatusCode.Conflict, staleSettings.StatusCode);
+            using (var invalidSettings = await proxyClient.PutAsJsonAsync(settingsAdminPath, new AgentSettingsUpdate(new(1, null, null), settingsBefore.Version), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidSettings.StatusCode);
+            using (var missingDevice = await proxyClient.GetAsync($"/api/v1/agent-management/settings/devices/{Guid.CreateVersion7():D}", token))
+                Assert.AreEqual(HttpStatusCode.NotFound, missingDevice.StatusCode);
+            await using (var audit = new HostMonitoringDbContext(hostOptions))
+                Assert.IsTrue(await audit.Set<AgentSettingAudit>().AnyAsync(x => x.ActorId == thresholdSession.AccountId &&
+                    x.DeviceId == identity.DeviceId && x.EffectiveHeartbeatSeconds == 60, token));
             HostLogSourceView createdLogSource;
             using (var invalidLogSource = await proxyClient.PostAsJsonAsync(logSourcesPath, new { }, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalidLogSource.StatusCode);
@@ -1073,6 +1099,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             await using (var audit = new HostMonitoringDbContext(hostOptions))
                 Assert.AreEqual(2, await audit.Set<HostMetricThresholdAudit>().CountAsync(token));
             thresholdSession.Role = "Read only";
+            using (var deniedSettings = await proxyClient.GetAsync(settingsAdminPath, token))
+                Assert.AreEqual(HttpStatusCode.Forbidden, deniedSettings.StatusCode);
             using (var deniedLogs = await proxyClient.GetAsync(logSourcesPath, token))
                 Assert.AreEqual(HttpStatusCode.Forbidden, deniedLogs.StatusCode);
             using (var readerCapacity = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/agent-queue-capacity", token))
