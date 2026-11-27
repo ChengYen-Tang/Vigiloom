@@ -158,6 +158,8 @@ public sealed class ProxyTests
         var id = Guid.CreateVersion7();
         var documents = await client.GetFromJsonAsync<JsonElement>("/openapi", TestContext.CancellationToken);
         Assert.IsTrue(documents.EnumerateArray().Any(item => item.GetProperty("document").GetString() == "/openapi/security.json"));
+        Assert.IsTrue(documents.EnumerateArray().Any(item => item.GetProperty("document").GetString() == "/openapi/resources.json"));
+        Assert.AreEqual("resources-doc", await client.GetStringAsync("/openapi/resources.json", TestContext.CancellationToken));
         Assert.AreEqual("security-doc", await client.GetStringAsync("/openapi/security.json", TestContext.CancellationToken));
         Assert.AreEqual("network", await client.GetStringAsync($"/api/v1/public/devices/{id:D}/ping", TestContext.CancellationToken));
         using (var response = await client.GetAsync($"/api/v1/devices/{id:D}/ping", TestContext.CancellationToken))

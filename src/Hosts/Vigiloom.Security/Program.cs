@@ -38,8 +38,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi(options =>
 {
     options.ShouldInclude = description => description.RelativePath?.StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase) == true;
-    options.AddDocumentTransformer<SecurityOpenApi>();
-    options.AddOperationTransformer<SecurityOpenApiOperation>();
+    options.AddDocumentTransformer<PublicApiOpenApi>();
+    options.AddOperationTransformer<PublicApiOpenApiOperation>();
 });
 builder.AddVigiloomSelfTelemetry("Vigiloom.Security");
 builder.Services.AddModuleSqlServer<SecurityAnalysisDbContext>(services =>

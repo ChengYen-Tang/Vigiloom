@@ -67,6 +67,7 @@ if (app.Environment.IsDevelopment())
     app.MapGet("/openapi", () => Results.Json(new[]
     {
         new { Service = "web", Document = "/openapi/v1.json" },
+        new { Service = "resources", Document = "/openapi/resources.json" },
         new { Service = "security", Document = "/openapi/security.json" }
     }));
 app.UseWebSockets();
