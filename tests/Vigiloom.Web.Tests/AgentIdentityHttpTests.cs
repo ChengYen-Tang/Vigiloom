@@ -1102,7 +1102,7 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
-            var monitoringPaths = new[] { "/api/v1/agent-packages", $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status" };
+            var monitoringPaths = new[] { "/api/v1/agent-packages", $"/api/v1/devices/{device.Id:D}/agent-status" };
             foreach (var path in monitoringPaths)
             {
                 using var anonymousRead = await agent.GetAsync(path, token);
@@ -1160,16 +1160,11 @@ public sealed class AgentIdentityHttpTests
                 using var status = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token);
                 Assert.AreEqual(HttpStatusCode.OK, status.StatusCode);
                 Assert.AreEqual(AgentConnectionState.NotRegistered, (await status.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token))!.State);
-                using var effectiveSettings = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-settings", token);
-                Assert.AreEqual(HttpStatusCode.OK, effectiveSettings.StatusCode);
-                Assert.AreEqual(AgentSettings.Default, (await effectiveSettings.Content.ReadFromJsonAsync<AgentSettingsSnapshot>(cancellationToken: token))!.Settings);
-                using var settingsStatus = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-settings-status", token);
-                Assert.AreEqual(HttpStatusCode.OK, settingsStatus.StatusCode);
-                Assert.AreEqual(AgentSettingsApplyState.NotRegistered, (await settingsStatus.Content.ReadFromJsonAsync<AgentSettingsStatus>(cancellationToken: token))!.State);
-                using var manageSettings = await reader.GetAsync("/api/v1/agent-management/settings/platform", token);
-                Assert.AreEqual(HttpStatusCode.Forbidden, manageSettings.StatusCode);
-                using var changeSettings = await reader.PutAsJsonAsync("/api/v1/agent-management/settings/platform", new AgentSettingsUpdate(new(60, null, null), ""), token);
-                Assert.AreEqual(HttpStatusCode.Forbidden, changeSettings.StatusCode);
+                await using var settingsScope = factory.Services.CreateAsyncScope();
+                var effectiveSettings = await settingsScope.ServiceProvider.GetRequiredService<IAgentSettings>().GetAsync(device.Id, token);
+                Assert.AreEqual(AgentSettings.Default, effectiveSettings!.Effective.Settings);
+                var settingsStatus = await settingsScope.ServiceProvider.GetRequiredService<IAgentSettingsStatusReader>().GetAsync(device.Id, token);
+                Assert.AreEqual(AgentSettingsApplyState.NotRegistered, settingsStatus!.State);
                 using var details = await reader.GetAsync($"/devices/{device.Id:D}", token);
                 var detailsDoc = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("Agent 狀態", detailsDoc.Body!.TextContent);
@@ -1253,8 +1248,6 @@ public sealed class AgentIdentityHttpTests
             Assert.IsEmpty(retiredSources!);
             using (var forged = await admin.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
-            using (var forgedSettings = await admin.PutAsJsonAsync("/api/v1/agent-management/settings/platform", new AgentSettingsUpdate(new(60, null, null), ""), token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, forgedSettings.StatusCode);
             using (var forgedAssignment = await admin.PutAsJsonAsync($"/api/v1/agents/{Guid.CreateVersion7():D}/version-assignment", new AgentVersionAssignmentUpdate(Guid.CreateVersion7(), ""), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedAssignment.StatusCode);
             using (var readerAssignment = await reader.PutAsJsonAsync($"/api/v1/agents/{Guid.CreateVersion7():D}/version-assignment", new AgentVersionAssignmentUpdate(Guid.CreateVersion7(), ""), token))
@@ -1343,21 +1336,14 @@ public sealed class AgentIdentityHttpTests
                 Assert.Contains("過渡期間", auditDoc.Body.TextContent);
             }
             AgentSettingsView configured;
-            using (var initialSettings = await admin.GetAsync($"/api/v1/agent-management/settings/devices/{device.Id:D}", token))
+            await using (var settingsScope = factory.Services.CreateAsyncScope())
             {
-                Assert.AreEqual(HttpStatusCode.OK, initialSettings.StatusCode);
-                Assert.AreEqual("", (await initialSettings.Content.ReadFromJsonAsync<AgentSettingsView>(cancellationToken: token))!.Version);
-            }
-            using (var saveSettings = await admin.PutAsJsonAsync($"/api/v1/agent-management/settings/devices/{device.Id:D}", new AgentSettingsUpdate(new(60, null, null), ""), token))
-            {
-                Assert.AreEqual(HttpStatusCode.OK, saveSettings.StatusCode);
-                configured = (await saveSettings.Content.ReadFromJsonAsync<AgentSettingsView>(cancellationToken: token))!;
+                var settings = settingsScope.ServiceProvider.GetRequiredService<IAgentSettings>();
+                Assert.AreEqual("", (await settings.GetAsync(device.Id, token))!.Version);
+                configured = (await settings.UpdateAsync(device.Id, new AgentSettingsUpdate(new(60, null, null), ""), Guid.CreateVersion7(), token))!;
                 Assert.AreEqual(60, configured.Effective.Settings.HeartbeatSeconds);
+                Assert.IsNull(await settings.UpdateAsync(device.Id, new AgentSettingsUpdate(new(90, null, null), ""), Guid.CreateVersion7(), token));
             }
-            using (var staleSettings = await admin.PutAsJsonAsync($"/api/v1/agent-management/settings/devices/{device.Id:D}", new AgentSettingsUpdate(new(90, null, null), ""), token))
-                Assert.AreEqual(HttpStatusCode.Conflict, staleSettings.StatusCode);
-            using (var invalidSettings = await admin.PutAsJsonAsync($"/api/v1/agent-management/settings/devices/{device.Id:D}", new AgentSettingsUpdate(new(1, null, null), configured.Version), token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, invalidSettings.StatusCode);
             await using (var capacityScope = factory.Services.CreateAsyncScope())
             {
                 var capacitySettings = capacityScope.ServiceProvider.GetRequiredService<IAgentQueueCapacitySettings>();
@@ -1465,10 +1451,9 @@ public sealed class AgentIdentityHttpTests
                 new AgentQuarantineBreakdown(0, 0, 2, 0, 0, 0, 0), MetricLoss: lossReport);
             using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
-            using (var statusResponse = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-settings-status", token))
+            await using (var settingsScope = factory.Services.CreateAsyncScope())
             {
-                Assert.AreEqual(HttpStatusCode.OK, statusResponse.StatusCode);
-                var status = await statusResponse.Content.ReadFromJsonAsync<AgentSettingsStatus>(cancellationToken: token);
+                var status = await settingsScope.ServiceProvider.GetRequiredService<IAgentSettingsStatusReader>().GetAsync(device.Id, token);
                 Assert.AreEqual(AgentSettingsApplyState.Applied, status!.State);
                 Assert.AreEqual(configured.Effective, status.Applied);
             }
