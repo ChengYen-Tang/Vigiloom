@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
 using Vigiloom.Contracts.Identity;
 using System.Net;
 using Microsoft.AspNetCore.Builder;
@@ -154,6 +156,8 @@ public sealed class ProxyTests
             })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
         var id = Guid.CreateVersion7();
+        var documents = await client.GetFromJsonAsync<JsonElement>("/openapi", TestContext.CancellationToken);
+        Assert.IsTrue(documents.EnumerateArray().Any(item => item.GetProperty("document").GetString() == "/openapi/security.json"));
         Assert.AreEqual("security-doc", await client.GetStringAsync("/openapi/security.json", TestContext.CancellationToken));
         Assert.AreEqual("network", await client.GetStringAsync($"/api/v1/public/devices/{id:D}/ping", TestContext.CancellationToken));
         using (var response = await client.GetAsync($"/api/v1/devices/{id:D}/ping", TestContext.CancellationToken))
