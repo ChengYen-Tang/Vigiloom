@@ -26,7 +26,7 @@
         <AuthorizeView Roles="Administrator" Context="authorization"><Authorized>
             <section class="device-panel">
                 <h2>@L["新增掃描"]</h2>
-                <p>@L["Agent 主機需有可執行的 YARA；若尚未安裝，結果會顯示無法使用。掃描工作會在 Agent 下次同步後執行。"]</p>
+                <p>@L["Agent 主機需有可執行的 YARA；若尚未安裝，結果會顯示無法使用。線上的 Agent 會收到工作通知；離線時可在重新連線或同步後領取。"]</p>
                 <p>@L["YARA 引擎採用 "]<a href="https://github.com/VirusTotal/yara/blob/master/COPYING" target="_blank" rel="noopener noreferrer">@L["BSD 3-Clause 授權"]</a>@L["；手動輸入的規則有各自的授權，請管理員確認後使用。"]</p>
                 <EditForm Model="Input" FormName="yara-scan-create" method="post" OnSubmit="CreateAsync">
                     <label for="scan-file">@L["主機上的檔案完整路徑"]</label><InputText id="scan-file" @bind-Value="Input.FilePath" maxlength="1024" />
