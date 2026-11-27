@@ -65,8 +65,9 @@ public sealed class MetricShutdownTests(TestContext context)
                 ["Vigiloom:Agent:StateDirectory"] = vault.StateDirectory,
                 ["Vigiloom:Agent:Server"] = owner.Server
             });
+            // Only the producer and sender participate in this shutdown contract.
             foreach (var descriptor in builder.Services.Where(x => x.ServiceType == typeof(IHostedService) &&
-                (x.ImplementationType == typeof(AgentSettingsWorker) || x.ImplementationType == typeof(HeartbeatWorker))).ToArray())
+                x.ImplementationType != typeof(BatchWorker) && x.ImplementationType != typeof(MetricWorker)).ToArray())
                 builder.Services.Remove(descriptor);
             builder.Services.AddSingleton(new AgentBatchClient(http, TimeProvider.System));
             builder.Services.AddSingleton<ILogger<MetricWorker>>(logger);
