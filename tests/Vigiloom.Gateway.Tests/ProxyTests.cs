@@ -136,6 +136,7 @@ public sealed class ProxyTests
         await using var resources = await StartUpstreamAsync("resources", TestContext.CancellationToken);
         await using var hostMonitoring = await StartUpstreamAsync("host-monitoring", TestContext.CancellationToken);
         await using var operations = await StartUpstreamAsync("operations", TestContext.CancellationToken);
+        await using var observability = await StartUpstreamAsync("observability", TestContext.CancellationToken);
         await using var security = await StartUpstreamAsync("security", TestContext.CancellationToken);
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -151,6 +152,7 @@ public sealed class ProxyTests
                 ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = Address(resources),
                 ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = Address(hostMonitoring),
                 ["ReverseProxy:Clusters:operations:Destinations:operations:Address"] = Address(operations),
+                ["ReverseProxy:Clusters:observability:Destinations:observability:Address"] = Address(observability),
                 ["ReverseProxy:Clusters:security:Destinations:security:Address"] = Address(security),
                 ["Services:Identity:Url"] = Address(identity)
             })));
@@ -163,6 +165,7 @@ public sealed class ProxyTests
         Assert.AreEqual("network-doc", await client.GetStringAsync("/openapi/network.json", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring-doc", await client.GetStringAsync("/openapi/host.json", TestContext.CancellationToken));
         Assert.AreEqual("operations-doc", await client.GetStringAsync("/openapi/operations.json", TestContext.CancellationToken));
+        Assert.AreEqual("observability-doc", await client.GetStringAsync("/openapi/observability.json", TestContext.CancellationToken));
         Assert.AreEqual("security-doc", await client.GetStringAsync("/openapi/security.json", TestContext.CancellationToken));
         Assert.AreEqual("network", await client.GetStringAsync($"/api/v1/public/devices/{id:D}/ping", TestContext.CancellationToken));
         using (var response = await client.GetAsync($"/api/v1/devices/{id:D}/ping", TestContext.CancellationToken))

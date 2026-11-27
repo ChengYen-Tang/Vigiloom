@@ -29,6 +29,12 @@ using Vigiloom.Observability.Authentication;
 using Vigiloom.Observability.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddOpenApi(options =>
+{
+    options.ShouldInclude = description => description.RelativePath?.StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase) == true;
+    options.AddDocumentTransformer<PublicApiOpenApi>();
+    options.AddOperationTransformer<PublicApiOpenApiOperation>();
+});
 builder.AddVigiloomSelfTelemetry("Vigiloom.Observability");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddOptions<IdentityOptions>();
@@ -170,6 +176,7 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", true))
     builder.Services.AddHangfireServer(options => { options.Queues = ["observability"]; options.IsLightweightServer = true; });
 }
 var app = builder.Build();
+if (app.Environment.IsDevelopment()) app.MapOpenApi();
 app.MapWorkHistoryEndpoints();
 var forwarded = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwarded is not null) app.UseForwardedHeaders(forwarded);

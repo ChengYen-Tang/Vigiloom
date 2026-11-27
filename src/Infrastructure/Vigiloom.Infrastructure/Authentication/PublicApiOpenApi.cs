@@ -15,6 +15,7 @@ public sealed class PublicApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions
         document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
         document.Components.SecuritySchemes["ApiBearer"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "Vigiloom opaque credential" };
         document.Components.SecuritySchemes["AgentBearer"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "Vigiloom Agent credential" };
+        document.Components.SecuritySchemes["ServiceSourceBearer"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.Http, Scheme = "bearer", BearerFormat = "Vigiloom service source credential" };
         document.Components.SecuritySchemes["BrowserSession"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.ApiKey, In = ParameterLocation.Cookie, Name = cookies.Get(IdentityConstants.ApplicationScheme).Cookie.Name };
         document.Components.SecuritySchemes["Antiforgery"] = new OpenApiSecurityScheme { Type = SecuritySchemeType.ApiKey, In = ParameterLocation.Header, Name = "RequestVerificationToken" };
         return Task.CompletedTask;
@@ -27,7 +28,9 @@ public sealed class PublicApiOpenApiOperation : IOpenApiOperationTransformer
     {
         var policies = context.Description.ActionDescriptor.EndpointMetadata.OfType<IAuthorizeData>().Select(x => x.Policy).ToArray();
         var document = context.Document;
-        if (policies.Contains("Administrator"))
+        if (policies.Contains("ServiceSource"))
+            operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("ServiceSourceBearer", document)] = [] }];
+        else if (policies.Contains("Administrator"))
         {
             var session = new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] };
             if (context.Description.HttpMethod is not ("GET" or "HEAD"))

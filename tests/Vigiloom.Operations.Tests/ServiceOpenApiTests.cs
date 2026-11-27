@@ -1,5 +1,6 @@
 extern alias HostMonitoring;
 extern alias NetworkHost;
+extern alias ObservabilityHost;
 
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -20,6 +21,7 @@ public sealed class ServiceOpenApiTests(TestContext context)
         await VerifyAsync<NetworkHost::Program>("/api/v1/devices/{id}/ping", "get", "ApiBearer");
         await VerifyAsync<HostMonitoring::Program>("/api/v1/agent/heartbeat", "post", "AgentBearer");
         await VerifyAsync<Program>("/api/v1/devices/{deviceId}/host-logs", "get", "ApiBearer");
+        await VerifyAsync<ObservabilityHost::Program>("/api/v1/otlp/v1/logs", "post", "ServiceSourceBearer");
     }
 
     private async Task VerifyAsync<TProgram>(string path, string method, string scheme) where TProgram : class
@@ -43,8 +45,11 @@ public sealed class ServiceOpenApiTests(TestContext context)
         Assert.IsFalse(paths.EnumerateObject().Any(item => item.Name.StartsWith("/internal/", StringComparison.Ordinal)));
         var security = paths.GetProperty(path).GetProperty(method).GetProperty("security");
         Assert.IsTrue(security.EnumerateArray().Any(item => item.TryGetProperty(scheme, out _)));
-        var schemaPath = scheme == "AgentBearer" ? "/api/v1/devices/{deviceId}/host-metrics" : path;
-        var response = paths.GetProperty(schemaPath).GetProperty("get").GetProperty("responses").GetProperty("200");
-        Assert.IsTrue(response.GetProperty("content").GetProperty("application/json").TryGetProperty("schema", out _));
+        if (scheme != "ServiceSourceBearer")
+        {
+            var schemaPath = scheme == "AgentBearer" ? "/api/v1/devices/{deviceId}/host-metrics" : path;
+            var response = paths.GetProperty(schemaPath).GetProperty("get").GetProperty("responses").GetProperty("200");
+            Assert.IsTrue(response.GetProperty("content").GetProperty("application/json").TryGetProperty("schema", out _));
+        }
     }
 }
