@@ -66,7 +66,6 @@ jobs:
           Copy-Item -Recurse packaging/temporal (Join-Path $package 'temporal')
           if (-not $IsWindows) {
             Copy-Item packaging/server/Dockerfile $package
-            Copy-Item packaging/server/compose.yaml $package
             Copy-Item packaging/server/compose.microservices.yaml $package
             Copy-Item packaging/server/container.env.example $package
             docker compose --env-file packaging/server/container.env.example -f packaging/server/compose.microservices.yaml --profile setup config --quiet
