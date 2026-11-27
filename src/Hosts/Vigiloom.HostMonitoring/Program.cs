@@ -150,6 +150,8 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/ch
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-capacity") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/update-results") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/version-assignment") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/update/targets") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/update/packages") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/metric-settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/log-settings"), agent => agent.UseMiddleware<AgentAccess>());
@@ -166,6 +168,7 @@ app.MapGet("/api/v1/agent/yara-scans/next", async (HttpContext context, IHttpCli
     return job is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) : Results.Ok(job);
 });
 app.MapAgentBatchEndpoints();
+app.MapAgentUpdateDownloadEndpoints();
 app.MapGet("/api/v1/agent/version-assignment", async (HttpContext context, IHttpClientFactory clients, CancellationToken token) =>
 {
     context.Response.Headers.CacheControl = "private, no-store";

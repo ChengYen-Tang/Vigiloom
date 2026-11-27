@@ -50,6 +50,8 @@ public sealed class ProxyTests
         using (var batches = await client.PostAsync("/api/v1/agent/batches", null, TestContext.CancellationToken))
             Assert.AreEqual("host-monitoring", await batches.Content.ReadAsStringAsync(TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/version-assignment", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/update/targets/manifest.json", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync("/api/v1/agent/update/packages/agent.zip", TestContext.CancellationToken));
     }
     [TestMethod]
     public async Task RoutesAgentMetricSettingsToHostAfterAuthentication()
