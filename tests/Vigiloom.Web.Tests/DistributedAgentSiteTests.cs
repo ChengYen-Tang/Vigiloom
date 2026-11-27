@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Modules.AgentManagement.Application;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.Resources.Application.AgentIdentity;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
@@ -61,5 +62,22 @@ public sealed class DistributedAgentSiteTests(TestContext context)
             using var logs = await client.GetAsync("/api/v1/agent/log-settings", token);
             Assert.AreEqual(HttpStatusCode.OK, logs.StatusCode);
             Assert.IsEmpty((await logs.Content.ReadFromJsonAsync<AgentLogSettingsSnapshot>(cancellationToken: token))!.Sources);
+            using var host = site.Host.CreateClient();
+            var createSource = new HostLogSourceCreateCommand(new(AgentLogSourceKind.TextFile, "test", "/var/log/test", true, AgentTextLogMode.SingleLine), Guid.CreateVersion7());
+            using var created = await host.PostAsJsonAsync($"/internal/v1/devices/{device.Id:D}/log-sources", createSource, token);
+            Assert.AreEqual(HttpStatusCode.OK, created.StatusCode);
+            var source = (await created.Content.ReadFromJsonAsync<HostLogConfigurationResult>(cancellationToken: token))!.Source!;
+            using var changedLogs = await client.GetAsync("/api/v1/agent/log-settings", token);
+            Assert.AreEqual(source.Settings.SourceId, Assert.ContainsSingle((await changedLogs.Content.ReadFromJsonAsync<AgentLogSettingsSnapshot>(cancellationToken: token))!.Sources).SourceId);
+            var now = DateTimeOffset.UtcNow;
+            var batch = new AgentLogBatch(AgentLogBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                source.Settings.SourceId, AgentLogSourceKind.TextFile, "test", 1,
+                [new AgentLogRecord(Guid.CreateVersion7(), now, "test record", null, null, null, null, null)]);
+            using var content = new ByteArrayContent(AgentLogBatchCodec.Serialize(batch));
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            using var received = await client.PostAsync("/api/v1/agent/batches", content, token);
+            Assert.AreEqual(HttpStatusCode.NoContent, received.StatusCode);
+            await using var logDb = await site.Operations.Services.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token);
+            Assert.IsTrue(await logDb.HostLogs.AnyAsync(x => x.AgentId == agent.AgentId && x.BatchId == batch.BatchId && x.Content == "test record", token));
         }, middleToken), outerToken), context.CancellationToken);
 }

@@ -2,6 +2,7 @@ using Vigiloom.UpdateSecurity.AgentPackages;
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Hosting;
@@ -18,6 +19,9 @@ using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.Resources.Application.AgentIdentity;
+using Vigiloom.Modules.Resources.Application.AgentPackages;
+using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.UpdateSecurity;
@@ -48,7 +52,9 @@ public sealed class AgentServiceUpdateTests(TestContext context)
             Environment.GetEnvironmentVariable("RUNNER_ENVIRONMENT") != "github-hosted")
             throw new InvalidOperationException("The service test requires its dedicated GitHub-hosted runner.");
 
-        return SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        return SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (resourcesDatabase, outerToken) =>
+        await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (hostDatabase, middleToken) =>
+        await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (operationsDatabase, token) =>
         {
             var workspace = Required("GITHUB_WORKSPACE");
             var prefix = windows ? "VIGILOOM_WINDOWS_" : "VIGILOOM_SYSTEMD_";
@@ -107,46 +113,27 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 var gate = new AgentTransportGate();
                 using var publisher = packages.CreateClient();
                 var transport = new PackageLibraryTransport(Path.Combine(path, "cache"));
-                using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-                {
-                    builder.UseEnvironment("Development");
-                    builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                    {
-                        ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
-                        ["Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command"] = "Warning"
-                    }));
-                    builder.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(certificate)));
-                    builder.ConfigureServices(services =>
-                    {
-                        services.AddSingleton<IStartupFilter>(gate);
-                        services.RemoveAll<IPackageLibraryTransport>();
-                        services.AddSingleton<IPackageLibraryTransport>(transport);
-                        services.RemoveAll<GitHubAgentReleases>();
-                        services.AddSingleton(new GitHubAgentReleases(publisher));
-                    });
-                });
-                factory.UseKestrel(0); factory.StartServer();
-                await PingTestSite.InitializeAsync(factory, token);
-                var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
-                var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
-                await using (var db = await agents.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-                await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
-                await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
+                using var site = await DistributedAgentSite.StartAsync(resourcesDatabase.ConnectionString, hostDatabase.ConnectionString,
+                    operationsDatabase.ConnectionString, certificate, gate, transport, new GitHubAgentReleases(publisher), token);
+                var resources = site.Resources.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+                var agents = site.Host.Services.GetRequiredService<IDbContextFactory<HostMonitoringDbContext>>();
+                var logs = site.Operations.Services.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>();
+                using var hostClient = site.Host.CreateClient();
                 var device = new Device("systemd test", "127.0.0.1", true, DateTimeOffset.UtcNow);
                 await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
-                var addresses = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses;
-                var server = new Uri(addresses.Single(x => x.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) + "/");
-                await using var scope = factory.Services.CreateAsyncScope();
+                var server = site.GatewayAddress;
+                await using var scope = site.Host.Services.CreateAsyncScope();
+                await using var resourceScope = site.Resources.Services.CreateAsyncScope();
                 var actor = Guid.CreateVersion7();
-                var configuration = scope.ServiceProvider.GetRequiredService<AgentConfiguration>();
+                var configuration = scope.ServiceProvider.GetRequiredService<HostAgentConfiguration>();
                 var configured = await configuration.UpdateAsync(null, new(new(10, 60, 1), ""), actor, token);
                 Assert.IsNotNull(configured);
-                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
+                var identity = resourceScope.ServiceProvider.GetRequiredService<AgentRegistration>();
                 var issued = await identity.IssueAsync(device.Id, actor, token);
-                Assert.AreEqual(AgentIdentityStatus.Success, issued.Status);
-                var library = scope.ServiceProvider.GetRequiredService<PackageLibrary>();
+                Assert.AreEqual(AgentRegistrationStatus.Success, issued.Status);
+                var library = resourceScope.ServiceProvider.GetRequiredService<PackageCatalog>();
                 foreach (var version in new[] { "1.0.0", "1.1.0", "1.2.0" })
-                    Assert.IsTrue(await library.CacheAsync(version, rid, token));
+                    Assert.IsTrue(await library.DownloadAsync(version, rid, token));
 
                 var script = Path.Combine(workspace, windows ? "tests/Vigiloom.Web.Tests/Fixtures/windows-service-agent.ps1" : "tests/Vigiloom.Web.Tests/Fixtures/linux-systemd-agent.sh");
                 await using var installed = windows
@@ -161,7 +148,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "VigiloomAgent", "Agent", "cursor-test.log")
                     : "/var/lib/vigiloom/agent/cursor-test.log";
                 await AppendLogAsync(windows, logPath, "before-update", token);
-                var logSource = await scope.ServiceProvider.GetRequiredService<HostLogConfiguration>().CreateAsync(device.Id,
+                var logSource = await scope.ServiceProvider.GetRequiredService<HostMonitoringLogConfiguration>().CreateAsync(device.Id,
                     new(AgentLogSourceKind.TextFile, "update-cursor-test", logPath, true, AgentTextLogMode.SingleLine), actor, token);
                 Assert.AreEqual(HostLogConfigurationStatus.Success, logSource.Status);
                 Assert.IsNotNull(logSource.Source);
@@ -173,14 +160,13 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 await WaitUntilAsync(async () =>
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
-                    var report = await db.Agents.AsNoTracking().SingleAsync(x => x.Id == agentId, token);
+                    var report = await db.AgentStatuses.AsNoTracking().SingleAsync(x => x.Id == agentId, token);
                     if (report.AppliedConfigurationRevision != configured.Effective.Revision || report.ConfigurationAppliedAt is null) return false;
                     appliedAt = report.ConfigurationAppliedAt;
                     return true;
                 }, token);
                 gate.BlockSettings();
-                var logMonitoring = scope.ServiceProvider.GetRequiredService<HostLogMonitoring>();
-                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
+                await WaitForLogEndAsync(hostClient, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 var blocked = await gate.Blocked.WaitAsync(TimeSpan.FromMinutes(3), token);
                 Assert.IsTrue(AgentMetricBatchCodec.TryRead(blocked, out var original));
                 Assert.IsNotNull(original);
@@ -189,15 +175,15 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 Assert.AreNotEqual("0", updaterPid);
                 Assert.AreNotEqual("0", originalAgentPid);
 
-                var assignments = scope.ServiceProvider.GetRequiredService<AgentVersionAssignments>();
+                var assignments = resourceScope.ServiceProvider.GetRequiredService<AgentAssignments>();
                 await SetServiceRunningAsync(windows, running: false, token);
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
-                var cancelled = await SetAssignmentAsync(agents, assignments, agentId, "1.0.0", actor, token);
+                var cancelled = await SetAssignmentAsync(resources, assignments, agentId, "1.0.0", actor, token);
                 Assert.IsNotNull(cancelled);
-                Assert.IsNull(await SetAssignmentAsync(agents, assignments, agentId, null, actor, token));
-                var replaced = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
+                Assert.IsNull(await SetAssignmentAsync(resources, assignments, agentId, null, actor, token));
+                var replaced = await SetAssignmentAsync(resources, assignments, agentId, "1.1.0", actor, token);
                 Assert.IsNotNull(replaced);
-                var current = await SetAssignmentAsync(agents, assignments, agentId, "1.2.0", actor, token);
+                var current = await SetAssignmentAsync(resources, assignments, agentId, "1.2.0", actor, token);
                 Assert.IsNotNull(current);
                 Assert.AreNotEqual(cancelled, replaced);
                 Assert.AreNotEqual(replaced, current);
@@ -212,23 +198,23 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 Assert.AreEqual(UpdatePhase.Failed, failed.Phase);
                 Assert.IsTrue(Directory.Exists(failed.TargetDirectory));
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token));
-                await AssignAndWaitAsync(agents, assignments, agentId, "1.1.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
+                await AssignAndWaitAsync(resources, agents, assignments, agentId, "1.1.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
                 await WaitUntilAsync(() => Task.FromResult(!Directory.Exists(failed.TargetDirectory)), token);
                 await WaitUntilAsync(async () =>
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
-                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.1.0", token);
+                    return await db.AgentStatuses.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.1.0", token);
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-upgrade", token);
-                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
-                await AssignAndWaitAsync(agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
+                await WaitForLogEndAsync(hostClient, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
+                await AssignAndWaitAsync(resources, agents, assignments, agentId, "1.0.0", AgentUpdateResultKind.Succeeded, actor, token, TimeSpan.FromMinutes(7));
                 await WaitUntilAsync(async () =>
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
-                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.0.0", token);
+                    return await db.AgentStatuses.AnyAsync(x => x.Id == agentId && x.RuntimeVersion == "1.0.0", token);
                 }, token);
                 await AppendLogAsync(windows, logPath, "after-downgrade", token);
-                await WaitForLogEndAsync(logMonitoring, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
+                await WaitForLogEndAsync(hostClient, agents, agentId, device.Id, logSource.Source.Settings, DateTimeOffset.UtcNow, token);
                 Assert.AreEqual(updaterPid, await ServicePidAsync(windows, agent: false, token),
                     "An Agent rollback or downgrade must not replace the Updater.");
                 var installedUpdater = Path.Combine(windows
@@ -237,7 +223,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 var originalHash = SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(updater, "Vigiloom.Updater.dll"), token));
                 var replacementHash = SHA256.HashData(await File.ReadAllBytesAsync(Path.Combine(replacementUpdater, "Vigiloom.Updater.dll"), token));
                 Assert.IsFalse(originalHash.AsSpan().SequenceEqual(replacementHash), "The test requires different Updater builds.");
-                var upgradeId = await SetAssignmentAsync(agents, assignments, agentId, "1.1.0", actor, token);
+                var upgradeId = await SetAssignmentAsync(resources, assignments, agentId, "1.1.0", actor, token);
                 Assert.IsNotNull(upgradeId);
                 installed.TrackReplacement(upgradeId.Value);
                 await WaitForResultAsync(agents, agentId, upgradeId.Value, AgentUpdateResultKind.Succeeded, token, TimeSpan.FromMinutes(7));
@@ -268,7 +254,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                     await WaitUntilAsync(async () =>
                     {
                         await using var db = await agents.CreateDbContextAsync(token);
-                        var row = await db.Agents.AsNoTracking().Where(x => x.Id == agentId).Select(x => new
+                        var row = await db.AgentStatuses.AsNoTracking().Where(x => x.Id == agentId).Select(x => new
                         {
                             x.LastHeartbeatAt, x.RuntimeVersion, x.RuntimeReportedAt, x.ConfigurationReportedAt,
                             x.AppliedConfigurationRevision, x.ConfigurationAppliedAt, x.ConfigurationFailure
@@ -355,7 +341,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 await WaitUntilAsync(async () =>
                 {
                     await using var db = await agents.CreateDbContextAsync(token);
-                    return await db.Agents.AnyAsync(x => x.Id == agentId && x.LastHeartbeatAt > removedAt && x.RuntimeVersion == "1.1.0", token);
+                    return await db.AgentStatuses.AnyAsync(x => x.Id == agentId && x.LastHeartbeatAt > removedAt && x.RuntimeVersion == "1.1.0", token);
                 }, token);
 
                 gate.Allow();
@@ -368,10 +354,10 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 }, token);
                 await WaitUntilAsync(async () =>
                 {
-                    await using var db = await agents.CreateDbContextAsync(token);
+                    await using var db = await logs.CreateDbContextAsync(token);
                     return await db.HostLogs.CountAsync(x => x.AgentId == agentId && x.SourceId == logSource.Source.Settings.SourceId, token) >= 3;
                 }, token);
-                await using (var db = await agents.CreateDbContextAsync(token))
+                await using (var db = await logs.CreateDbContextAsync(token))
                 {
                     var records = await db.HostLogs.AsNoTracking().Where(x => x.AgentId == agentId && x.SourceId == logSource.Source.Settings.SourceId)
                         .OrderBy(x => x.RowId).ToArrayAsync(token);
@@ -380,16 +366,16 @@ public sealed class AgentServiceUpdateTests(TestContext context)
                 }
             }
             finally { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
-        }, context.CancellationToken);
+        }, middleToken), outerToken), context.CancellationToken);
     }
 
-    private static async Task<Guid> WaitForAgentAsync(IDbContextFactory<AgentManagementDbContext> contexts, Guid deviceId, string rid, CancellationToken token)
+    private static async Task<Guid> WaitForAgentAsync(IDbContextFactory<HostMonitoringDbContext> contexts, Guid deviceId, string rid, CancellationToken token)
     {
         Guid agentId = default;
         await WaitUntilAsync(async () =>
         {
             await using var db = await contexts.CreateDbContextAsync(token);
-            var agent = await db.Agents.AsNoTracking().SingleOrDefaultAsync(x => x.DeviceId == deviceId && x.RevokedAt == null, token);
+            var agent = await db.AgentStatuses.AsNoTracking().SingleOrDefaultAsync(x => x.DeviceId == deviceId, token);
             if (agent?.LastHeartbeatAt is null || agent.RuntimeIdentifier != rid) return false;
             agentId = agent.Id; return true;
         }, token);
@@ -406,7 +392,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
         else await RunAsync("sudo", token, "-n", "sh", "-c", "printf '%s\\n' \"$2\" >> \"$1\" && chmod 0644 \"$1\"", "sh", path, line);
     }
 
-    private static async Task WaitForLogEndAsync(HostLogMonitoring monitoring, IDbContextFactory<AgentManagementDbContext> agents,
+    private static async Task WaitForLogEndAsync(HttpClient host, IDbContextFactory<HostMonitoringDbContext> agents,
         Guid agentId, Guid deviceId, AgentLogSourceSetting source,
         DateTimeOffset after, CancellationToken token)
     {
@@ -415,7 +401,8 @@ public sealed class AgentServiceUpdateTests(TestContext context)
         {
             await WaitUntilAsync(async () =>
             {
-                var status = await monitoring.GetAsync(deviceId, token);
+                using var response = await host.GetAsync($"/internal/v1/devices/{deviceId:D}/agent-log-status", token);
+                var status = response.StatusCode == HttpStatusCode.NotFound ? null : await response.Content.ReadFromJsonAsync<HostLogStatusView>(cancellationToken: token);
                 var match = status?.Report.Sources.FirstOrDefault(x => x.SourceId == source.SourceId);
                 observation = $"throttled={status?.Report.Throttled}; state={match?.State}; generationMatches={match?.Generation == source.Generation}; observedAt={match?.ObservedAt:O}; ageSeconds={match?.AgeSeconds}; requiredAfter={after:O}";
                 return status?.Report.Throttled == false && match is not null && match.Generation == source.Generation &&
@@ -425,7 +412,7 @@ public sealed class AgentServiceUpdateTests(TestContext context)
         catch (TimeoutException error)
         {
             await using var db = await agents.CreateDbContextAsync(token);
-            var row = await db.Agents.AsNoTracking().Where(x => x.Id == agentId).Select(x => new
+            var row = await db.AgentStatuses.AsNoTracking().Where(x => x.Id == agentId).Select(x => new
             {
                 x.LastHeartbeatAt, x.RuntimeVersion, x.RuntimeReportedAt, x.QueueReportEpoch, x.QueueReportSequence,
                 x.LogStatusReportEpoch, x.LogStatusReportSequence, x.LogStatusReportedAt
@@ -471,36 +458,36 @@ public sealed class AgentServiceUpdateTests(TestContext context)
             await RunAsync("sudo", token, "-n", "systemctl", running ? "start" : "stop", "vigiloom-agent.service");
     }
 
-    private static async Task AssignAndWaitAsync(IDbContextFactory<AgentManagementDbContext> contexts,
-        AgentVersionAssignments assignments, Guid agentId, string version, AgentUpdateResultKind result, Guid actor, CancellationToken token,
+    private static async Task AssignAndWaitAsync(IDbContextFactory<ResourcesDbContext> resources, IDbContextFactory<HostMonitoringDbContext> contexts,
+        AgentAssignments assignments, Guid agentId, string version, AgentUpdateResultKind result, Guid actor, CancellationToken token,
         TimeSpan? timeout = null)
     {
-        var updateId = await SetAssignmentAsync(contexts, assignments, agentId, version, actor, token);
+        var updateId = await SetAssignmentAsync(resources, assignments, agentId, version, actor, token);
         Assert.IsNotNull(updateId);
         await WaitForResultAsync(contexts, agentId, updateId.Value, result, token, timeout);
     }
 
-    private static async Task<Guid?> SetAssignmentAsync(IDbContextFactory<AgentManagementDbContext> contexts,
-        AgentVersionAssignments assignments, Guid agentId, string? version, Guid actor, CancellationToken token)
+    private static async Task<Guid?> SetAssignmentAsync(IDbContextFactory<ResourcesDbContext> contexts,
+        AgentAssignments assignments, Guid agentId, string? version, Guid actor, CancellationToken token)
     {
         Guid? package = null;
         if (version is not null)
         {
             await using var db = await contexts.CreateDbContextAsync(token);
-            package = await db.Packages.Where(x => x.Version == version).Select(x => x.Id).SingleAsync(token);
+            package = await db.AgentPackages.Where(x => x.Version == version).Select(x => x.Id).SingleAsync(token);
         }
         var current = await assignments.GetAsync(agentId, token);
         Assert.IsNotNull(current);
-        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, package, current.Revision, actor, token));
+        Assert.AreEqual(VersionAssignmentResult.Saved, await assignments.SetAsync(agentId, new(package, current.Revision, actor), token));
         await using var verify = await contexts.CreateDbContextAsync(token);
-        var assignment = await verify.VersionAssignments.AsNoTracking().SingleAsync(x => x.AgentId == agentId, token);
+        var assignment = await verify.AgentVersionAssignments.AsNoTracking().SingleAsync(x => x.AgentId == agentId, token);
         Assert.AreEqual(package, assignment.PackageId);
         if (package is null) Assert.IsNull(assignment.UpdateId);
         else Assert.IsNotNull(assignment.UpdateId);
         return assignment.UpdateId;
     }
 
-    private static async Task WaitForResultAsync(IDbContextFactory<AgentManagementDbContext> contexts,
+    private static async Task WaitForResultAsync(IDbContextFactory<HostMonitoringDbContext> contexts,
         Guid agentId, Guid updateId, AgentUpdateResultKind result, CancellationToken token, TimeSpan? timeout)
     {
         await WaitUntilAsync(async () =>
