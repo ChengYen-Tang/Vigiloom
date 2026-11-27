@@ -102,6 +102,7 @@ public sealed class LegacyPlatformRetentionTests(TestContext context)
                     services.RemoveAll<IBackgroundHistorySource>();
                     services.AddHttpClient<RemotePlatformAuditRetention>().ConfigurePrimaryHttpMessageHandler(() => web.Server.CreateHandler());
                     services.AddScoped<IAuditRetentionSource>(provider => provider.GetRequiredService<RemotePlatformAuditRetention>());
+                    services.AddScoped<ILegacyOperationsRetentionSource>(provider => provider.GetRequiredService<RemotePlatformAuditRetention>());
                 });
             });
             using var client = operations.CreateClient();

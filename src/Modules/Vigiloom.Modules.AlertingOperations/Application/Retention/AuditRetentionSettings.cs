@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
-using Vigiloom.Infrastructure.Operations;
 using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 
@@ -18,7 +17,7 @@ public sealed class AuditRetentionSettings(
     IDataProtectionProvider protection,
     IEnumerable<IAuditRetentionSource> sources,
     IEnumerable<IBackgroundHistorySource>? backgroundSources = null,
-    RemotePlatformAuditRetention? legacyPlatform = null)
+    ILegacyOperationsRetentionSource? legacyPlatform = null)
 {
     private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.AuditRetention.Preview.v1");
 

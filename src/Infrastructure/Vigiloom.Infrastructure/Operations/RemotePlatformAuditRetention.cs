@@ -4,7 +4,7 @@ using System.Data.Common;
 namespace Vigiloom.Infrastructure.Operations;
 
 public sealed class RemotePlatformAuditRetention(HttpClient client)
-    : RemoteAuditRetention(client, "internal/v1/legacy-platform-audit/retention/")
+    : RemoteAuditRetention(client, "internal/v1/legacy-platform-audit/retention/"), ILegacyOperationsRetentionSource
 {
     public Task<LegacyOperationsRetentionCounts> CountOperationsAsync(DateTimeOffset cutoff, string excludedDatabase, CancellationToken token) =>
         SendAsync<LegacyOperationsRetentionCounts>("operations-count", new(cutoff, ExcludedOperationsDatabase: excludedDatabase), token);

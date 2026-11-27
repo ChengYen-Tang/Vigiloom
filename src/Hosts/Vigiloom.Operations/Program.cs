@@ -102,6 +102,7 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Web:Url"]))
         client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Web:Url"]!.TrimEnd('/') + "/"))
         .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
     builder.Services.AddScoped<IAuditRetentionSource>(services => services.GetRequiredService<RemotePlatformAuditRetention>());
+    builder.Services.AddScoped<ILegacyOperationsRetentionSource>(services => services.GetRequiredService<RemotePlatformAuditRetention>());
 }
 if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Security:Url"]))
 {
