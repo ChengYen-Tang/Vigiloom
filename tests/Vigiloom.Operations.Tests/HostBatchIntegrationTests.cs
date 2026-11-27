@@ -181,6 +181,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 var inventory = await securityApi.GetFromJsonAsync<DeviceInventoryView>($"/api/v1/devices/{identity.DeviceId:D}/inventory", token);
                 Assert.AreEqual(identity.AgentId, inventory!.AgentId);
                 Assert.IsTrue(inventory.Sources.Any(source => source.Source == InventorySource.LinuxDpkg));
+                using (var vulnerability = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/vulnerabilities", token))
+                    Assert.AreEqual(HttpStatusCode.OK, vulnerability.StatusCode);
                 using var missing = await securityApi.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/inventory", token);
                 Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
             }

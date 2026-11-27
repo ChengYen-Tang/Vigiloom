@@ -188,6 +188,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapPublicInventory();
+app.MapPublicVulnerabilities();
 app.MapWorkHistoryEndpoints();
 app.MapPost("/internal/v1/inventory-settings/audit", async (OperationAuditQuery query, InventoryAuditFeed audit, CancellationToken token) =>
     AuditFeedLimits.Valid(query) ? Results.Ok(await audit.QueryAsync(query, token)) : Results.BadRequest());

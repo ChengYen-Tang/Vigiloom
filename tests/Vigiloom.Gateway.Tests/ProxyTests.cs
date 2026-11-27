@@ -170,6 +170,7 @@ public sealed class ProxyTests
         Assert.AreEqual("operations", await client.GetStringAsync($"/api/v1/devices/{id:D}/host-logs", TestContext.CancellationToken));
         Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/inventory", TestContext.CancellationToken));
         Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/inventory/changes", TestContext.CancellationToken));
+        Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/vulnerabilities", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/agent-settings", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/agent-queue-capacity", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/host-metric-threshold", TestContext.CancellationToken));
