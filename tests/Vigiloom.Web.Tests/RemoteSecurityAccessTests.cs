@@ -31,6 +31,7 @@ public sealed class RemoteSecurityAccessTests
         services.AddScoped<IntelligenceSettingsAccess>();
         services.AddScoped<SigmaEvidenceAccess>();
         services.AddScoped<SigmaRuleAccess>();
+        services.AddScoped<CustomBaselineAccess>();
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         var id = Guid.CreateVersion7();
@@ -49,6 +50,7 @@ public sealed class RemoteSecurityAccessTests
         Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<IntelligenceSettingsAccess>());
         await Assert.ThrowsExactlyAsync<HttpRequestException>(() => scope.ServiceProvider.GetRequiredService<SigmaEvidenceAccess>().GetAsync(id, CancellationToken.None));
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => scope.ServiceProvider.GetRequiredService<SigmaRuleAccess>().GetAsync(null, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => scope.ServiceProvider.GetRequiredService<CustomBaselineAccess>().ReadAsync(id, id, CancellationToken.None));
     }
 
     private sealed class BadRequestHandler : HttpMessageHandler
