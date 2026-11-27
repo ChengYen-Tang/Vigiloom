@@ -85,4 +85,14 @@
   <data name="請選擇有效的通知來源。" xml:space="preserve"><value>请选择有效的通知来源。</value></data>
   <data name="頁碼無效，請重新查詢。" xml:space="preserve"><value>页码无效，请重新查询。</value></data>
   <data name="無法載入通知紀錄，請稍後再試。" xml:space="preserve"><value>无法加载通知记录，请稍后再试。</value></data>
+  <data name="{0}：{1}" xml:space="preserve"><value>{0}：{1}</value></data>
+  <data name="主機日誌採集缺口" xml:space="preserve"><value>主机日志采集缺口</value></data>
+  <data name="服務健康檢查" xml:space="preserve"><value>服务健康检查</value></data>
+  <data name="資產盤點變更" xml:space="preserve"><value>资产盘点变更</value></data>
+  <data name="完整性變更" xml:space="preserve"><value>完整性变更</value></data>
+  <data name="行為規則後續命中" xml:space="preserve"><value>行为规则后续命中</value></data>
+  <data name="行為規則命中" xml:space="preserve"><value>行为规则命中</value></data>
+  <data name="行為規則未評估" xml:space="preserve"><value>行为规则未评估</value></data>
+  <data name="安全基準檢查" xml:space="preserve"><value>安全基准检查</value></data>
+  <data name="IOC 比對線索" xml:space="preserve"><value>IOC 匹配线索</value></data>
 </root>
