@@ -6,23 +6,23 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 namespace Vigiloom.Web.HostMonitoring;
 
-internal sealed class SigmaRuleAccess(SigmaRuleInventory inventory, SigmaRuleService rules, IHttpClientFactory clients, IConfiguration configuration)
+internal sealed class SigmaRuleAccess(IServiceProvider services, IHttpClientFactory clients, IConfiguration configuration)
 {
     private bool Remote => configuration.GetValue("Services:Security:IntelligenceEnabled", false) &&
         !string.IsNullOrWhiteSpace(configuration["Services:Security:Url"]);
     public Task<SigmaDetectionRulePage> GetAsync(string? cursor, CancellationToken token) => Remote
         ? ReadAsync<SigmaDetectionRulePage>(cursor is null ? "internal/v1/sigma/rules" : QueryHelpers.AddQueryString("internal/v1/sigma/rules", "cursor", cursor), token)
-        : inventory.GetAsync(cursor, token);
+        : services.GetRequiredService<SigmaRuleInventory>().GetAsync(cursor, token);
     public Task<SigmaRuleStatePage> GetStatesAsync(int page, CancellationToken token) => Remote
-        ? ReadAsync<SigmaRuleStatePage>($"internal/v1/sigma/states?page={page}", token) : inventory.GetStatesAsync(page, token);
+        ? ReadAsync<SigmaRuleStatePage>($"internal/v1/sigma/states?page={page}", token) : services.GetRequiredService<SigmaRuleInventory>().GetStatesAsync(page, token);
     public async Task<(SigmaRuleTestStatus Status, SigmaRuleTestResponse? Result)> TestAsync(SigmaRuleTestRequest input, Guid actor, CancellationToken token)
     {
-        if (!Remote) return await rules.TestAsync(input, actor, token);
+        if (!Remote) return await services.GetRequiredService<SigmaRuleService>().TestAsync(input, actor, token);
         var response = await SendAsync<TestResult>(HttpMethod.Post, "tests", input, actor, token);
         return (response.Status, response.Result);
     }
     public Task<SigmaRuleChangeStatus> SetAsync(SigmaRuleStateRequest input, Guid actor, CancellationToken token) => Remote
-        ? SendAsync<SigmaRuleChangeStatus>(HttpMethod.Put, "state", input, actor, token) : rules.SetAsync(input, actor, token);
+        ? SendAsync<SigmaRuleChangeStatus>(HttpMethod.Put, "state", input, actor, token) : services.GetRequiredService<SigmaRuleService>().SetAsync(input, actor, token);
 
     private async Task<T> ReadAsync<T>(string path, CancellationToken token)
     {

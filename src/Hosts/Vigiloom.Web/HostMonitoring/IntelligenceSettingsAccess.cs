@@ -6,18 +6,17 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence.Advisories;
 
 namespace Vigiloom.Web.HostMonitoring;
 
-internal sealed class IntelligenceSettingsAccess(IntelligencePolicy policy, AdvisoryCredentials credentials, AdvisoryRecovery recovery,
-    IHttpClientFactory clients, IConfiguration configuration)
+internal sealed class IntelligenceSettingsAccess(IServiceProvider services, IHttpClientFactory clients, IConfiguration configuration)
 {
     private bool Remote => configuration.GetValue("Services:Security:IntelligenceEnabled", false) &&
         !string.IsNullOrWhiteSpace(configuration["Services:Security:Url"]);
 
     public Task<IntelligencePolicyResult> UpdateAsync(Guid sourceId, IntelligencePolicyUpdate input, Guid actor, CancellationToken token) => Remote
-        ? SendAsync<IntelligencePolicyResult>(HttpMethod.Put, sourceId, "policy", input, actor, token) : policy.UpdateAsync(sourceId, input, actor, token);
+        ? SendAsync<IntelligencePolicyResult>(HttpMethod.Put, sourceId, "policy", input, actor, token) : services.GetRequiredService<IntelligencePolicy>().UpdateAsync(sourceId, input, actor, token);
     public Task<AdvisoryCredentialResult> UpdateAsync(Guid sourceId, AdvisoryCredentialUpdate input, Guid actor, CancellationToken token) => Remote
-        ? SendAsync<AdvisoryCredentialResult>(HttpMethod.Put, sourceId, "advisory-credential", input, actor, token) : credentials.UpdateAsync(sourceId, input, actor, token);
+        ? SendAsync<AdvisoryCredentialResult>(HttpMethod.Put, sourceId, "advisory-credential", input, actor, token) : services.GetRequiredService<AdvisoryCredentials>().UpdateAsync(sourceId, input, actor, token);
     public Task<AdvisoryRecoveryResult> AbandonAsync(Guid sourceId, AdvisoryImportRecoveryRequest input, Guid actor, CancellationToken token) => Remote
-        ? SendAsync<AdvisoryRecoveryResult>(HttpMethod.Post, sourceId, "advisory-recovery", input, actor, token) : recovery.AbandonAsync(sourceId, input, actor, token);
+        ? SendAsync<AdvisoryRecoveryResult>(HttpMethod.Post, sourceId, "advisory-recovery", input, actor, token) : services.GetRequiredService<AdvisoryRecovery>().AbandonAsync(sourceId, input, actor, token);
 
     private async Task<TResult> SendAsync<TResult>(HttpMethod method, Guid sourceId, string action, object input, Guid actor, CancellationToken token)
     {
