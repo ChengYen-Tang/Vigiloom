@@ -1,6 +1,6 @@
 # REQ-23 pipeline reception design
 
-The Administrator needs to distinguish authenticated source credentials, actual retained telemetry reception and Collector/application health. The [visual reference](req-23-pipeline-concept.png) uses synthetic data and the selected Vigiloom visual direction. It is not a claim that Collector heartbeat, automated configuration or application health already exist.
+The Administrator needs to distinguish authenticated source credentials, actual retained telemetry reception and Collector/application health. The visual reference uses synthetic data and the selected Vigiloom visual direction. It is not a claim that Collector heartbeat, automated configuration or application health already exist.
 
 The reception overview shows the last persisted Log, Metric and Trace time per source. Empty values mean no retained matching records; a revoked credential does not erase history. The separate Collector health state remains unknown until a real health signal exists. The on-page guidance identifies the current OTLP/HTTP path and links to existing source management, but full Collector deployment and configuration remain unfinished.
 
