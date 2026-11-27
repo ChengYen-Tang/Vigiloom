@@ -54,7 +54,10 @@ public sealed class ServiceOpenApiTests(TestContext context)
         if (scheme == "AgentBearer")
         {
             var thresholdWrite = paths.GetProperty("/api/v1/devices/{deviceId}/host-metric-threshold").GetProperty("put");
+            Assert.AreEqual(1, thresholdWrite.GetProperty("security").GetArrayLength());
+            Assert.IsTrue(thresholdWrite.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
             Assert.IsTrue(thresholdWrite.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
+            Assert.IsFalse(thresholdWrite.GetProperty("security")[0].TryGetProperty("ApiBearer", out _));
             Assert.IsTrue(thresholdWrite.GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json").TryGetProperty("schema", out _));
         }
     }

@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -717,6 +718,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.AreEqual(1, await check.HostMetrics.CountAsync(token));
             Assert.AreEqual(2, sink.Calls);
 
+            var thresholdSession = new AdminSessionHandler();
             using var proxiedHost = new WebApplicationFactory<HostMonitoring::Program>().WithWebHostBuilder(web =>
             {
                 web.UseUrls("http://127.0.0.1:0");
@@ -730,6 +732,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 web.ConfigureTestServices(configured =>
                 {
                     configured.AddHttpClient("resources").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
+                    configured.AddHttpClient<IdentityCookieValidator>().ConfigurePrimaryHttpMessageHandler(() => thresholdSession);
                     configured.RemoveAll<IApiCredentialValidation>();
                     configured.AddSingleton<IApiCredentialValidation, CredentialValidation>();
                 });
@@ -750,6 +753,73 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.IsNotNull(publicMetrics);
             var publicThreshold = await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>($"/api/v1/devices/{identity.DeviceId:D}/host-metric-threshold?agentId={identity.AgentId:D}&kind=CpuTotalPercent&source=cpu", token);
             Assert.AreEqual(HostMetricThresholdState.Exceeded, publicThreshold!.State);
+            var thresholdUrl = $"/api/v1/devices/{identity.DeviceId:D}/host-metric-threshold?agentId={identity.AgentId:D}&kind=CpuTotalPercent&source=cpu";
+            var thresholdInput = new HostMetricThresholdInput(true, HostMetricComparison.AtLeast, 30, 120, publicThreshold.Threshold!.Version);
+            proxyClient.DefaultRequestHeaders.Authorization = null;
+            var cookieOptions = proxiedHost.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
+            var adminIdentity = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, thresholdSession.AccountId.ToString("D")),
+                new Claim("AspNet.Identity.SecurityStamp", "stamp")], IdentityConstants.ApplicationScheme);
+            var adminCookie = cookieOptions.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(adminIdentity), IdentityConstants.ApplicationScheme));
+            proxyClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={adminCookie}");
+            using (var missingCsrf = await proxyClient.PutAsJsonAsync(thresholdUrl, thresholdInput, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+            var antiContext = new DefaultHttpContext { RequestServices = proxiedHost.Services, User = new ClaimsPrincipal(adminIdentity) };
+            antiContext.Request.Scheme = "https";
+            var anti = proxiedHost.Services.GetRequiredService<IAntiforgery>().GetAndStoreTokens(antiContext);
+            var antiCookie = antiContext.Response.Headers.SetCookie.Single()!.Split(';')[0];
+            proxyClient.DefaultRequestHeaders.Remove("Cookie");
+            proxyClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={adminCookie}; {antiCookie}");
+            proxyClient.DefaultRequestHeaders.Add("RequestVerificationToken", anti.RequestToken);
+            using (var saved = await proxyClient.PutAsJsonAsync(thresholdUrl, thresholdInput, token))
+                Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode);
+            using (var stale = await proxyClient.PutAsJsonAsync(thresholdUrl, thresholdInput, token))
+                Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
+            var normal = await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>(thresholdUrl, token);
+            Assert.AreEqual(HostMetricThresholdState.Normal, normal!.State);
+            Assert.AreEqual(HostMetricThresholdState.NotConfigured,
+                (await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>(thresholdUrl + "&dimension=other", token))!.State);
+            Assert.AreEqual(HostMetricThresholdState.NotConfigured,
+                (await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>(thresholdUrl.Replace("source=cpu", "source=cpu%20"), token))!.State);
+            await using (var audit = new HostMonitoringDbContext(hostOptions))
+                Assert.AreEqual(2, await audit.Set<HostMetricThresholdAudit>().CountAsync(token));
+            thresholdSession.Role = "Read only";
+            using (var readerUpdate = await proxyClient.PutAsJsonAsync(thresholdUrl, thresholdInput, token))
+                Assert.AreEqual(HttpStatusCode.Forbidden, readerUpdate.StatusCode);
+            Assert.AreEqual(HostMetricThresholdState.Normal, (await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>(thresholdUrl, token))!.State);
+            thresholdSession.Role = "Administrator";
+            await using (var db = new HostMonitoringDbContext(hostOptions))
+            {
+                foreach (var (dimension, observed) in new[] { ("stale", nowUtc.AddMinutes(-10)), ("future", nowUtc.AddMinutes(10)) })
+                    db.HostMetrics.Add(new HostMetric(identity.AgentId, Guid.CreateVersion7(), 0,
+                        new AgentMetricPoint(Guid.CreateVersion7(), observed, AgentMetricKind.CpuTotalPercent, "cpu", dimension, 95), nowUtc));
+                await db.SaveChangesAsync(token);
+            }
+            foreach (var (dimension, reason) in new[] { ("stale", HostMetricUnknownReason.Stale), ("future", HostMetricUnknownReason.FutureTimestamp), ("missing", HostMetricUnknownReason.NoSample) })
+            {
+                var otherUrl = thresholdUrl + "&dimension=" + dimension;
+                using var created = await proxyClient.PutAsJsonAsync(otherUrl, new HostMetricThresholdInput(true, HostMetricComparison.AtLeast, 80, 120, ""), token);
+                Assert.AreEqual(HttpStatusCode.OK, created.StatusCode);
+                var unknown = await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>(otherUrl, token);
+                Assert.AreEqual(HostMetricThresholdState.Unknown, unknown!.State);
+                Assert.AreEqual(reason, unknown.UnknownReason);
+            }
+            var concurrentInput = thresholdInput with { Version = normal.Threshold!.Version };
+            var concurrent = await Task.WhenAll(proxyClient.PutAsJsonAsync(thresholdUrl, concurrentInput with { Value = 31 }, token),
+                proxyClient.PutAsJsonAsync(thresholdUrl, concurrentInput with { Value = 32 }, token));
+            try { CollectionAssert.AreEquivalent(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }, concurrent.Select(x => x.StatusCode).ToArray()); }
+            finally { foreach (var response in concurrent) response.Dispose(); }
+            using (var auditResponse = await client.PostAsJsonAsync("/internal/v1/audit/query", new AuditFeedRequest(AuditFeedSource.HostMetricThresholds, auditQuery), token))
+            {
+                var feed = await auditResponse.Content.ReadFromJsonAsync<AuditFeedPage>(cancellationToken: token);
+                var detail = feed!.Items.First(x => x.MetricThreshold?.ThresholdId == normal.Threshold.Id).MetricThreshold!;
+                Assert.AreEqual(identity.AgentId, detail.AgentId);
+                Assert.AreEqual((int)AgentMetricKind.CpuTotalPercent, detail.Kind);
+                Assert.AreEqual("cpu", detail.Source);
+                Assert.IsNull(detail.Dimension);
+            }
+            proxyClient.DefaultRequestHeaders.Remove("Cookie");
+            proxyClient.DefaultRequestHeaders.Remove("RequestVerificationToken");
+            proxyClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
             using (var missing = await proxyClient.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/host-metrics?from={from}&until={until}", token))
             {
                 Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
@@ -865,9 +935,10 @@ public sealed class HostBatchIntegrationTests(TestContext context)
     private sealed class AdminSessionHandler : HttpMessageHandler
     {
         public string Role { get; set; } = "Administrator";
+        public Guid AccountId { get; } = Guid.CreateVersion7();
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new ValidatedCookieResponse([
-                new(ClaimTypes.NameIdentifier, Guid.CreateVersion7().ToString("D"), ClaimValueTypes.String, "LOCAL AUTHORITY", "LOCAL AUTHORITY"),
+                new(ClaimTypes.NameIdentifier, AccountId.ToString("D"), ClaimValueTypes.String, "LOCAL AUTHORITY", "LOCAL AUTHORITY"),
                 new(ClaimTypes.Role, Role, ClaimValueTypes.String, "LOCAL AUTHORITY", "LOCAL AUTHORITY")
             ])) });
     }

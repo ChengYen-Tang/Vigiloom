@@ -809,7 +809,6 @@ app.MapAgentPackageEndpoints();
 app.MapAgentUpdateDownloadEndpoints();
 app.MapAgentPackageUiEndpoints();
 app.MapHostMetricEndpoints();
-app.MapHostMetricThresholdEndpoints();
 app.MapAgentConfigurationEndpoints();
 app.MapAgentVersionEndpoints();
 app.MapYaraScanEndpoints();
