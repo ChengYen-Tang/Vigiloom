@@ -133,6 +133,7 @@ public sealed class ProxyTests
         await using var network = await StartUpstreamAsync("network", TestContext.CancellationToken);
         await using var resources = await StartUpstreamAsync("resources", TestContext.CancellationToken);
         await using var hostMonitoring = await StartUpstreamAsync("host-monitoring", TestContext.CancellationToken);
+        await using var operations = await StartUpstreamAsync("operations", TestContext.CancellationToken);
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         await using var identity = builder.Build();
@@ -146,6 +147,7 @@ public sealed class ProxyTests
                 ["ReverseProxy:Clusters:network:Destinations:network:Address"] = Address(network),
                 ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = Address(resources),
                 ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = Address(hostMonitoring),
+                ["ReverseProxy:Clusters:operations:Destinations:operations:Address"] = Address(operations),
                 ["Services:Identity:Url"] = Address(identity)
             })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
@@ -163,6 +165,7 @@ public sealed class ProxyTests
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/agent-queue-capacity-status", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/host-metrics", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/host-metrics/series", TestContext.CancellationToken));
+        Assert.AreEqual("operations", await client.GetStringAsync($"/api/v1/devices/{id:D}/host-logs", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/agent-settings", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/agent-queue-capacity", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/host-metric-threshold", TestContext.CancellationToken));

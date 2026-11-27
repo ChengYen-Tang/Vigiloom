@@ -3,12 +3,15 @@ using Hangfire;
 using Hangfire.SqlServer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Security;
+using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
@@ -27,6 +30,19 @@ using QuotaContract = Vigiloom.Contracts.Operations.LogQuotaSettings;
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Operations");
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
+builder.Services.AddOptions<IdentityOptions>();
+builder.Services.AddVigiloomIdentityCookieClient();
+builder.Services.AddVigiloomIdentityCredentialClient();
+builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
+builder.Services.AddAuthentication().AddVigiloomApiCredentials();
+builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, options =>
+{
+    options.Events.OnValidatePrincipal = context => context.HttpContext.RequestServices.GetRequiredService<IdentityCookieValidator>().ValidateAsync(context);
+    options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return Task.CompletedTask; };
+    options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
+});
+builder.Services.AddAuthorization(options => options.AddVigiloomAccessPolicies());
+builder.Services.AddVigiloomApiRateLimiting(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddModuleSqlServer<OperationsDbContext>(services =>
     services.GetRequiredService<IConfiguration>().GetConnectionString("Operations")
@@ -78,6 +94,9 @@ builder.Services.AddHttpClient("Resources", (services, client) =>
 })
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
     .AddServiceDiscovery();
+builder.Services.AddHttpClient("Observability", (services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://vigiloom-observability").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 if (builder.Configuration.GetValue("Temporal:EnableOperationsWorker", true))
 {
     builder.Services.AddVigiloomTemporalWorker<OperationsWorkHandler>(builder.Configuration["Work:OperationsQueue"] ?? Vigiloom.Contracts.Operations.OperationsWork.Queue);
@@ -133,6 +152,12 @@ builder.Services.AddScoped<ApplicationLogCleanup>();
 builder.Services.AddHostedService<WorkDispatcher>();
 builder.Services.AddHostedService<LineAggregationWorker>();
 var app = builder.Build();
+var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
+if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
+app.MapHostLogQuery();
 app.MapLineEndpoints();
 app.MapHistoryEndpoints();
 app.MapAuditEndpoints();

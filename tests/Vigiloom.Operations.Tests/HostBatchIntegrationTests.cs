@@ -294,6 +294,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             await MigrateAsync(provider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>(), token);
             await MigrateAsync(provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>(), token);
             await MigrateAsync(provider.GetRequiredService<IDbContextFactory<SchedulingDbContext>>(), token);
+            var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             using var operations = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
             {
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -303,10 +304,13 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     HostWorkers.RemoveBackgroundWork(configured);
                     configured.RemoveAll<IOutboxHandler>();
                     configured.AddScoped<IOutboxHandler, TestOutboxHandler>();
+                    configured.AddHttpClient("Resources").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
+                    configured.AddHttpClient("Observability").ConfigurePrimaryHttpMessageHandler(() => new RetentionHandler());
+                    configured.RemoveAll<IApiCredentialValidation>();
+                    configured.AddSingleton<IApiCredentialValidation, CredentialValidation>();
                 });
             });
             using var operationsClient = operations.CreateClient();
-            var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             var targetUpdate = new RecordedAgentUpdateTarget(Guid.CreateVersion7(), identity.AgentId, Guid.CreateVersion7(), "1.2.3", "win-x64", new string('a', 64), DateTimeOffset.UtcNow);
             var sink = new CommitThenLoseResponse(operationsClient);
             var securityWriter = new SecurityWriter();
@@ -490,6 +494,21 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             using (var already = await SendAsync(client, payload, "valid", token)) Assert.AreEqual(HttpStatusCode.NoContent, already.StatusCode);
             await using var logs = await provider.GetRequiredService<IDbContextFactory<CentralLogsDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(1, await logs.HostLogs.CountAsync(token));
+            await using var auditDb = await provider.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token);
+            var auditCount = await auditDb.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.AuditEvents").SingleAsync(token);
+            using (var publicClient = operations.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") }))
+            {
+                using (var denied = await publicClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-logs?from={from}&until={until}", token))
+                    Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+                publicClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
+                var page = await publicClient.GetFromJsonAsync<HostLogPage>($"/api/v1/devices/{identity.DeviceId:D}/host-logs?from={from}&until={until}", token);
+                Assert.IsNotNull(page);
+                Assert.HasCount(1, page.Items);
+                Assert.AreEqual(14, page.RetentionDays);
+                using var invalid = await publicClient.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/host-logs?from={until}&until={from}", token);
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            }
+            Assert.AreEqual(auditCount + 1, await auditDb.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM operations.AuditEvents").SingleAsync(token));
             await using var check = new HostMonitoringDbContext(hostOptions);
             Assert.AreEqual(120, (await check.AgentStatuses.SingleAsync(token)).HeartbeatSafetyIntervalSeconds);
             Assert.IsFalse(await check.ReceivedBatches.AnyAsync(x => EF.Property<bool>(x, "PendingDelivery"), token));
@@ -617,6 +636,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var command = await request.Content!.ReadFromJsonAsync<AgentCredentialCommand>(cancellationToken: token);
             return command?.Credential == "valid" ? new(HttpStatusCode.OK) { Content = JsonContent.Create(identity) } : new(HttpStatusCode.Unauthorized);
         }
+    }
+
+    private sealed class RetentionHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new Vigiloom.Contracts.Services.TelemetryRetentionSnapshot(14, 30, "test")) });
     }
 
     private sealed class CredentialValidation : IApiCredentialValidation
