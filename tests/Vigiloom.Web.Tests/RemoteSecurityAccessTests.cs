@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Web.HostMonitoring;
+using Vigiloom.Web.AgentVersions;
 
 namespace Vigiloom.Web.Tests;
 
@@ -20,6 +21,8 @@ public sealed class RemoteSecurityAccessTests
         services.AddScoped<DetectionAccess>();
         services.AddScoped<InventoryAccess>();
         services.AddScoped<VulnerabilityAccess>();
+        services.AddScoped<IntegrityAccess>();
+        services.AddScoped<IntegritySettingsAccess>();
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         var id = Guid.CreateVersion7();
@@ -28,6 +31,8 @@ public sealed class RemoteSecurityAccessTests
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => scope.ServiceProvider.GetRequiredService<DetectionAccess>().GetEventsAsync(id, start, end, null, CancellationToken.None));
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => scope.ServiceProvider.GetRequiredService<InventoryAccess>().GetAsync(id, null, CancellationToken.None));
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => scope.ServiceProvider.GetRequiredService<VulnerabilityAccess>().GetCurrentAsync(id, 1, null, null, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => scope.ServiceProvider.GetRequiredService<IntegrityAccess>().GetAsync(id, null, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => scope.ServiceProvider.GetRequiredService<IntegritySettingsAccess>().ListAsync(id, CancellationToken.None));
     }
 
     private sealed class BadRequestHandler : HttpMessageHandler

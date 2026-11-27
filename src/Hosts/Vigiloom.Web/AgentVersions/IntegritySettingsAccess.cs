@@ -5,7 +5,7 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Integrity;
 
 namespace Vigiloom.Web.AgentVersions;
 
-internal sealed class IntegritySettingsAccess(IntegrityConfiguration legacy, IHttpClientFactory clients, IConfiguration configuration)
+internal sealed class IntegritySettingsAccess(IServiceProvider services, IHttpClientFactory clients, IConfiguration configuration)
 {
     private bool Remote => !string.IsNullOrWhiteSpace(configuration["Services:Security:Url"]);
     private HttpClient Client => clients.CreateClient("security");
@@ -13,7 +13,7 @@ internal sealed class IntegritySettingsAccess(IntegrityConfiguration legacy, IHt
 
     public async Task<IReadOnlyList<IntegrityScopeView>?> ListAsync(Guid deviceId, CancellationToken token)
     {
-        if (!Remote) return await legacy.ListAsync(deviceId, token);
+        if (!Remote) return await services.GetRequiredService<IntegrityConfiguration>().ListAsync(deviceId, token);
         using var response = await Client.GetAsync(Path(deviceId), token);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();
@@ -23,15 +23,15 @@ internal sealed class IntegritySettingsAccess(IntegrityConfiguration legacy, IHt
 
     public Task<IntegrityConfigurationResult> CreateAsync(Guid deviceId, IntegrityScopeInput input, Guid actor, CancellationToken token) =>
         Remote ? SendAsync(HttpMethod.Post, Path(deviceId), new { Policy = input, ActorId = actor }, token)
-            : legacy.CreateAsync(deviceId, input, actor, token);
+            : services.GetRequiredService<IntegrityConfiguration>().CreateAsync(deviceId, input, actor, token);
 
     public Task<IntegrityConfigurationResult> UpdateAsync(Guid deviceId, Guid scopeId, IntegrityScopeInput input, string? version, Guid actor, CancellationToken token) =>
         Remote ? SendAsync(HttpMethod.Put, Path(deviceId) + scopeId.ToString("D"), new { Policy = input, Version = version, ActorId = actor }, token)
-            : legacy.UpdateAsync(deviceId, scopeId, input, version, actor, token);
+            : services.GetRequiredService<IntegrityConfiguration>().UpdateAsync(deviceId, scopeId, input, version, actor, token);
 
     public Task<IntegrityConfigurationResult> RetireAsync(Guid deviceId, Guid scopeId, string? version, Guid actor, CancellationToken token) =>
         Remote ? SendAsync(HttpMethod.Post, Path(deviceId) + $"{scopeId:D}/retire", new { Version = version, ActorId = actor }, token)
-            : legacy.RetireAsync(deviceId, scopeId, version, actor, token);
+            : services.GetRequiredService<IntegrityConfiguration>().RetireAsync(deviceId, scopeId, version, actor, token);
 
     private async Task<IntegrityConfigurationResult> SendAsync<T>(HttpMethod method, string path, T command, CancellationToken token)
     {
