@@ -187,7 +187,7 @@ app.MapGet("/api/v1/agent/yara-scans/next", async (HttpContext context, IHttpCli
     response.EnsureSuccessStatusCode();
     var job = await response.Content.ReadFromJsonAsync<Vigiloom.Contracts.Agent.Security.YaraScanJob>(cancellationToken: token);
     return job is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) : Results.Ok(job);
-});
+}).Produces<Vigiloom.Contracts.Agent.Security.YaraScanJob>().Produces(204).ProducesProblem(401).ProducesProblem(503);
 app.MapAgentBatchEndpoints();
 app.MapAgentUpdateDownloadEndpoints();
 app.MapGet("/api/v1/agent/version-assignment", async (HttpContext context, IHttpClientFactory clients, CancellationToken token) =>

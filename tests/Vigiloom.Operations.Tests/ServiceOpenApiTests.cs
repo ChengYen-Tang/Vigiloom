@@ -64,6 +64,9 @@ public sealed class ServiceOpenApiTests(TestContext context)
         }
         if (scheme == "AgentBearer")
         {
+            var yaraAgent = paths.GetProperty("/api/v1/agent/yara-scans/next").GetProperty("get");
+            Assert.IsTrue(yaraAgent.GetProperty("security")[0].TryGetProperty("AgentBearer", out _));
+            Assert.IsTrue(yaraAgent.GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json").TryGetProperty("schema", out _));
             var capacityStatus = paths.GetProperty("/api/v1/devices/{id}/agent-queue-capacity-status").GetProperty("get").GetProperty("security");
             Assert.IsTrue(capacityStatus.EnumerateArray().Any(item => item.TryGetProperty("ApiBearer", out _)));
             var capacityWrite = paths.GetProperty("/api/v1/agent-management/queue-capacity/platform").GetProperty("put");

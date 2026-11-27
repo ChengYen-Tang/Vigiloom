@@ -823,7 +823,6 @@ app.MapAgentUpdateDownloadEndpoints();
 app.MapAgentPackageUiEndpoints();
 app.MapAgentConfigurationEndpoints();
 app.MapAgentVersionEndpoints();
-app.MapYaraScanEndpoints();
 app.MapInventorySettingsEndpoints();
 app.MapBaselineSettingsEndpoints();
 app.MapIntelligenceEndpoints();
