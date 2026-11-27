@@ -21,6 +21,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Devices;
+using Vigiloom.Contracts.Groups;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
@@ -109,9 +110,12 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             var options = new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false };
             using var anonymous = gateway.CreateClient(options);
             using (var denied = await anonymous.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var denied = await anonymous.GetAsync("/api/v1/groups/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
             using var readClient = gateway.CreateClient(options);
             var readerCookie = await LoginAsync(readClient, "gateway-reader", "Reader-Password-123", token);
             using (var read = await readClient.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
+            using (var groups = await readClient.GetAsync("/api/v1/groups/", token)) Assert.AreEqual(HttpStatusCode.OK, groups.StatusCode);
+            using (var denied = await readClient.PostAsJsonAsync("/api/v1/groups/", new GroupInput("denied", null), token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             using (var packages = await readClient.GetAsync("/api/v1/agent-packages", token)) Assert.AreEqual(HttpStatusCode.OK, packages.StatusCode);
             using (var deniedManagement = await readClient.GetAsync($"/api/v1/agent-management/devices/{Guid.CreateVersion7():D}", token)) Assert.AreEqual(HttpStatusCode.Forbidden, deniedManagement.StatusCode);
             using var secondWeb = web.WithWebHostBuilder(_ => { });
@@ -138,6 +142,7 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             using (var missingAgent = await adminClient.PostAsync($"/api/v1/agent-management/agents/{Guid.CreateVersion7():D}/revoke", null, token))
                 Assert.AreEqual(HttpStatusCode.NotFound, missingAgent.StatusCode);
             using (var created = await adminClient.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("gateway device", "example.org", [], false), token)) Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
+            using (var created = await adminClient.PostAsJsonAsync("/api/v1/groups/", new GroupInput("gateway group", null), token)) Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
             await using (var db = await resources.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
                 Assert.IsTrue(await db.Devices.AnyAsync(device => device.Name == "gateway device", token));
             var webResourcesOptions = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(webDb.ConnectionString).Options;
@@ -146,6 +151,7 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             using var api = gateway.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vlg_{credential.Id:D}.{WebEncoders.Base64UrlEncode(secret)}");
             using (var valid = await api.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);
+            using (var groups = await api.GetAsync("/api/v1/groups/", token)) Assert.AreEqual(HttpStatusCode.OK, groups.StatusCode);
             using (var packages = await api.GetAsync("/api/v1/agent-packages", token)) Assert.AreEqual(HttpStatusCode.OK, packages.StatusCode);
             using (var deniedManagement = await api.GetAsync($"/api/v1/agent-management/devices/{Guid.CreateVersion7():D}", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, deniedManagement.StatusCode);
             await using (var db = await identityFactory.CreateDbContextAsync(token))

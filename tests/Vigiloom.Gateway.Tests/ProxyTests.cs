@@ -273,6 +273,7 @@ public sealed class ProxyTests
             host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web),
+                ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = Address(web),
                 ["Services:Identity:Url"] = Address(identity)
             })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
@@ -323,6 +324,7 @@ public sealed class ProxyTests
             host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web),
+                ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = Address(web),
                 ["ReverseProxy:Clusters:network:Destinations:network:Address"] = Address(web),
                 ["Services:Identity:Url"] = Address(identity)
             })));

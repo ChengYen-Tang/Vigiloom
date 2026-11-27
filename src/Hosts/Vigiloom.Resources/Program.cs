@@ -191,6 +191,7 @@ internalApi.MapGet("/application-candidates", async (int? page, ApplicationDisco
 internalApi.MapPost("/application-candidates/{id:guid}/approve", async (Guid id, ApplicationApprovalRequest request, ApplicationApproval approval, CancellationToken token) =>
     Results.Ok(await approval.ApproveAsync(id, request.ActorId, token)));
 app.MapDeviceManagement();
+app.MapGroupManagement();
 app.MapAgentManagement();
 app.MapPublicTemplateManagement();
 app.Run();
