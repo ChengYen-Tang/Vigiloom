@@ -888,6 +888,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             using (var anonymous = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-metrics/series?from={from}&until={until}&kind=CpuTotalPercent", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+            using (var anonymous = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-metrics/aggregate?agentId={identity.AgentId:D}&from={from}&until={until}&kind=CpuTotalPercent&source=cpu&bucketSeconds=60", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             proxyClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
             using (var response = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/agent-settings", token))
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
@@ -931,10 +933,18 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
                 Assert.IsTrue(response.Headers.CacheControl?.NoStore);
             }
+            var emptyFrom = Uri.EscapeDataString(nowUtc.AddMinutes(-10).ToString("O"));
+            var emptyUntil = Uri.EscapeDataString(nowUtc.AddMinutes(-9).ToString("O"));
+            var emptyAggregate = await proxyClient.GetFromJsonAsync<HostMetricAggregate>($"{metricsPath}/aggregate?agentId={identity.AgentId:D}&from={emptyFrom}&until={emptyUntil}&kind=CpuTotalPercent&source=cpu&bucketSeconds=60", token);
+            Assert.IsEmpty(emptyAggregate!.Buckets);
             using (var invalid = await proxyClient.GetAsync($"{metricsPath}/series?from={from}&until={until}&kind=CpuTotalPercent&page=-1", token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
             using (var invalid = await proxyClient.GetAsync($"{metricsPath}?from={from}&until={until}&cursor=bad", token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var invalid = await proxyClient.GetAsync($"{metricsPath}/aggregate?agentId={identity.AgentId:D}&from={from}&until={until}&kind=CpuTotalPercent&source=cpu&bucketSeconds=0", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var missing = await proxyClient.GetAsync($"{metricsPath}/aggregate?agentId={Guid.CreateVersion7():D}&from={from}&until={until}&kind=CpuTotalPercent&source=cpu&bucketSeconds=60", token))
+                Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
             var publicThreshold = await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>($"/api/v1/devices/{identity.DeviceId:D}/host-metric-threshold?agentId={identity.AgentId:D}&kind=CpuTotalPercent&source=cpu", token);
             Assert.AreEqual(HostMetricThresholdState.Exceeded, publicThreshold!.State);
             var thresholdUrl = $"/api/v1/devices/{identity.DeviceId:D}/host-metric-threshold?agentId={identity.AgentId:D}&kind=CpuTotalPercent&source=cpu";

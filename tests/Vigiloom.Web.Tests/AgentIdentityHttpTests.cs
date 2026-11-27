@@ -1102,7 +1102,7 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
-            var monitoringPaths = new[] { "/api/v1/agent-packages", $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status", $"/api/v1/devices/{device.Id:D}/host-metrics?from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z" };
+            var monitoringPaths = new[] { "/api/v1/agent-packages", $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status" };
             foreach (var path in monitoringPaths)
             {
                 using var anonymousRead = await agent.GetAsync(path, token);
@@ -1110,9 +1110,6 @@ public sealed class AgentIdentityHttpTests
                 using var apiRead = await api.GetAsync(path, token);
                 Assert.AreEqual(HttpStatusCode.OK, apiRead.StatusCode, path);
             }
-            var aggregatePath = $"/api/v1/devices/{device.Id:D}/host-metrics/aggregate?agentId={Guid.CreateVersion7():D}&from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z&kind=CpuTotalPercent&source=test&bucketSeconds=300";
-            using (var anonymousAggregate = await agent.GetAsync(aggregatePath, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousAggregate.StatusCode);
-            using (var apiAggregate = await api.GetAsync(aggregatePath, token)) Assert.AreEqual(HttpStatusCode.NotFound, apiAggregate.StatusCode);
             using (var anonymousStatus = await agent.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousStatus.StatusCode);
             using (var apiStatus = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
             {
@@ -1414,15 +1411,6 @@ public sealed class AgentIdentityHttpTests
             }
             await using (var db = await factory.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
                 Assert.AreEqual(publicationAuditCount, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [operations].[AuditEvents] WHERE [Kind] IN (21, 22)").SingleAsync(token));
-            using (var aggregate = await api.GetAsync($"/api/v1/devices/{device.Id:D}/host-metrics/aggregate?agentId={result.AgentId:D}&from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z&kind=CpuTotalPercent&source=test&bucketSeconds=300", token))
-            {
-                Assert.AreEqual(HttpStatusCode.OK, aggregate.StatusCode);
-                var body = await aggregate.Content.ReadFromJsonAsync<HostMetricAggregate>(cancellationToken: token);
-                Assert.IsNotNull(body);
-                Assert.IsEmpty(body.Buckets);
-            }
-            using (var invalidAggregate = await api.GetAsync($"/api/v1/devices/{device.Id:D}/host-metrics/aggregate?agentId={result.AgentId:D}&from=2026-11-01T00:00:00Z&until=2026-11-02T00:00:00Z&kind=CpuTotalPercent&source=test&bucketSeconds=0", token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, invalidAggregate.StatusCode);
             foreach (var path in new[] { $"/devices/{device.Id:D}", $"/api/v1/devices/{device.Id:D}/agent-status" })
             {
                 using var visible = await reader.GetAsync(path, token);
