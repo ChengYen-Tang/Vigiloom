@@ -102,7 +102,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     services.RemoveAll<IApiCredentialValidation>();
                     services.AddSingleton<IApiCredentialValidation, CredentialValidation>();
                 });
-                if (temporalAddress is not null) web.ConfigureTestServices(services => services.AddHttpClient("host")
+                web.ConfigureTestServices(services => services.AddHttpClient("host")
                     .ConfigurePrimaryHttpMessageHandler(() => new DeferredHostHandler(() => hostClientForWorker!)));
             });
             using var securityClient = security.CreateClient();
@@ -190,6 +190,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 var end = Uri.EscapeDataString(nowUtc.AddMinutes(1).ToString("O"));
                 using (var integrityResponse = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/integrity", token))
                     Assert.AreEqual(HttpStatusCode.OK, integrityResponse.StatusCode);
+                using (var baselineResponse = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/baseline", token))
+                    Assert.AreEqual(HttpStatusCode.OK, baselineResponse.StatusCode);
                 using (var integrityChanges = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/integrity/changes?from={start}&until={end}", token))
                     Assert.AreEqual(HttpStatusCode.OK, integrityChanges.StatusCode);
                 foreach (var path in new[] { "sigma-detections", "sigma-gaps", "ioc-detections" })
@@ -691,6 +693,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
         public int Calls { get; private set; }
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
+            if (request.Method == HttpMethod.Get)
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(Array.Empty<Vigiloom.Contracts.Agent.Baseline.BaselineExceptionNote>()) });
             Calls++;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
         }
