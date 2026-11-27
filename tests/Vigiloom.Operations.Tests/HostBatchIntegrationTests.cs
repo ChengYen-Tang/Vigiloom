@@ -188,6 +188,10 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     Assert.AreEqual(HttpStatusCode.OK, vulnerability.StatusCode);
                 var start = Uri.EscapeDataString(nowUtc.AddMinutes(-1).ToString("O"));
                 var end = Uri.EscapeDataString(nowUtc.AddMinutes(1).ToString("O"));
+                using (var integrityResponse = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/integrity", token))
+                    Assert.AreEqual(HttpStatusCode.OK, integrityResponse.StatusCode);
+                using (var integrityChanges = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/integrity/changes?from={start}&until={end}", token))
+                    Assert.AreEqual(HttpStatusCode.OK, integrityChanges.StatusCode);
                 foreach (var path in new[] { "sigma-detections", "sigma-gaps", "ioc-detections" })
                 {
                     using var detection = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/{path}?from={start}&until={end}", token);
