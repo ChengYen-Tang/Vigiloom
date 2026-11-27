@@ -39,6 +39,12 @@ public sealed class AgentInventorySettingsMonitoring(IDbContextFactory<AgentMana
             desired = await reader.ReadAsync(db.Database.GetDbConnection(), transaction.GetDbTransaction(), deviceId, token);
             await transaction.CommitAsync(token);
         }
+        return Evaluate(deviceId, device, agent, desired, clock.GetUtcNow());
+    }
+
+    public static InventorySettingsStatus Evaluate(Guid deviceId, DeviceAgentState device, SecurityAgentObservation? agent,
+        InventorySettingsSnapshot desired, DateTimeOffset now)
+    {
         if (!device.Eligible) return new(deviceId, AgentSettingsApplyState.Disabled, desired, null, null, null, null);
         if (agent is null) return new(deviceId, AgentSettingsApplyState.NotRegistered, desired, null, null, null, null);
         var matching = agent.QueueReportEpoch is not null && agent.QueueReportSequence is not null &&
@@ -51,7 +57,6 @@ public sealed class AgentInventorySettingsMonitoring(IDbContextFactory<AgentMana
             if (report is not null && !report.IsValid()) report = null;
         }
         var reportedAt = report is null ? null : agent.InventoryConfigurationReportedAt;
-        var now = clock.GetUtcNow();
         var basis = agent.LastHeartbeatAt ?? agent.CreatedAt;
         var offlineAfter = Math.Max(AgentMonitoring.OfflineAfterSeconds, agent.HeartbeatSafetyIntervalSeconds * 3);
         var state = basis > now ? AgentSettingsApplyState.ClockUncertain

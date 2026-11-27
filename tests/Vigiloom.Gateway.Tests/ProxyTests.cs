@@ -187,6 +187,7 @@ public sealed class ProxyTests
         Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/baseline", TestContext.CancellationToken));
         Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/integrity/changes", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/integrity/settings-status", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/inventory-settings-status", TestContext.CancellationToken));
         Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/vulnerabilities", TestContext.CancellationToken));
         Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/sigma-detections", TestContext.CancellationToken));
         Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/sigma-gaps", TestContext.CancellationToken));

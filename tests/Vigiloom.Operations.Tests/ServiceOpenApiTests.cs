@@ -61,6 +61,8 @@ public sealed class ServiceOpenApiTests(TestContext context)
             var integrityStatus = paths.GetProperty("/api/v1/devices/{id}/integrity/settings-status").GetProperty("get");
             Assert.IsTrue(integrityStatus.GetProperty("security").EnumerateArray().Any(item => item.TryGetProperty("ApiBearer", out _)));
             Assert.IsTrue(integrityStatus.GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json").TryGetProperty("schema", out _));
+            var inventoryStatus = paths.GetProperty("/api/v1/devices/{id}/inventory-settings-status").GetProperty("get");
+            Assert.IsTrue(inventoryStatus.GetProperty("security").EnumerateArray().Any(item => item.TryGetProperty("ApiBearer", out _)));
             var thresholdWrite = paths.GetProperty("/api/v1/devices/{deviceId}/host-metric-threshold").GetProperty("put");
             Assert.AreEqual(1, thresholdWrite.GetProperty("security").GetArrayLength());
             Assert.IsTrue(thresholdWrite.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));

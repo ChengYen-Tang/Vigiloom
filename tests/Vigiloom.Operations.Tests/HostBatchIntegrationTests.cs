@@ -836,6 +836,15 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(identity.DeviceId, integrity.DeviceId);
                 Assert.AreEqual(IntegritySettingsSnapshot.Create([], 0).Revision, integrity.DesiredRevision);
             }
+            using (var inventoryResponse = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory-settings-status", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, inventoryResponse.StatusCode);
+                Assert.IsTrue(inventoryResponse.Headers.CacheControl?.NoStore);
+                var inventory = await inventoryResponse.Content.ReadFromJsonAsync<InventorySettingsStatus>(cancellationToken: token);
+                Assert.IsNotNull(inventory);
+                Assert.AreEqual(identity.DeviceId, inventory.DeviceId);
+                Assert.AreEqual(InventorySettings.Default, inventory.Desired.Settings);
+            }
             var publicMetrics = await proxyClient.GetFromJsonAsync<HostMetricPage>($"/api/v1/devices/{identity.DeviceId:D}/host-metrics?from={from}&until={until}", token);
             Assert.IsNotNull(publicMetrics);
             var publicThreshold = await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>($"/api/v1/devices/{identity.DeviceId:D}/host-metric-threshold?agentId={identity.AgentId:D}&kind=CpuTotalPercent&source=cpu", token);
@@ -1004,7 +1013,9 @@ public sealed class HostBatchIntegrationTests(TestContext context)
     private sealed class IntegritySettingsHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(IntegritySettingsSnapshot.Create([], 0)) });
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = request.RequestUri!.AbsolutePath.EndsWith("/inventory", StringComparison.Ordinal)
+                ? JsonContent.Create(InventorySettingsSnapshot.Create(InventorySettings.Default))
+                : JsonContent.Create(IntegritySettingsSnapshot.Create([], 0)) });
     }
 
     private sealed class RetentionHandler(int days = 14) : HttpMessageHandler

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Integrity;
+using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Modules.AgentManagement.Application;
@@ -47,6 +48,9 @@ internal static class HostAgentStatusEndpoints
         app.MapGet("/api/v1/devices/{id:guid}/integrity/settings-status", ReadIntegritySettingsAsync).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
             .Produces<IntegritySettingsStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get the Agent's observed integrity settings");
+        app.MapGet("/api/v1/devices/{id:guid}/inventory-settings-status", ReadInventorySettingsAsync).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .Produces<InventorySettingsStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Get the Agent's observed inventory settings");
     }
 
     private static async Task<IResult> ReadAsync(Guid id, IHttpClientFactory clients, HostAgentMonitoring monitoring, HttpContext context, CancellationToken token)
@@ -83,6 +87,18 @@ internal static class HostAgentStatusEndpoints
             ?? throw new InvalidOperationException("Security returned empty integrity settings.");
         context.Response.Headers.CacheControl = "private, no-store";
         return Results.Ok(AgentIntegritySettingsMonitoring.Evaluate(id, observation.Device, observation.Agent, desired, clock.GetUtcNow()));
+    }
+
+    private static async Task<IResult> ReadInventorySettingsAsync(Guid id, IHttpClientFactory clients, HostAgentMonitoring monitoring,
+        TimeProvider clock, HttpContext context, CancellationToken token)
+    {
+        var overview = await ReadDeviceAsync(id, clients, token);
+        if (overview is null) return Results.NotFound();
+        var observation = await monitoring.GetSecurityObservationAsync(overview.Device, overview.Registration, token);
+        var desired = await clients.CreateClient("security").GetFromJsonAsync<InventorySettingsSnapshot>($"internal/v1/agent-settings/{id:D}/inventory", token)
+            ?? throw new InvalidOperationException("Security returned empty inventory settings.");
+        context.Response.Headers.CacheControl = "private, no-store";
+        return Results.Ok(AgentInventorySettingsMonitoring.Evaluate(id, observation.Device, observation.Agent, desired, clock.GetUtcNow()));
     }
 
     private static async Task<DeviceAgentOverview?> ReadDeviceAsync(Guid id, IHttpClientFactory clients, CancellationToken token)
