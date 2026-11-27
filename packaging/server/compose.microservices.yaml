@@ -16,10 +16,10 @@ x-platform-env: &platform-env
   Vigiloom__Gateway__TrustedProxies__0: ${VIGILOOM_GATEWAY_IP:-172.29.81.10}
 
 x-platform: &platform
-  image: vigiloom-server:local
+  image: ${VIGILOOM_SERVER_IMAGE:-vigiloom-server:local}
   build: .
   restart: unless-stopped
-  volumes: ["./data/keys:/data/keys"]
+  volumes: ["${VIGILOOM_DATA_PATH:-./data}/keys:/data/keys"]
   depends_on:
     temporal: { condition: service_healthy }
 
@@ -39,9 +39,9 @@ services:
       Services__vigiloom-network__http__0: vigiloom-network:8080
       Services__vigiloom-host-monitoring__http__0: vigiloom-host-monitoring:8080
       Services__vigiloom-observability__http__0: vigiloom-observability:8080
-    ports: ["127.0.0.1:7043:7043"]
+    ports: ["${VIGILOOM_HTTPS_BIND:-127.0.0.1:7043}:7043"]
     volumes:
-      - ./data/keys:/data/keys
+      - ${VIGILOOM_DATA_PATH:-./data}/keys:/data/keys
       - ${VIGILOOM_TLS_CERT_PATH:?Set the TLS certificate path}:/run/vigiloom/tls.pfx:ro
     networks:
       default: { ipv4_address: "${VIGILOOM_GATEWAY_IP:-172.29.81.10}" }
@@ -52,7 +52,7 @@ services:
       ConnectionStrings__Vigiloom: ${VIGILOOM_RUNTIME_SQL_CONNECTION}
       Vigiloom__SetupToken: ${VIGILOOM_SETUP_TOKEN:-}
       Vigiloom__AgentPackages__CachePath: /data/packages
-    volumes: ["./data/keys:/data/keys", "./data/packages:/data/packages"]
+    volumes: ["${VIGILOOM_DATA_PATH:-./data}/keys:/data/keys", "${VIGILOOM_DATA_PATH:-./data}/packages:/data/packages"]
   worker:
     <<: *platform
     entrypoint: ["/app/worker/Vigiloom.Worker"]
@@ -76,7 +76,7 @@ services:
       <<: *platform-env
       ConnectionStrings__Resources: ${VIGILOOM_RESOURCES_SQL_CONNECTION:?Set Resources SQL connection}
       Vigiloom__AgentPackages__CachePath: /data/packages
-    volumes: ["./data/keys:/data/keys", "./data/packages:/data/packages"]
+    volumes: ["${VIGILOOM_DATA_PATH:-./data}/keys:/data/keys", "${VIGILOOM_DATA_PATH:-./data}/packages:/data/packages"]
   vigiloom-network:
     <<: *platform
     entrypoint: ["/app/network/Vigiloom.Network"]
@@ -113,7 +113,7 @@ services:
       <<: *platform-env
       ConnectionStrings__Security: ${VIGILOOM_SECURITY_SQL_CONNECTION:?Set Security SQL connection}
   migrator:
-    image: vigiloom-server:local
+    image: ${VIGILOOM_SERVER_IMAGE:-vigiloom-server:local}
     profiles: [setup]
     entrypoint: ["/app/migrator/Vigiloom.Migrator"]
     working_dir: /app/migrator
