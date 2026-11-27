@@ -180,13 +180,13 @@
     {
         public Guid? SourceId { get; set; }
         public string? ExpectedVersion { get; set; }
-        [Required, StringLength(256)] public string Title { get; set; } = "";
-        [Required] public string Platform { get; set; } = "";
-        [Required, StringLength(1024)] public string Target { get; set; } = "";
-        [Required, StringLength(256)] public string Expected { get; set; } = "";
-        [StringLength(2048)] public string? Reference { get; set; }
-        [StringLength(256)] public string? License { get; set; }
-        [StringLength(1024)] public string? Guidance { get; set; }
+        [Required(ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Required)), StringLength(256, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.StringLength))] public string Title { get; set; } = "";
+        [Required(ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Required))] public string Platform { get; set; } = "";
+        [Required(ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Required)), StringLength(1024, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.StringLength))] public string Target { get; set; } = "";
+        [Required(ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Required)), StringLength(256, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.StringLength))] public string Expected { get; set; } = "";
+        [StringLength(2048, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.StringLength))] public string? Reference { get; set; }
+        [StringLength(256, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.StringLength))] public string? License { get; set; }
+        [StringLength(1024, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.StringLength))] public string? Guidance { get; set; }
     }
 
     private sealed class ApprovalForm

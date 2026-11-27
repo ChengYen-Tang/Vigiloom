@@ -386,30 +386,30 @@
 
     private sealed class SettingsForm
     {
-        [Range(10, 300)] public int? HeartbeatSeconds { get; set; }
-        [Range(60, 3600)] public int? SettingsPollSeconds { get; set; }
-        [Range(1, 300)] public int? BatchIntervalSeconds { get; set; }
+        [Range(10, 300, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? HeartbeatSeconds { get; set; }
+        [Range(60, 3600, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? SettingsPollSeconds { get; set; }
+        [Range(1, 300, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? BatchIntervalSeconds { get; set; }
         public string? Version { get; set; }
     }
     private sealed class CapacityForm
     {
-        [Range(1, 1024)] public int? PayloadMiB { get; set; }
-        [Range(1, 100000)] public int? BatchCount { get; set; }
+        [Range(1, 1024, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? PayloadMiB { get; set; }
+        [Range(1, 100000, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? BatchCount { get; set; }
         public string? Version { get; set; }
     }
     private sealed class MetricForm
     {
-        [Range(10, 3600)] public int? HostIntervalSeconds { get; set; }
-        [Range(10, 3600)] public int? ProcessIntervalSeconds { get; set; }
-        [Range(100, 60000)] public int? CpuMillisecondsPerMinute { get; set; }
-        [Range(64, 4096)] public int? WorkingSetLimitMiB { get; set; }
-        [Range(100, 30000)] public int? ProcessCollectionBudgetMs { get; set; }
-        [Range(1, 4096)] public int? IoLimitMiBPerMinute { get; set; }
+        [Range(10, 3600, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? HostIntervalSeconds { get; set; }
+        [Range(10, 3600, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? ProcessIntervalSeconds { get; set; }
+        [Range(100, 60000, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? CpuMillisecondsPerMinute { get; set; }
+        [Range(64, 4096, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? WorkingSetLimitMiB { get; set; }
+        [Range(100, 30000, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? ProcessCollectionBudgetMs { get; set; }
+        [Range(1, 4096, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? IoLimitMiBPerMinute { get; set; }
         public string? Version { get; set; }
     }
     private sealed class InventoryForm
     {
-        [Range(900, 604800)] public int? ScanIntervalSeconds { get; set; }
+        [Range(900, 604800, ErrorMessageResourceType = typeof(FormValidationText), ErrorMessageResourceName = nameof(FormValidationText.Range))] public int? ScanIntervalSeconds { get; set; }
         public bool? CollectCommandLine { get; set; }
         public string? Version { get; set; }
     }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Required" xml:space="preserve"><value>This field is required.</value></data>
+  <data name="StringLength" xml:space="preserve"><value>Enter no more than {1} characters.</value></data>
+  <data name="Range" xml:space="preserve"><value>Enter a value from {1} to {2}.</value></data>
+</root>
