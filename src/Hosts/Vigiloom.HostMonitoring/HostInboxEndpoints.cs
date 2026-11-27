@@ -10,21 +10,23 @@ internal static class HostInboxEndpoints
     public static void MapHostInboxEndpoints(this WebApplication app)
     {
         var inbox = app.MapGroup("/api/v1/settings/agent-inbox").RequireAuthorization("Administrator").RequireRateLimiting("api-client");
-        inbox.MapGet("/", async (HostInboxSettings settings, CancellationToken token) => Results.Ok(await settings.GetAsync(token)));
+        inbox.MapGet("/", async (HostInboxSettings settings, CancellationToken token) => Results.Ok(await settings.GetAsync(token)))
+            .Produces<AgentInboxSettingsSnapshot>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429);
         inbox.MapPost("/cutover", async (AgentInboxCutoverRequest input, HostInboxSettings settings, HttpContext context, CancellationToken token) =>
         {
             if (!input.ConfirmedReceiversStoppedAndDrained)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["confirmation"] = ["All old receiver processes must be stopped and in-flight transactions drained."] });
             return await ApiMutation.ExecuteAsync(context, async actor => await settings.ActivateCleanupAsync(input.Version, actor, token)
                 ? Results.NoContent() : Results.Conflict(), allowApiCredential: false);
-        });
+        }).Produces(204).Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
+            .WithDescription("Requires an Administrator session and antiforgery token. Confirm that all old receiver processes and their in-flight transactions have stopped before enabling cleanup.");
         inbox.MapPost("/preview", async (AgentInboxPreviewRequest input, HostInboxSettings settings, HttpContext context, CancellationToken token) =>
         {
             if (!AgentInboxPolicyLimits.IsValid(input.ReplaySeconds, input.RetentionDays))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["policy"] = ["Invalid inbox policy."] });
             return await ApiMutation.ExecuteAsync(context, async actor => await settings.PreviewAsync(input.ReplaySeconds, input.RetentionDays, input.Version, actor, token) is { } preview
                 ? Results.Ok(preview) : Results.Conflict(), allowApiCredential: false);
-        });
+        }).Produces<AgentInboxSettingsPreview>().Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429);
         inbox.MapPut("/", async (AgentInboxSettingsUpdate input, HostInboxSettings settings, HttpContext context, CancellationToken token) =>
         {
             if (!AgentInboxPolicyLimits.IsValid(input.ReplaySeconds, input.RetentionDays))
@@ -35,7 +37,7 @@ internal static class HostInboxEndpoints
                 catch (ArgumentException) { return Results.ValidationProblem(new Dictionary<string, string[]> { ["preview"] = ["A current preview is required to shorten inbox obligations."] }); }
                 catch (AgentInboxNotReadyException) { return Results.Conflict(); }
             }, allowApiCredential: false);
-        });
+        }).Produces(204).Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429);
         var replay = app.MapGroup("/api/v1/agent-management/replay-policy").RequireAuthorization("Administrator").RequireRateLimiting("api-client");
         replay.MapGet("/", async (HttpContext context, HostReplayPolicy policy, CancellationToken token) =>
         {

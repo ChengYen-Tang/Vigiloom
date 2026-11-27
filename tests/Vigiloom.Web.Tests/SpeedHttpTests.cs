@@ -21,6 +21,7 @@ using Vigiloom.Modules.AlertingOperations.Persistence;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.Modules.AgentManagement.Application;
 
 namespace Vigiloom.Web.Tests;
 [TestClass]
@@ -46,7 +47,8 @@ public sealed class SpeedHttpTests
         using var enforced = await admin.PostAsync("/settings/agents", new FormUrlEncodedContent(replay), token);
         Assert.Contains("補送期限已啟用", await TextAsync(enforced, token));
         var cutover = Hidden(await FormAsync(enforced, "agent-inbox-cutover", token));
-        var latest = await admin.GetFromJsonAsync<AgentInboxSettingsSnapshot>("/api/v1/settings/agent-inbox/", token);
+        await using var inboxScope = factory.Services.CreateAsyncScope();
+        var latest = await inboxScope.ServiceProvider.GetRequiredService<IAgentInboxSettings>().GetAsync(token);
         Assert.AreEqual(latest!.Version, cutover["Cutover.Version"]);
         cutover["Cutover.Confirmed"] = "true";
         using var activated = await admin.PostAsync("/settings/agents", new FormUrlEncodedContent(cutover), token);
@@ -54,7 +56,7 @@ public sealed class SpeedHttpTests
     }, TestContext.CancellationToken);
 
     [TestMethod]
-    public Task AgentInboxSettings_RequiresAdministratorCsrfAndPreview() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+    public Task AgentInboxSettings_PreviewAndPageFollowPolicy() => SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
     {
         using var factory = PingTestSite.CreateFactory(database.ConnectionString);
         await PingTestSite.InitializeAsync(factory, token);
@@ -63,42 +65,32 @@ public sealed class SpeedHttpTests
             await db.Database.MigrateAsync(token);
             await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [EnforcedAt] = @now WHERE [Scope] = 1", token);
         }
-        const string url = "/api/v1/settings/agent-inbox/";
-        using var anonymous = Client(factory);
-        using (var denied = await anonymous.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
         using var reader = Client(factory); await LoginAsync(reader, "reader", token);
-        using (var denied = await reader.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
         using var admin = Client(factory); await LoginAsync(admin, "admin", token);
-        var before = await admin.GetFromJsonAsync<AgentInboxSettingsSnapshot>(url, token);
+        await using var inboxScope = factory.Services.CreateAsyncScope();
+        var inbox = inboxScope.ServiceProvider.GetRequiredService<IAgentInboxSettings>();
+        var actor = Guid.CreateVersion7();
+        var before = await inbox.GetAsync(token);
         Assert.IsNotNull(before);
         Assert.IsFalse(before.CleanupReady);
         using var preCutoverPage = await admin.GetAsync("/settings/agents", token);
         var oldCutover = Hidden(await FormAsync(preCutoverPage, "agent-inbox-cutover", token));
         oldCutover["Cutover.Confirmed"] = "true";
-        using (var forged = await admin.PostAsJsonAsync(url + "preview", new AgentInboxPreviewRequest(3600, 2, before.Version), token)) Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
-        using (var anti = await admin.GetAsync("/api/v1/session/antiforgery", token))
-        {
-            using var json = System.Text.Json.JsonDocument.Parse(await anti.Content.ReadAsStringAsync(token));
-            admin.DefaultRequestHeaders.Add("RequestVerificationToken", json.RootElement.GetProperty("requestToken").GetString());
-        }
-        using (var notConfirmed = await admin.PostAsJsonAsync(url + "cutover", new AgentInboxCutoverRequest(before.Version, false), token)) Assert.AreEqual(HttpStatusCode.BadRequest, notConfirmed.StatusCode);
-        using (var activated = await admin.PostAsJsonAsync(url + "cutover", new AgentInboxCutoverRequest(before.Version, true), token)) Assert.AreEqual(HttpStatusCode.NoContent, activated.StatusCode);
-        using (var staleCutover = await admin.PostAsJsonAsync(url + "cutover", new AgentInboxCutoverRequest(before.Version, true), token)) Assert.AreEqual(HttpStatusCode.Conflict, staleCutover.StatusCode);
+        Assert.IsTrue(await inbox.ActivateCleanupAsync(before.Version, actor, token));
+        Assert.IsFalse(await inbox.ActivateCleanupAsync(before.Version, actor, token));
         using (var staleForm = await admin.PostAsync("/settings/agents", new FormUrlEncodedContent(oldCutover), token))
         {
             Assert.AreEqual(HttpStatusCode.OK, staleForm.StatusCode);
             Assert.Contains("狀態已變更", await TextAsync(staleForm, token));
         }
-        before = await admin.GetFromJsonAsync<AgentInboxSettingsSnapshot>(url, token);
+        before = await inbox.GetAsync(token);
         Assert.IsTrue(before!.CleanupReady);
-        using (var unconfirmed = await admin.PutAsJsonAsync(url, new AgentInboxSettingsUpdate(3600, 2, before.Version, null), token)) Assert.AreEqual(HttpStatusCode.BadRequest, unconfirmed.StatusCode);
-        using var previewResponse = await admin.PostAsJsonAsync(url + "preview", new AgentInboxPreviewRequest(3600, 2, before.Version), token);
-        Assert.AreEqual(HttpStatusCode.OK, previewResponse.StatusCode);
-        var preview = await previewResponse.Content.ReadFromJsonAsync<AgentInboxSettingsPreview>(cancellationToken: token);
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => inbox.UpdateAsync(3600, 2, before.Version, null, actor, token));
+        var preview = await inbox.PreviewAsync(3600, 2, before.Version, actor, token);
         Assert.IsNotNull(preview);
-        using (var saved = await admin.PutAsJsonAsync(url, new AgentInboxSettingsUpdate(3600, 2, before.Version, preview.ConfirmationToken), token)) Assert.AreEqual(HttpStatusCode.NoContent, saved.StatusCode);
-        using (var stale = await admin.PutAsJsonAsync(url, new AgentInboxSettingsUpdate(3600, 2, before.Version, preview.ConfirmationToken), token)) Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
-        var after = await admin.GetFromJsonAsync<AgentInboxSettingsSnapshot>(url, token);
+        Assert.IsTrue(await inbox.UpdateAsync(3600, 2, before.Version, preview.ConfirmationToken, actor, token));
+        Assert.IsFalse(await inbox.UpdateAsync(3600, 2, before.Version, preview.ConfirmationToken, actor, token));
+        var after = await inbox.GetAsync(token);
         Assert.AreEqual(3600, after!.ReplaySeconds);
         Assert.AreEqual(2, after.RetentionDays);
         var now = DateTimeOffset.UtcNow;
@@ -143,7 +135,7 @@ public sealed class SpeedHttpTests
         confirm["Input.RetentionDays"] = "1";
         using var savedPage = await admin.PostAsync("/settings/agents", new FormUrlEncodedContent(confirm), token);
         Assert.Contains("保存設定已儲存", await TextAsync(savedPage, token));
-        Assert.AreEqual(1800, (await admin.GetFromJsonAsync<AgentInboxSettingsSnapshot>(url, token))!.ReplaySeconds);
+        Assert.AreEqual(1800, (await inbox.GetAsync(token)).ReplaySeconds);
     }, TestContext.CancellationToken);
 
     [TestMethod]

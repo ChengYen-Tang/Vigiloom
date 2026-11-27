@@ -109,6 +109,17 @@ public sealed class HostRetentionIntegrationTests(TestContext context)
                 Assert.AreEqual(AgentReplayPhase.Grace, (await saved.Content.ReadFromJsonAsync<AgentReplayPolicyView>(cancellationToken: token))!.Phase);
             }
             using (var stale = await hostClient.PutAsJsonAsync(replayPath, change, token)) Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
+            await using (var db = new HostMonitoringDbContext(hostOptions))
+                await db.Database.ExecuteSqlRawAsync("DECLARE @now datetimeoffset = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00'); UPDATE [agent].[ReplayPolicies] SET [Phase] = 2, [FreshInstallation] = 1, [ActivatedAt] = @now, [GraceUntil] = NULL, [EnforcedAt] = @now WHERE [Scope] = 1", token);
+            const string inboxPath = "/api/v1/settings/agent-inbox";
+            var inbox = await hostClient.GetFromJsonAsync<AgentInboxSettingsSnapshot>(inboxPath, token);
+            Assert.IsFalse(inbox!.CleanupReady);
+            using (var unconfirmed = await hostClient.PostAsJsonAsync(inboxPath + "/cutover", new AgentInboxCutoverRequest(inbox.Version, false), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, unconfirmed.StatusCode);
+            using (var activated = await hostClient.PostAsJsonAsync(inboxPath + "/cutover", new AgentInboxCutoverRequest(inbox.Version, true), token))
+                Assert.AreEqual(HttpStatusCode.NoContent, activated.StatusCode);
+            using (var stale = await hostClient.PostAsJsonAsync(inboxPath + "/cutover", new AgentInboxCutoverRequest(inbox.Version, true), token))
+                Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
             session.Role = "Read only";
             using (var denied = await hostClient.GetAsync(replayPath, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             using var operations = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>

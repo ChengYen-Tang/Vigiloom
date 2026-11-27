@@ -216,10 +216,6 @@ public sealed class WebHostTests(TestContext testContext)
         var inboxAudit = paths.GetProperty("/api/v1/operations/audit/agent-inbox").GetProperty("get");
         Assert.IsTrue(inboxAudit.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.Contains("Administrator", inboxAudit.GetProperty("description").GetString()!);
-        var inboxSettings = paths.GetProperty("/api/v1/settings/agent-inbox");
-        Assert.IsTrue(inboxSettings.GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
-        Assert.IsTrue(inboxSettings.GetProperty("put").GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
-        Assert.IsTrue(inboxSettings.GetProperty("put").GetProperty("responses").TryGetProperty("429", out _));
         var pingRetention = paths.GetProperty("/api/v1/settings/ping/retention");
         Assert.IsTrue(pingRetention.GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
         Assert.IsTrue(pingRetention.GetProperty("put").GetProperty("security")[0].TryGetProperty("Antiforgery", out _));

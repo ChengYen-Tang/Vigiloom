@@ -590,6 +590,9 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 db.Set<AgentSetting>().Add(new AgentSetting { HeartbeatSeconds = 120, UpdatedBy = Guid.CreateVersion7(), UpdatedAt = now });
                 await db.SaveChangesAsync(token);
             }
+            var hostScheduling = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(hostDb.ConnectionString,
+                sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
+            await using (var db = new SchedulingDbContext(hostScheduling)) await db.Database.MigrateAsync(token);
             var services = new ServiceCollection();
             services.AddModuleSqlServer<OperationsDbContext>(operationsDb.ConnectionString, "operations");
             services.AddModuleSqlServer<LogAdmissionDbContext>(operationsDb.ConnectionString, "logquota");
@@ -859,6 +862,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     configured.AddHttpClient("resources").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
                     configured.AddHttpClient<IdentityCookieValidator>().ConfigurePrimaryHttpMessageHandler(() => thresholdSession);
                     configured.AddHttpClient("security").ConfigurePrimaryHttpMessageHandler(() => new IntegritySettingsHandler());
+                    configured.AddSingleton<IOutboxHandler>(new TestOutboxHandler());
                     configured.RemoveAll<IApiCredentialValidation>();
                     configured.AddSingleton<IApiCredentialValidation, CredentialValidation>();
                 });
@@ -905,6 +909,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 new Claim("AspNet.Identity.SecurityStamp", "stamp")], IdentityConstants.ApplicationScheme);
             var adminCookie = cookieOptions.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(adminIdentity), IdentityConstants.ApplicationScheme));
             proxyClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={adminCookie}");
+            const string inboxPath = "/api/v1/settings/agent-inbox";
+            var inboxBefore = await proxyClient.GetFromJsonAsync<AgentInboxSettingsSnapshot>(inboxPath, token);
+            Assert.IsTrue(inboxBefore!.CleanupReady);
+            var inboxInput = new AgentInboxPreviewRequest(3600, 2, inboxBefore.Version);
+            using (var missingCsrf = await proxyClient.PostAsJsonAsync(inboxPath + "/preview", inboxInput, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
             using (var missingCsrf = await proxyClient.PutAsJsonAsync(thresholdUrl, thresholdInput, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
             var antiContext = new DefaultHttpContext { RequestServices = proxiedHost.Services, User = new ClaimsPrincipal(adminIdentity) };
@@ -914,6 +924,18 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             proxyClient.DefaultRequestHeaders.Remove("Cookie");
             proxyClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={adminCookie}; {antiCookie}");
             proxyClient.DefaultRequestHeaders.Add("RequestVerificationToken", anti.RequestToken);
+            using (var missingPreview = await proxyClient.PutAsJsonAsync(inboxPath, new AgentInboxSettingsUpdate(3600, 2, inboxBefore.Version, null), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, missingPreview.StatusCode);
+            using (var inboxPreviewResponse = await proxyClient.PostAsJsonAsync(inboxPath + "/preview", inboxInput, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, inboxPreviewResponse.StatusCode);
+                var inboxPreview = await inboxPreviewResponse.Content.ReadFromJsonAsync<AgentInboxSettingsPreview>(cancellationToken: token);
+                var inboxUpdate = new AgentInboxSettingsUpdate(3600, 2, inboxBefore.Version, inboxPreview!.ConfirmationToken);
+                using var savedInbox = await proxyClient.PutAsJsonAsync(inboxPath, inboxUpdate, token);
+                Assert.AreEqual(HttpStatusCode.NoContent, savedInbox.StatusCode);
+                using var staleInbox = await proxyClient.PutAsJsonAsync(inboxPath, inboxUpdate, token);
+                Assert.AreEqual(HttpStatusCode.Conflict, staleInbox.StatusCode);
+            }
             using (var saved = await proxyClient.PutAsJsonAsync(thresholdUrl, thresholdInput, token))
                 Assert.AreEqual(HttpStatusCode.OK, saved.StatusCode);
             using (var stale = await proxyClient.PutAsJsonAsync(thresholdUrl, thresholdInput, token))
@@ -927,6 +949,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             await using (var audit = new HostMonitoringDbContext(hostOptions))
                 Assert.AreEqual(2, await audit.Set<HostMetricThresholdAudit>().CountAsync(token));
             thresholdSession.Role = "Read only";
+            using (var deniedInbox = await proxyClient.GetAsync(inboxPath, token))
+                Assert.AreEqual(HttpStatusCode.Forbidden, deniedInbox.StatusCode);
             using (var readerUpdate = await proxyClient.PutAsJsonAsync(thresholdUrl, thresholdInput, token))
                 Assert.AreEqual(HttpStatusCode.Forbidden, readerUpdate.StatusCode);
             Assert.AreEqual(HostMetricThresholdState.Normal, (await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>(thresholdUrl, token))!.State);

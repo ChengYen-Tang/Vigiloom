@@ -73,6 +73,10 @@ public sealed class ServiceOpenApiTests(TestContext context)
             var replayWrite = replayPath.GetProperty("put").GetProperty("security")[0];
             Assert.IsTrue(replayWrite.TryGetProperty("BrowserSession", out _));
             Assert.IsTrue(replayWrite.TryGetProperty("Antiforgery", out _));
+            var inboxPath = paths.TryGetProperty("/api/v1/settings/agent-inbox/", out var inbox) ? inbox : paths.GetProperty("/api/v1/settings/agent-inbox");
+            var inboxWrite = inboxPath.GetProperty("put").GetProperty("security")[0];
+            Assert.IsTrue(inboxWrite.TryGetProperty("BrowserSession", out _));
+            Assert.IsTrue(inboxWrite.TryGetProperty("Antiforgery", out _));
             var thresholdWrite = paths.GetProperty("/api/v1/devices/{deviceId}/host-metric-threshold").GetProperty("put");
             Assert.AreEqual(1, thresholdWrite.GetProperty("security").GetArrayLength());
             Assert.IsTrue(thresholdWrite.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
