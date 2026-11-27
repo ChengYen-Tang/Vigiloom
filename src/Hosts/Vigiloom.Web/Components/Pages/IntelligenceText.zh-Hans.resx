@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="情報來源 - Vigiloom" xml:space="preserve"><value>情报来源 - Vigiloom</value></data>
+  <data name="情報來源" xml:space="preserve"><value>情报来源</value></data>
+  <data name="管理來源更新、查看涵蓋範圍與版本。情報資料不代表設備已受影響或安全。" xml:space="preserve"><value>管理来源更新、查看覆盖范围与版本。情报数据不代表设备已受影响或安全。</value></data>
+  <data name="建立自訂安全基準" xml:space="preserve"><value>创建自定义安全基准</value></data>
+  <data name="情報類型與目前範圍" xml:space="preserve"><value>情报类型与当前范围</value></data>
+  <data name="漏洞與套件公告：提供 CISA KEV 與 GitHub 已審核公告來源；不涵蓋所有漏洞。" xml:space="preserve"><value>漏洞与软件包公告：提供 CISA KEV 与 GitHub 已审核公告来源；不涵盖所有漏洞。</value></data>
+  <data name="行為規則：保存 Sigma 原始規則；支援的規則可在" xml:space="preserve"><value>行为规则：保存 Sigma 原始规则；支持的规则可在</value></data>
+  <data name="行為規則" xml:space="preserve"><value>行为规则</value></data>
+  <data name="試跑及啟用。" xml:space="preserve"><value>试跑及启用。</value></data>
+  <data name="IOC／YARA：保存來源檔案與 IOC 分類；IOC 偵測需由管理員啟用。" xml:space="preserve"><value>IOC／YARA：保存来源文件与 IOC 分类；IOC 检测需由管理员启用。</value></data>
+  <data name="安全設定基準（SCA）：提供兩個已審查的唯讀來源檢查；啟用來源後，可在支援的主機查看檢查結果。" xml:space="preserve"><value>安全设置基准（SCA）：提供两个已审查的只读来源检查；启用来源后，可在支持的主机查看检查结果。</value></data>
+  <data name="各來源是否啟用、資料是否過期，請查看下方狀態。" xml:space="preserve"><value>各来源是否启用、数据是否过期，请查看下方状态。</value></data>
+  <data name="尚無來源資料。背景工作啟動後會建立已支援的來源。" xml:space="preserve"><value>尚无来源数据。后台工作启动后会创建受支持的来源。</value></data>
+  <data name="情報來源分頁" xml:space="preserve"><value>情报来源分页</value></data>
+  <data name="上一頁" xml:space="preserve"><value>上一页</value></data>
+  <data name="下一頁" xml:space="preserve"><value>下一页</value></data>
+  <data name="類別：" xml:space="preserve"><value>类别：</value></data>
+  <data name="適用平台與範圍：" xml:space="preserve"><value>适用平台与范围：</value></data>
+  <data name="來源：" xml:space="preserve"><value>来源：</value></data>
+  <data name="Vigiloom 自訂檢查" xml:space="preserve"><value>Vigiloom 自定义检查</value></data>
+  <data name="官方資料來源" xml:space="preserve"><value>官方数据来源</value></data>
+  <data name="查看來源授權依據" xml:space="preserve"><value>查看来源授权依据</value></data>
+  <data name="無法辨識此來源，無法確認資料範圍或授權。" xml:space="preserve"><value>无法识别此来源，无法确认数据范围或授权。</value></data>
+  <data name="狀態：" xml:space="preserve"><value>状态：</value></data>
+  <data name="啟用來源後，符合條件的新版本會自動選用；手動回復的版本會保留到上游發布新版本。" xml:space="preserve"><value>启用来源后，符合条件的新版本会自动选用；手动恢复的版本会保留到上游发布新版本。</value></data>
+  <data name="目前選用的版本不是最近確認的上游資料；設備漏洞結果將標示為過期。需要時可選用最近取得的版本。" xml:space="preserve"><value>当前选用的版本不是最近确认的上游数据；设备漏洞结果将标示为过期。需要时可选用最近取得的版本。</value></data>
+  <data name="最近儲存草稿（UTC）" xml:space="preserve"><value>最近保存草稿（UTC）</value></data>
+  <data name="最後成功更新（UTC）" xml:space="preserve"><value>最后成功更新（UTC）</value></data>
+  <data name="最近更新失敗：" xml:space="preserve"><value>最近更新失败：</value></data>
+  <data name="公告匯入：{0}；已讀取 {1} 筆、{2} 頁。" xml:space="preserve"><value>公告导入：{0}；已读取 {1} 条、{2} 页。</value></data>
+  <data name="匯入未完成：" xml:space="preserve"><value>导入未完成：</value></data>
+  <data name="下次可重試時間（UTC）：" xml:space="preserve"><value>下次可重试时间（UTC）：</value></data>
+  <data name="放棄失敗的匯入並重新排程" xml:space="preserve"><value>放弃失败的导入并重新排程</value></data>
+  <data name="更新設定" xml:space="preserve"><value>更新设置</value></data>
+  <data name="啟用此檢查" xml:space="preserve"><value>启用此检查</value></data>
+  <data name="啟用自動更新" xml:space="preserve"><value>启用自动更新</value></data>
+  <data name="比對主機事件中的 IOC" xml:space="preserve"><value>比对主机事件中的 IOC</value></data>
+  <data name="命中僅供調查，不會自動隔離主機。" xml:space="preserve"><value>命中仅供调查，不会自动隔离主机。</value></data>
+  <data name="更新間隔（秒）" xml:space="preserve"><value>更新间隔（秒）</value></data>
+  <data name="例如：3,600 秒是 1 小時。" xml:space="preserve"><value>例如：3,600 秒是 1 小时。</value></data>
+  <data name="資料過期期限（秒）" xml:space="preserve"><value>数据过期期限（秒）</value></data>
+  <data name="例如：86,400 秒是 1 天。" xml:space="preserve"><value>例如：86,400 秒是 1 天。</value></data>
+  <data name="匯入容量上限（MiB）" xml:space="preserve"><value>导入容量上限（MiB）</value></data>
+  <data name="紀錄數上限" xml:space="preserve"><value>记录数上限</value></data>
+  <data name="儲存設定" xml:space="preserve"><value>保存设置</value></data>
+  <data name="GitHub 來源憑證" xml:space="preserve"><value>GitHub 来源凭证</value></data>
+  <data name="已設定憑證；內容不會顯示。" xml:space="preserve"><value>已设置凭证；内容不会显示。</value></data>
+  <data name="尚未設定憑證，可使用未登入的來源額度。" xml:space="preserve"><value>尚未设置凭证，可使用未登录的来源额度。</value></data>
+  <data name="新憑證" xml:space="preserve"><value>新凭证</value></data>
+  <data name="清除現有憑證" xml:space="preserve"><value>清除现有凭证</value></data>
+  <data name="儲存憑證設定" xml:space="preserve"><value>保存凭证设置</value></data>
+  <data name="已停用" xml:space="preserve"><value>已停用</value></data>
+  <data name="目前版本不可使用" xml:space="preserve"><value>目前版本不可使用</value></data>
+  <data name="選用的版本不是最新確認資料" xml:space="preserve"><value>选用的版本不是最新确认数据</value></data>
+  <data name="資料已過期或尚未更新" xml:space="preserve"><value>数据已过期或尚未更新</value></data>
+  <data name="更新失敗" xml:space="preserve"><value>更新失败</value></data>
+  <data name="已匯入供檢視" xml:space="preserve"><value>已导入供查看</value></data>
+  <data name="尚未啟用版本" xml:space="preserve"><value>尚未启用版本</value></data>
+  <data name="已選用來源版本" xml:space="preserve"><value>已选用来源版本</value></data>
+  <data name="尚未開始" xml:space="preserve"><value>尚未开始</value></data>
+  <data name="匯入中" xml:space="preserve"><value>导入中</value></data>
+  <data name="驗證中" xml:space="preserve"><value>验证中</value></data>
+  <data name="資料不一致" xml:space="preserve"><value>数据不一致</value></data>
+  <data name="失敗" xml:space="preserve"><value>失败</value></data>
+  <data name="等待來源額度" xml:space="preserve"><value>等待来源额度</value></data>
+  <data name="等待啟用" xml:space="preserve"><value>等待启用</value></data>
+  <data name="已啟用" xml:space="preserve"><value>已启用</value></data>
+  <data name="版本不可使用" xml:space="preserve"><value>版本不可使用</value></data>
+  <data name="候選版本已過期" xml:space="preserve"><value>候选版本已过期</value></data>
+  <data name="已停止" xml:space="preserve"><value>已停止</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>尚无数据</value></data>
+</root>
