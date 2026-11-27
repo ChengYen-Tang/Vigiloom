@@ -114,7 +114,7 @@ public sealed class WebHostTests(TestContext testContext)
         var html = await response.Content.ReadAsStringAsync(testContext.CancellationToken);
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("公開監測狀態", html);
+        Assert.Contains("公開監測狀態", System.Net.WebUtility.HtmlDecode(html));
         Assert.Contains("<!--Blazor:", html);
         Assert.Contains("\"type\":\"auto\"", html);
         Assert.AreEqual(0, denied.Calls, "Prerendering must not read the development database.");
