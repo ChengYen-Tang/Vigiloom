@@ -151,8 +151,3 @@ internal static class AgentEndpoints
         return context.Request.IsHttps && header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header[7..] : null;
     }
 }
-
-/// <summary>Enrollment secret visible only at issuance.</summary>
-public sealed record EnrollmentSecretResponse(string Secret, DateTimeOffset ExpiresAt);
-/// <summary>The authenticated machine and its bound device.</summary>
-public sealed record AgentIdentityResponse(Guid AgentId, Guid DeviceId);

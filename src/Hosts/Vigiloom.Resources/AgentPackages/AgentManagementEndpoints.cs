@@ -24,7 +24,7 @@ internal static class AgentManagementEndpoints
                 context.Response.Headers.CacheControl = "no-store";
                 return result.Status switch
                 {
-                    AgentRegistrationStatus.Success => Results.Ok(new EnrollmentSecret(result.Secret!, result.ExpiresAt!.Value)),
+                    AgentRegistrationStatus.Success => Results.Ok(new EnrollmentSecretResponse(result.Secret!, result.ExpiresAt!.Value)),
                     AgentRegistrationStatus.NotFound => Results.NotFound(),
                     _ => Results.Conflict()
                 };
@@ -90,5 +90,4 @@ internal static class AgentManagementEndpoints
     }
 
     private sealed record PackageDownload(string Version, string RuntimeIdentifier);
-    private sealed record EnrollmentSecret(string Secret, DateTimeOffset ExpiresAt);
 }

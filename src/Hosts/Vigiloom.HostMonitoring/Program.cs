@@ -163,7 +163,7 @@ app.MapGet("/api/v1/agent/identity", (HttpContext context) =>
 {
     var identity = (RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!;
     context.Response.Headers.CacheControl = "no-store";
-    return Results.Ok(new { identity.AgentId, identity.DeviceId });
+    return Results.Ok(new AgentIdentityResponse(identity.AgentId, identity.DeviceId));
 });
 app.MapAgentSecuritySettingsEndpoints();
 app.MapGet("/api/v1/agent/yara-scans/next", async (HttpContext context, IHttpClientFactory clients, CancellationToken token) =>

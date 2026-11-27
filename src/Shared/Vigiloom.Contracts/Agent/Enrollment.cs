@@ -5,3 +5,5 @@ public sealed record EnrollmentRequest(string? EnrollmentSecret, byte[]? Machine
 public sealed record EnrollmentRecoveryRequest(string? EnrollmentSecret);
 public sealed record RotationRequest(byte[]? MachineVerifier);
 public sealed record EnrollmentResponse(Guid AgentId);
+public sealed record EnrollmentSecretResponse(string Secret, DateTimeOffset ExpiresAt);
+public sealed record AgentIdentityResponse(Guid AgentId, Guid DeviceId);

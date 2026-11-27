@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
+using Vigiloom.Contracts.Agent;
 
 namespace Vigiloom.Gateway.Authentication;
 
@@ -15,10 +16,9 @@ internal sealed class AgentAuthentication(IOptionsMonitor<AuthenticationSchemeOp
 
     protected override async Task<Claim[]?> ReadIdentityAsync(HttpResponseMessage response, CancellationToken token)
     {
-        var agent = await response.Content.ReadFromJsonAsync<AgentIdentity>(cancellationToken: token);
+        var agent = await response.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token);
         return agent is null || agent.AgentId == Guid.Empty || agent.DeviceId == Guid.Empty ? null :
         [new(ClaimTypes.NameIdentifier, agent.AgentId.ToString("D")), new("vigiloom:device-id", agent.DeviceId.ToString("D"))];
     }
 
-    private sealed record AgentIdentity(Guid AgentId, Guid DeviceId);
 }
