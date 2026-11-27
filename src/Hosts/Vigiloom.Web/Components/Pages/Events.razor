@@ -38,7 +38,7 @@
                     <table><thead><tr><th>@L["時間（UTC）"]</th><th>@L["來源"]</th><th>@L["事件"]</th><th>@L["證據"]</th><th>@L["相關對象"]</th></tr></thead><tbody>
                     @foreach (var item in result.Items)
                     {
-                        <tr><td>@item.Time.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td><td><span class="badge">@L[Label(item.Source)]</span></td><td>@EventSummary.Format(item, L)</td><td>@item.Evidence</td><td><a href="@item.Link">@(item.Source is "host-log" or "sigma" ? L["查看原始事件"].Value : item.Source == "yara" ? L["查看掃描"].Value : item.ResourceKind == "service" ? L["查看服務"].Value : L["查看設備"].Value)</a>@if (item.RuleLink is { } ruleLink) { <span> · </span><a href="@ruleLink">@L["查看規則依據"]</a> }</td></tr>
+                        <tr><td>@item.Time.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td><td><span class="badge">@L[Label(item.Source)]</span></td><td>@EventSummary.Format(item, L)</td><td>@EventEvidence.Format(item, L)</td><td><a href="@item.Link">@(item.Source is "host-log" or "sigma" ? L["查看原始事件"].Value : item.Source == "yara" ? L["查看掃描"].Value : item.ResourceKind == "service" ? L["查看服務"].Value : L["查看設備"].Value)</a>@if (item.RuleLink is { } ruleLink) { <span> · </span><a href="@ruleLink">@L["查看規則依據"]</a> }</td></tr>
                     }
                     </tbody></table>
                 </div>
