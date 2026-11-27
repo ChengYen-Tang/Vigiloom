@@ -27,6 +27,9 @@ using Hangfire;
 using Hangfire.SqlServer;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Security;
+using Vigiloom.Infrastructure.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.SecurityAnalysis.Application.ScheduledJobs;
@@ -38,6 +41,19 @@ builder.Services.AddModuleSqlServer<SecurityAnalysisDbContext>(services =>
         ?? throw new InvalidOperationException("ConnectionStrings:Security is required."), "security", pooled: true);
 builder.Services.AddServiceDiscovery();
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
+builder.Services.AddOptions<IdentityOptions>();
+builder.Services.AddVigiloomIdentityCookieClient();
+builder.Services.AddVigiloomIdentityCredentialClient();
+builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
+builder.Services.AddAuthentication().AddVigiloomApiCredentials();
+builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme, options =>
+{
+    options.Events.OnValidatePrincipal = context => context.HttpContext.RequestServices.GetRequiredService<IdentityCookieValidator>().ValidateAsync(context);
+    options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return Task.CompletedTask; };
+    options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
+});
+builder.Services.AddAuthorization(options => options.AddVigiloomAccessPolicies());
+builder.Services.AddVigiloomApiRateLimiting(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<YaraScans>();
 builder.Services.AddScoped<AgentSecuritySettings>();
@@ -166,6 +182,12 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
 builder.Services.AddScoped(_ => new WorkHistoryRetention(builder.Configuration.GetConnectionString("Security")
     ?? throw new InvalidOperationException("ConnectionStrings:Security is required.")));
 var app = builder.Build();
+var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
+if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
+app.MapPublicInventory();
 app.MapWorkHistoryEndpoints();
 app.MapPost("/internal/v1/inventory-settings/audit", async (OperationAuditQuery query, InventoryAuditFeed audit, CancellationToken token) =>
     AuditFeedLimits.Valid(query) ? Results.Ok(await audit.QueryAsync(query, token)) : Results.BadRequest());

@@ -85,6 +85,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             await using (var db = new SchedulingDbContext(scheduling)) await db.Database.MigrateAsync(token);
             var queue = "vigiloom-security-test-" + Guid.CreateVersion7().ToString("N");
             HttpClient? hostClientForWorker = null;
+            var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             using var security = new WebApplicationFactory<SecurityHost::Program>().WithWebHostBuilder(web =>
             {
                 web.UseSetting("Temporal:Enabled", temporalAddress is null ? "false" : "true");
@@ -92,11 +93,16 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 web.UseSetting("Work:SecurityLogQueue", queue + "-logs");
                 web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 { ["ConnectionStrings:Security"] = securityDb.ConnectionString, ["Temporal:Address"] = temporalAddress, ["Work:SecurityQueue"] = queue }));
+                web.ConfigureTestServices(services =>
+                {
+                    services.AddHttpClient("ResourceDevices").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
+                    services.RemoveAll<IApiCredentialValidation>();
+                    services.AddSingleton<IApiCredentialValidation, CredentialValidation>();
+                });
                 if (temporalAddress is not null) web.ConfigureTestServices(services => services.AddHttpClient("host")
                     .ConfigurePrimaryHttpMessageHandler(() => new DeferredHostHandler(() => hostClientForWorker!)));
             });
             using var securityClient = security.CreateClient();
-            var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
             var writer = new SecurityWriter();
             using var host = new WebApplicationFactory<HostMonitoring::Program>().WithWebHostBuilder(web =>
             {
@@ -167,6 +173,17 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.AreEqual(1L, progress!.Single(x => x.Source == InventorySource.LinuxDpkg).HighWaterGeneration);
             await using (var db = new SecurityAnalysisDbContext(securityOptions)) Assert.AreEqual(1, await db.InventorySnapshots.CountAsync(token));
             await using (var db = new HostMonitoringDbContext(hostOptions)) Assert.AreEqual(0, await db.HostSecurityBatches.CountAsync(token));
+            using (var securityApi = security.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") }))
+            {
+                using (var denied = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/inventory", token))
+                    Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+                securityApi.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
+                var inventory = await securityApi.GetFromJsonAsync<DeviceInventoryView>($"/api/v1/devices/{identity.DeviceId:D}/inventory", token);
+                Assert.AreEqual(identity.AgentId, inventory!.AgentId);
+                Assert.IsTrue(inventory.Sources.Any(source => source.Source == InventorySource.LinuxDpkg));
+                using var missing = await securityApi.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/inventory", token);
+                Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
+            }
 
             var scopeId = Guid.CreateVersion7();
             var scope = new IntegrityScopeInput(IntegrityScopeKind.Directory, "/srv/app", true,
@@ -628,6 +645,10 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 if (request.RequestUri.AbsolutePath.StartsWith("/internal/v1/devices/", StringComparison.Ordinal) &&
                     !request.RequestUri.AbsolutePath.StartsWith($"/internal/v1/devices/{identity.DeviceId:D}/", StringComparison.OrdinalIgnoreCase))
                     return new(HttpStatusCode.NotFound);
+                if (request.RequestUri.AbsolutePath.EndsWith("/agent-ownership", StringComparison.Ordinal))
+                    return new(HttpStatusCode.OK) { Content = JsonContent.Create(new DeviceAgentOwnership(
+                        new DeviceAgentState(identity.DeviceId, identity.DeviceGeneration, true),
+                        new AgentRegistrationSummary(identity.AgentId, identity.DeviceGeneration, DateTimeOffset.UtcNow, null))) };
                 var payload = request.RequestUri!.AbsolutePath.EndsWith("/agents", StringComparison.Ordinal)
                     ? JsonContent.Create(new DeviceAgentRegistrations([new(identity.AgentId, identity.DeviceGeneration, DateTimeOffset.UtcNow, null)], [], identity.DeviceGeneration))
                     : JsonContent.Create(new DeviceAgentState(identity.DeviceId, identity.DeviceGeneration, true));
