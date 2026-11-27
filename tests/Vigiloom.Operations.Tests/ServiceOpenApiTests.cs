@@ -49,6 +49,10 @@ public sealed class ServiceOpenApiTests(TestContext context)
         {
             var webhook = paths.GetProperty("/api/v1/line/webhook").GetProperty("post");
             Assert.IsTrue(webhook.GetProperty("security")[0].TryGetProperty("LineSignature", out _));
+            var linePath = paths.TryGetProperty("/api/v1/admin/line/", out var line) ? line : paths.GetProperty("/api/v1/admin/line");
+            var lineWrite = linePath.GetProperty("put").GetProperty("security")[0];
+            Assert.IsTrue(lineWrite.TryGetProperty("BrowserSession", out _));
+            Assert.IsTrue(lineWrite.TryGetProperty("Antiforgery", out _));
             Assert.AreEqual(2, security.GetArrayLength());
             Assert.IsTrue(security.EnumerateArray().Any(item => item.TryGetProperty("BrowserSession", out _)));
         }

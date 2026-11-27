@@ -28,6 +28,7 @@ using Vigiloom.Operations.Work;
 using QuotaContract = Vigiloom.Contracts.Operations.LogQuotaSettings;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddAntiforgery();
 builder.Services.AddOpenApi(options =>
 {
     options.ShouldInclude = description => description.RelativePath?.StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase) == true;
@@ -166,6 +167,7 @@ app.UseAuthorization();
 app.UseRateLimiter();
 app.MapHostLogQuery();
 app.MapLineEndpoints();
+app.MapPublicLineSettings();
 app.MapHistoryEndpoints();
 app.MapAuditEndpoints();
 app.MapTimelineEndpoints();

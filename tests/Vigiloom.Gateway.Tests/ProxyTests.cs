@@ -369,6 +369,7 @@ public sealed class ProxyTests
     public async Task ResourceRoutesEnforceCookieRolesAndRevocation(string path)
     {
         await using var web = await StartUpstreamAsync("web", TestContext.CancellationToken);
+        await using var operations = await StartUpstreamAsync("operations", TestContext.CancellationToken);
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         await using var identity = builder.Build();
@@ -389,6 +390,7 @@ public sealed class ProxyTests
                 ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = Address(web),
                 ["ReverseProxy:Clusters:network:Destinations:network:Address"] = Address(web),
                 ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = Address(web),
+                ["ReverseProxy:Clusters:operations:Destinations:operations:Address"] = Address(operations),
                 ["Services:Identity:Url"] = Address(identity)
             })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false, HandleCookies = false });
@@ -411,7 +413,10 @@ public sealed class ProxyTests
         }
         using var denied = await client.PostAsync(path, null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var deniedLine = await client.GetAsync("/api/v1/admin/line", TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Forbidden, deniedLine.StatusCode);
         role = "Administrator";
+        Assert.AreEqual("operations", await client.GetStringAsync("/api/v1/admin/line", TestContext.CancellationToken));
         Assert.AreEqual("web", await client.GetStringAsync("/api/v1/agent-management/metric-settings/platform", TestContext.CancellationToken));
         Assert.AreEqual("web", await client.GetStringAsync("/api/v1/agent-management/replay-policy", TestContext.CancellationToken));
         Assert.AreEqual("web", await client.GetStringAsync("/api/v1/settings/agent-inbox", TestContext.CancellationToken));
