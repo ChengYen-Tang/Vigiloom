@@ -73,6 +73,23 @@ public sealed class PackageCatalogTests
                     await archive.CopyToAsync(copied, token);
                     CollectionAssert.AreEqual(contents, copied.ToArray());
                 }
+                // A second service instance uses its own DI container and the shared cache and database.
+                var otherServices = new ServiceCollection().AddDbContextFactory<ResourcesDbContext>(options =>
+                    options.UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "resources")));
+                await using var otherProvider = otherServices.BuildServiceProvider();
+                var otherContexts = otherProvider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
+                var otherFiles = new PackageLibraryTransport(path);
+                var otherAssignments = new AgentAssignments(otherContexts, otherFiles, null!, TimeProvider.System, new HostVersion());
+                var otherAccess = new AgentPackageAccess(otherAssignments, otherFiles, otherContexts);
+                CollectionAssert.AreEqual(await access.ReadManifestAsync(agent.Id, target.ManifestSha256 + ".json", token),
+                    await otherAccess.ReadManifestAsync(agent.Id, target.ManifestSha256 + ".json", token));
+                await using (var archive = await otherAccess.OpenArchiveAsync(agent.Id, sha, token))
+                {
+                    Assert.IsNotNull(archive);
+                    using var copied = new MemoryStream();
+                    await archive.CopyToAsync(copied, token);
+                    CollectionAssert.AreEqual(contents, copied.ToArray());
+                }
                 await using (var db = await contexts.CreateDbContextAsync(token))
                 {
                     db.AgentVersionAssignments.Remove(await db.AgentVersionAssignments.SingleAsync(a => a.AgentId == agent.Id, token));
@@ -80,6 +97,7 @@ public sealed class PackageCatalogTests
                 }
                 Assert.AreEqual(AgentPackageRemovalResult.Removed, await catalog.RemoveAsync(item.Id, token));
                 Assert.IsNull(await access.OpenArchiveAsync(agent.Id, sha, token));
+                Assert.IsNull(await otherAccess.OpenArchiveAsync(agent.Id, sha, token));
                 Assert.IsFalse((await catalog.ListAsync(1, token)).Items.Single().Cached);
                 await using (var db = await contexts.CreateDbContextAsync(token))
                 {
