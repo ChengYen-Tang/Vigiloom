@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="LINE 通知設定" xml:space="preserve"><value>LINE 通知设置</value></data>
+  <data name="設定 LINE 官方帳號，將監控通知傳送至已確認的 LINE 群組。" xml:space="preserve"><value>设置 LINE 官方账号，将监控通知传送至已确认的 LINE 群组。</value></data>
+  <data name="連線設定" xml:space="preserve"><value>连接设置</value></data>
+  <data name="憑證已設定後不會再次顯示。留空可保留目前的值。" xml:space="preserve"><value>凭证已设置后不会再次显示。留空可保留当前的值。</value></data>
+  <data name="已設定" xml:space="preserve"><value>已设置</value></data>
+  <data name="尚未設定" xml:space="preserve"><value>尚未设置</value></data>
+  <data name="異常通知彙整等待時間（0～300 秒）" xml:space="preserve"><value>异常通知汇总等待时间（0～300 秒）</value></data>
+  <data name="啟用 LINE 通知" xml:space="preserve"><value>启用 LINE 通知</value></data>
+  <data name="儲存設定" xml:space="preserve"><value>保存设置</value></data>
+  <data name="LINE 必須能連線至此 HTTPS 網址；本機 localhost 網址無法直接接收 LINE 事件。" xml:space="preserve"><value>LINE 必须能连接至此 HTTPS 网址；本机 localhost 网址无法直接接收 LINE 事件。</value></data>
+  <data name="加入 LINE 群組" xml:space="preserve"><value>加入 LINE 群组</value></data>
+  <data name="在 " xml:space="preserve"><value>在 </value></data>
+  <data name=" 啟用官方帳號加入群組與 webhook，並設定上方 Webhook URL。" xml:space="preserve"><value> 启用官方账号加入群组与 webhook，并设置上方 Webhook URL。</value></data>
+  <data name="一次邀請官方帳號加入一個 LINE 群組。" xml:space="preserve"><value>一次邀请官方账号加入一个 LINE 群组。</value></data>
+  <data name="重新整理此頁，為最新的候選群組命名並確認啟用。" xml:space="preserve"><value>刷新此页，为最新的候选群组命名并确认启用。</value></data>
+  <data name="LINE 群組與 Vigiloom 的設備群組彼此獨立；聊天訊息不會自動啟用通知。" xml:space="preserve"><value>LINE 群组与 Vigiloom 的设备群组彼此独立；聊天消息不会自动启用通知。</value></data>
+  <data name="LINE 接收群組" xml:space="preserve"><value>LINE 接收群组</value></data>
+  <data name="僅已確認的群組會收到監控通知。" xml:space="preserve"><value>仅已确认的群组会收到监控通知。</value></data>
+  <data name="重新整理" xml:space="preserve"><value>刷新</value></data>
+  <data name="尚未收到群組資訊。邀請官方帳號加入群組後，重新整理此頁。" xml:space="preserve"><value>尚未收到群组信息。邀请官方账号加入群组后，刷新此页。</value></data>
+  <data name="未命名群組" xml:space="preserve"><value>未命名群组</value></data>
+  <data name="已啟用" xml:space="preserve"><value>已启用</value></data>
+  <data name="待確認" xml:space="preserve"><value>待确认</value></data>
+  <data name="群組名稱" xml:space="preserve"><value>群组名称</value></data>
+  <data name="例如：維運通知" xml:space="preserve"><value>例如：运维通知</value></data>
+  <data name="儲存名稱" xml:space="preserve"><value>保存名称</value></data>
+  <data name="停用" xml:space="preserve"><value>停用</value></data>
+  <data name="確認啟用" xml:space="preserve"><value>确认启用</value></data>
+  <data name="發送測試通知" xml:space="preserve"><value>发送测试通知</value></data>
+  <data name="測試通知" xml:space="preserve"><value>测试通知</value></data>
+  <data name="重新整理結果" xml:space="preserve"><value>刷新结果</value></data>
+  <data name="最近派送" xml:space="preserve"><value>最近派送</value></data>
+  <data name="顯示最近 20 筆；LINE 已受理不代表訊息已送達。" xml:space="preserve"><value>显示最近 20 笔；LINE 已受理不代表消息已送达。</value></data>
+  <data name="尚無派送紀錄。" xml:space="preserve"><value>尚无派送记录。</value></data>
+  <data name="設定已儲存。" xml:space="preserve"><value>设置已保存。</value></data>
+  <data name="目前無法載入設定，請稍後再試。" xml:space="preserve"><value>当前无法加载设置，请稍后再试。</value></data>
+  <data name="登入已失效，請重新登入。" xml:space="preserve"><value>登录已失效，请重新登录。</value></data>
+  <data name="請先設定 Channel access token 與 Channel secret，再啟用通知。" xml:space="preserve"><value>请先设置 Channel access token 与 Channel secret，再启用通知。</value></data>
+  <data name="無法儲存設定，請稍後再試。" xml:space="preserve"><value>无法保存设置，请稍后再试。</value></data>
+  <data name="LINE 已受理測試通知。請至群組確認是否收到。" xml:space="preserve"><value>LINE 已受理测试通知。请至群组确认是否收到。</value></data>
+  <data name="測試通知未完成，請檢查憑證、群組設定與背景工作後重試。" xml:space="preserve"><value>测试通知未完成，请检查凭证、群组设置与后台工作后重试。</value></data>
+  <data name="測試通知已排入，等待背景工作處理。" xml:space="preserve"><value>测试通知已排入，等待后台工作处理。</value></data>
+  <data name="目前無法確認測試通知狀態。" xml:space="preserve"><value>当前无法确认测试通知状态。</value></data>
+  <data name="LINE 已受理" xml:space="preserve"><value>LINE 已受理</value></data>
+  <data name="派送失敗，請檢查群組、憑證與背景工作" xml:space="preserve"><value>派送失败，请检查群组、凭证与后台工作</value></data>
+  <data name="等待處理" xml:space="preserve"><value>等待处理</value></data>
+  <data name="狀態無法確認" xml:space="preserve"><value>状态无法确认</value></data>
+</root>

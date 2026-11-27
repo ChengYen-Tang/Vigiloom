@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="帳號管理 - Vigiloom" xml:space="preserve"><value>Account management - Vigiloom</value></data>
+  <data name="帳號管理" xml:space="preserve"><value>Account management</value></data>
+  <data name="管理帳號和可使用的角色。" xml:space="preserve"><value>Manage accounts and available roles.</value></data>
+  <data name="帳號已建立" xml:space="preserve"><value>Account created</value></data>
+  <data name="請透過安全方式將下列一次性代碼交給帳號持有人，在 15 分鐘內至「設定密碼」頁面使用。離開此頁後無法再次查看。" xml:space="preserve"><value>Securely give this one-time code to the account holder to use on the password setup page within 15 minutes. It cannot be viewed again after leaving this page.</value></data>
+  <data name="一次性設定密碼代碼" xml:space="preserve"><value>One-time password setup code</value></data>
+  <data name="設定密碼頁面" xml:space="preserve"><value>Password setup page</value></data>
+  <data name="新增帳號" xml:space="preserve"><value>Add account</value></data>
+  <data name="帳號" xml:space="preserve"><value>Account</value></data>
+  <data name="角色" xml:space="preserve"><value>Role</value></data>
+  <data name="建立帳號" xml:space="preserve"><value>Create account</value></data>
+  <data name="帳號列表" xml:space="preserve"><value>Accounts</value></data>
+  <data name="操作" xml:space="preserve"><value>Actions</value></data>
+  <data name="管理" xml:space="preserve"><value>Manage</value></data>
+  <data name="帳號列表分頁" xml:space="preserve"><value>Account list pages</value></data>
+  <data name="共 {0} 個帳號" xml:space="preserve"><value>{0} accounts total</value></data>
+  <data name="上一頁" xml:space="preserve"><value>Previous</value></data>
+  <data name="下一頁" xml:space="preserve"><value>Next</value></data>
+  <data name="管理帳號 - Vigiloom" xml:space="preserve"><value>Manage account - Vigiloom</value></data>
+  <data name="← 返回帳號列表" xml:space="preserve"><value>← Back to accounts</value></data>
+  <data name="找不到此帳號" xml:space="preserve"><value>Account not found</value></data>
+  <data name="管理帳號" xml:space="preserve"><value>Manage account</value></data>
+  <data name="一次性密碼設定代碼" xml:space="preserve"><value>One-time password setup code</value></data>
+  <data name="請透過安全方式交給帳號持有人，在 15 分鐘內使用；離開此頁後無法再次查看。" xml:space="preserve"><value>Securely give this code to the account holder to use within 15 minutes. It cannot be viewed again after leaving this page.</value></data>
+  <data name="帳號名稱" xml:space="preserve"><value>Account name</value></data>
+  <data name="儲存帳號" xml:space="preserve"><value>Save account</value></data>
+  <data name="儲存角色" xml:space="preserve"><value>Save role</value></data>
+  <data name="重設密碼" xml:space="preserve"><value>Reset password</value></data>
+  <data name="建立一次性代碼，讓帳號持有人自行設定新密碼。舊密碼及工作階段會立即失效。" xml:space="preserve"><value>Create a one-time code for the account holder to set a new password. The old password and sessions are invalidated immediately.</value></data>
+  <data name="產生重設代碼" xml:space="preserve"><value>Generate reset code</value></data>
+  <data name="重置雙重驗證" xml:space="preserve"><value>Reset two-factor authentication</value></data>
+  <data name="若帳號持有人遺失驗證器及復原碼，可重置其雙重驗證；需要你的管理員密碼。" xml:space="preserve"><value>If the account holder lost the authenticator and recovery codes, reset two-factor authentication using your administrator password.</value></data>
+  <data name="管理員密碼" xml:space="preserve"><value>Administrator password</value></data>
+  <data name="刪除帳號" xml:space="preserve"><value>Delete account</value></data>
+  <data name="刪除後此帳號將無法登入。" xml:space="preserve"><value>The account cannot sign in after deletion.</value></data>
+  <data name="我確認要刪除此帳號" xml:space="preserve"><value>I confirm I want to delete this account</value></data>
+  <data name="帳號名稱已更新；該帳號需重新登入。" xml:space="preserve"><value>Account name updated; the account must sign in again.</value></data>
+  <data name="角色已更新。" xml:space="preserve"><value>Role updated.</value></data>
+  <data name="雙重驗證已重置，該帳號需重新登入。" xml:space="preserve"><value>Two-factor authentication reset; the account must sign in again.</value></data>
+  <data name="請先確認刪除。" xml:space="preserve"><value>Confirm deletion first.</value></data>
+  <data name="請選擇有效的角色。" xml:space="preserve"><value>Select a valid role.</value></data>
+  <data name="找不到此帳號。" xml:space="preserve"><value>Account not found.</value></data>
+  <data name="至少必須保留一位可使用的管理員。" xml:space="preserve"><value>At least one usable administrator must remain.</value></data>
+  <data name="無法刪除目前登入的帳號。" xml:space="preserve"><value>Cannot delete the currently signed-in account.</value></data>
+  <data name="請至自己的雙重驗證設定頁停用。" xml:space="preserve"><value>Disable two-factor authentication in your own settings.</value></data>
+  <data name="管理員密碼不正確。" xml:space="preserve"><value>Incorrect administrator password.</value></data>
+  <data name="無法完成操作，請稍後重試。" xml:space="preserve"><value>Unable to complete the operation. Try again later.</value></data>
+  <data name="唯讀" xml:space="preserve"><value>Read only</value></data>
+  <data name="管理員" xml:space="preserve"><value>Administrator</value></data>
+</root>

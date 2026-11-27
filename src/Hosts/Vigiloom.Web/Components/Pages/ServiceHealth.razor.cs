@@ -51,14 +51,14 @@ public partial class ServiceHealth
             services = await Applications.ListServicesAsync(servicePage, token);
             if (SelectedService is not { } selected || selected.Version != 7) return;
             selectedService = await Applications.GetServiceAsync(selected, token);
-            if (selectedService is null) { error = "找不到選取的服務。"; return; }
+            if (selectedService is null) { error = L["找不到選取的服務。"].Value; return; }
             targets = await Health.ListTargetsAsync(selected, targetPage, token);
             observations = await Health.LatestAsync(selected, targetPage, token);
             instances = await Instances.ListAsync(selected, instancePage, token);
             if (SelectedTarget is { } id)
             {
                 editingTarget = await Health.GetTargetAsync(id, token);
-                if (editingTarget is null || editingTarget.ServiceId != selected) { error = "找不到此服務的健康檢查。"; selectedService = null; return; }
+                if (editingTarget is null || editingTarget.ServiceId != selected) { error = L["找不到此服務的健康檢查。"].Value; selectedService = null; return; }
                 if (handler != "health-target") TargetForm = new() { Id = editingTarget.Id, InstanceId = editingTarget.InstanceId, Endpoint = editingTarget.Endpoint,
                     IntervalSeconds = editingTarget.IntervalSeconds, TimeoutSeconds = editingTarget.TimeoutSeconds,
                     FailureThreshold = editingTarget.FailureThreshold, RecoveryThreshold = editingTarget.RecoveryThreshold,
@@ -77,50 +77,50 @@ public partial class ServiceHealth
 
     private async Task SaveNetworksAsync()
     {
-        if (Actor() is not { } actor) { error = "無法確認管理員身分。"; return; }
+        if (Actor() is not { } actor) { error = L["無法確認管理員身分。"].Value; return; }
         try
         {
             var values = (NetworkForm.Text ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             var saved = await Health.UpdateNetworksAsync(new(values, NetworkForm.Version), actor, HttpContext.RequestAborted);
-            if (saved is null) error = "網段設定已變更，請重新整理後再試。";
-            else { NetworkForm.Version = saved.Version; networkEmpty = saved.Networks.Count == 0; message = "網段設定已儲存。"; }
+            if (saved is null) error = L["網段設定已變更，請重新整理後再試。"].Value;
+            else { NetworkForm.Version = saved.Version; networkEmpty = saved.Networks.Count == 0; message = L["網段設定已儲存。"].Value; }
         }
-        catch (ArgumentException) { error = "請逐行輸入有效的 IP 位址或 CIDR 網段，最多 64 筆。"; }
+        catch (ArgumentException) { error = L["請逐行輸入有效的 IP 位址或 CIDR 網段，最多 64 筆。"].Value; }
         catch (Exception ex) when (ex is not OperationCanceledException)
-        { Logger.LogWarning("Could not save health network policy: {ExceptionType}", ex.GetType().Name); error = "無法確認儲存結果，請重新整理後檢查。"; }
+        { Logger.LogWarning("Could not save health network policy: {ExceptionType}", ex.GetType().Name); error = L["無法確認儲存結果，請重新整理後檢查。"].Value; }
         await LoadAsync();
     }
 
     private async Task SaveTargetAsync()
     {
         if (SelectedService is not { } selected || selected.Version != 7 || Actor() is not { } actor)
-        { error = "請先選擇服務。"; return; }
+        { error = L["請先選擇服務。"].Value; return; }
         try
         {
             var input = new HealthTargetInput(TargetForm.Endpoint, TargetForm.IntervalSeconds, TargetForm.TimeoutSeconds,
                 TargetForm.FailureThreshold, TargetForm.RecoveryThreshold, TargetForm.Enabled, TargetForm.Version);
             if (TargetForm.Id is { } existingId && (await Health.GetTargetAsync(existingId, HttpContext.RequestAborted))?.ServiceId != selected)
-            { error = "找不到此服務的健康檢查。"; return; }
+            { error = L["找不到此服務的健康檢查。"].Value; return; }
             var result = TargetForm.Id is { } id
                 ? await Health.UpdateAsync(id, input, actor, HttpContext.RequestAborted)
                 : await Health.CreateAsync(new(selected, TargetForm.InstanceId, input), actor, HttpContext.RequestAborted);
             if (result.Status == HealthTargetStatus.Saved)
             {
                 TargetForm.Version = result.Target!.Version;
-                message = "健康檢查設定已儲存；結果會在下次檢查後顯示。";
+                message = L["健康檢查設定已儲存；結果會在下次檢查後顯示。"].Value;
                 if (TargetForm.Id is null) TargetForm = new();
             }
             else error = result.Status switch
             {
-                HealthTargetStatus.Invalid => "請檢查網址、間隔、逾時及門檻設定；逾時不可大於檢查間隔。",
-                HealthTargetStatus.Conflict => "設定已被修改，請重新整理後再試。",
-                HealthTargetStatus.Unavailable => "服務、來源或執行個體目前不可使用，無法啟用檢查。",
-                HealthTargetStatus.LimitReached => "此服務的健康檢查已達上限。",
-                _ => "找不到服務或執行個體，請重新整理後再試。"
+                HealthTargetStatus.Invalid => L["請檢查網址、間隔、逾時及門檻設定；逾時不可大於檢查間隔。"].Value,
+                HealthTargetStatus.Conflict => L["設定已被修改，請重新整理後再試。"].Value,
+                HealthTargetStatus.Unavailable => L["服務、來源或執行個體目前不可使用，無法啟用檢查。"].Value,
+                HealthTargetStatus.LimitReached => L["此服務的健康檢查已達上限。"].Value,
+                _ => L["找不到服務或執行個體，請重新整理後再試。"].Value
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
-        { Logger.LogWarning("Could not save health target: {ExceptionType}", ex.GetType().Name); error = "無法確認儲存結果，請重新整理後檢查。"; }
+        { Logger.LogWarning("Could not save health target: {ExceptionType}", ex.GetType().Name); error = L["無法確認儲存結果，請重新整理後檢查。"].Value; }
         await LoadAsync();
     }
 
@@ -129,15 +129,15 @@ public partial class ServiceHealth
         $"/settings/service-health?service={service:D}&services={services}&page={page}&instances={instances}";
     private static string TargetUrl(Guid service, Guid target, int services, int page, int instances) =>
         $"/settings/service-health?service={service:D}&target={target:D}&services={services}&page={page}&instances={instances}";
-    private static string ObservationText(HealthCheckObservationKind kind) => kind switch
+    private string ObservationText(HealthCheckObservationKind kind) => kind switch
     {
-        HealthCheckObservationKind.Healthy => "回報正常", HealthCheckObservationKind.Degraded => "回報降級",
-        HealthCheckObservationKind.Unhealthy => "回報異常", HealthCheckObservationKind.Timeout => "檢查逾時",
-        HealthCheckObservationKind.TransportError => "連線失敗", HealthCheckObservationKind.InvalidResponse => "回應格式不符",
-        HealthCheckObservationKind.NetworkDenied => "網段未允許", _ => "未知"
+        HealthCheckObservationKind.Healthy => L["回報正常"].Value, HealthCheckObservationKind.Degraded => L["回報降級"].Value,
+        HealthCheckObservationKind.Unhealthy => L["回報異常"].Value, HealthCheckObservationKind.Timeout => L["檢查逾時"].Value,
+        HealthCheckObservationKind.TransportError => L["連線失敗"].Value, HealthCheckObservationKind.InvalidResponse => L["回應格式不符"].Value,
+        HealthCheckObservationKind.NetworkDenied => L["網段未允許"].Value, _ => L["未知"].Value
     };
-    private string TargetSubject(Guid? instanceId) => instanceId is null ? "整個服務" :
-        targetInstances.TryGetValue(instanceId.Value, out var instance) ? instance.ExternalInstanceId : "無法讀取執行個體";
+    private string TargetSubject(Guid? instanceId) => instanceId is null ? L["整個服務"].Value :
+        targetInstances.TryGetValue(instanceId.Value, out var instance) ? instance.ExternalInstanceId : L["無法讀取執行個體"].Value;
 
     private sealed class NetworkEditor { public string Text { get; set; } = ""; public string Version { get; set; } = ""; }
     private sealed class TargetEditor

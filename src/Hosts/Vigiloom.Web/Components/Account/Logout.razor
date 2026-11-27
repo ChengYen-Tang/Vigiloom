@@ -8,18 +8,20 @@
 @inject Vigiloom.Web.Authentication.AccountLogout AccountLogout
 @inject NavigationManager Navigation
 
-<PageTitle>登出 - Vigiloom</PageTitle>
+@inject Microsoft.Extensions.Localization.IStringLocalizer<AccountActionText> L
+
+<PageTitle>@L["登出 - Vigiloom"]</PageTitle>
 <section class="account-card" aria-labelledby="logout-title">
-    <h1 id="logout-title">登出 Vigiloom</h1>
-    <p class="account-description">登出會結束此帳號在所有裝置上的登入。</p>
+    <h1 id="logout-title">@L["登出 Vigiloom"]</h1>
+    <p class="account-description">@L["登出會結束此帳號在所有裝置上的登入。"]</p>
     @if (error is not null)
     {
         <p class="account-error" role="alert">@error</p>
     }
     <EditForm Model="this" FormName="logout" method="post" OnValidSubmit="LogoutAsync">
-        <button class="account-primary" type="submit">登出</button>
+        <button class="account-primary" type="submit">@L["登出"]</button>
     </EditForm>
-    <p class="account-footer"><a href="/">返回總覽</a></p>
+    <p class="account-footer"><a href="/">@L["返回總覽"]</a></p>
 </section>
 
 @code {
@@ -30,7 +32,7 @@
     {
         if (!await AccountLogout.RevokeSessionsAsync(HttpContext.User, HttpContext.RequestAborted))
         {
-            error = "無法結束登入，請稍後重試。";
+            error = L["無法結束登入，請稍後重試。"].Value;
             return;
         }
         await SignInManager.SignOutAsync();

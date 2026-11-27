@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="Title">
+    <value>Two-factor authentication</value>
+  </data>
+  <data xml:space="preserve" name="Description">
+    <value>Enter the 6-digit code from your authenticator app.</value>
+  </data>
+  <data xml:space="preserve" name="VerificationCode">
+    <value>Verification code</value>
+  </data>
+  <data xml:space="preserve" name="VerifyAndSignIn">
+    <value>Verify and sign in</value>
+  </data>
+  <data xml:space="preserve" name="UseRecovery">
+    <value>Use a recovery code</value>
+  </data>
+  <data xml:space="preserve" name="RecoveryCode">
+    <value>Recovery code</value>
+  </data>
+  <data xml:space="preserve" name="SignInWithRecovery">
+    <value>Sign in with a recovery code</value>
+  </data>
+  <data xml:space="preserve" name="BackToSignIn">
+    <value>Back to sign in</value>
+  </data>
+  <data xml:space="preserve" name="InvalidCode">
+    <value>The code is invalid or your sign-in has expired. Try again or sign in again.</value>
+  </data>
+  <data xml:space="preserve" name="RequiredCode">
+    <value>Enter a code.</value>
+  </data>
+  <data xml:space="preserve" name="CodeLength">
+    <value>Code must be at most {1} characters.</value>
+  </data>
+</root>

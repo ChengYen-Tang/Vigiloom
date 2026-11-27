@@ -7,12 +7,74 @@ using MudBlazor.Services;
 using Vigiloom.Web.Client.Components;
 using Vigiloom.Web.Client.Components.PublicStatus;
 using Vigiloom.Contracts.Publishing;
+using Vigiloom.Contracts.Workspace;
+using Vigiloom.Web.Client.Components.Workspace;
 
 namespace Vigiloom.Web.Tests;
 
 [TestClass]
 public sealed class SharedComponentsTests
 {
+    [TestMethod]
+    [DataRow("en", "Offline", "Total: 1 · Need attention: 1")]
+    [DataRow("zh-Hant", "離線", "共 1 筆 · 1 筆需要留意")]
+    [DataRow("zh-Hans", "离线", "共 1 项 · 1 项需要注意")]
+    public async Task WorkspaceSummary_LocalizesStateAndPreservesNames(string culture, string state, string count)
+    {
+        var previous = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = new(culture);
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddLocalization();
+            await using var provider = services.BuildServiceProvider();
+            await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+            await renderer.Dispatcher.InvokeAsync(async () =>
+            {
+                var section = new WorkspaceSection(1, 1, [new(Guid.CreateVersion7(), "Custom server", "server.example", "離線", null, 0)]);
+                var panel = await renderer.RenderComponentAsync<WorkspaceSectionPanel>(ParameterView.FromDictionary(new Dictionary<string, object?>
+                {
+                    [nameof(WorkspaceSectionPanel.Section)] = section, [nameof(WorkspaceSectionPanel.Title)] = "Custom title",
+                    [nameof(WorkspaceSectionPanel.HeadingId)] = "heading", [nameof(WorkspaceSectionPanel.TimeLabel)] = "Last"
+                }));
+                var html = System.Net.WebUtility.HtmlDecode(panel.ToHtmlString());
+                Assert.Contains("Custom server", html);
+                Assert.Contains("server.example", html);
+                Assert.Contains(state, html);
+                Assert.Contains(count, html);
+            });
+        }
+        finally { System.Globalization.CultureInfo.CurrentUICulture = previous; }
+    }
+
+    [TestMethod]
+    [DataRow("en", "No measurements yet")]
+    [DataRow("zh-Hant", "尚無量測資料")]
+    [DataRow("zh-Hans", "暂无测量数据")]
+    public async Task PingBadge_UsesSelectedLanguage(string culture, string expected)
+    {
+        var previous = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = new(culture);
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddLocalization();
+            services.AddMudServices();
+            services.AddSingleton<IJSRuntime, UnavailableJavaScript>();
+            services.AddSingleton<NavigationManager, TestNavigationManager>();
+            await using var provider = services.BuildServiceProvider();
+            await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+            await renderer.Dispatcher.InvokeAsync(async () =>
+            {
+                var badge = await renderer.RenderComponentAsync<PingStatusBadge>(ParameterView.Empty);
+                Assert.Contains(expected, System.Net.WebUtility.HtmlDecode(badge.ToHtmlString()));
+            });
+        }
+        finally { System.Globalization.CultureInfo.CurrentUICulture = previous; }
+    }
+
     [TestMethod]
     [DataRow("2026-11-01T00:00:00+00:00", 24, "2026-11-01T00:00:00+00:00", 1, 1)]
     [DataRow("2026-11-01T23:00:00+00:00", 2, "2026-11-02T00:00:00+00:00", 2, 2)]
@@ -23,6 +85,7 @@ public sealed class SharedComponentsTests
         var day = DateTimeOffset.Parse(dayText, System.Globalization.CultureInfo.InvariantCulture);
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddLocalization();
         await using var provider = services.BuildServiceProvider();
         await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
         await renderer.Dispatcher.InvokeAsync(async () =>
@@ -39,6 +102,66 @@ public sealed class SharedComponentsTests
             Assert.Contains("未知或無資料", html);
             Assert.Contains("資料涵蓋率", html);
         });
+    }
+
+    [TestMethod]
+    [DataRow("en", "Operational", "No public devices to display.")]
+    [DataRow("zh-Hant", "正常", "目前沒有可顯示的公開設備。")]
+    [DataRow("zh-Hans", "正常", "目前没有可显示的公开设备。")]
+    public async Task PublicStatusComponents_UseSelectedCulture(string culture, string state, string empty)
+    {
+        var previous = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = new(culture);
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddLocalization();
+            await using var provider = services.BuildServiceProvider();
+            await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+            await renderer.Dispatcher.InvokeAsync(async () =>
+            {
+                var badge = await renderer.RenderComponentAsync<StatusLabel>(ParameterView.FromDictionary(new Dictionary<string, object?> { [nameof(StatusLabel.State)] = "Healthy" }));
+                Assert.Contains(state, System.Net.WebUtility.HtmlDecode(badge.ToHtmlString()));
+                var devices = await renderer.RenderComponentAsync<DeviceSection>(ParameterView.Empty);
+                Assert.Contains(empty, System.Net.WebUtility.HtmlDecode(devices.ToHtmlString()));
+            });
+        }
+        finally { System.Globalization.CultureInfo.CurrentUICulture = previous; }
+    }
+
+    [TestMethod]
+    [DataRow("en", "View data as a table", "No data")]
+    [DataRow("zh-Hant", "以表格查看資料", "無資料")]
+    [DataRow("zh-Hans", "以表格查看数据", "无数据")]
+    public async Task TimeSeries_UsesSelectedLanguageForMissingSamples(string culture, string tableLabel, string missingLabel)
+    {
+        var previous = System.Globalization.CultureInfo.CurrentUICulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentUICulture = new(culture);
+            var services = new ServiceCollection();
+            services.AddLogging();
+            services.AddLocalization();
+            services.AddMudServices();
+            services.AddSingleton<IJSRuntime, UnavailableJavaScript>();
+            services.AddSingleton<NavigationManager, TestNavigationManager>();
+            await using var provider = services.BuildServiceProvider();
+            await using var renderer = new HtmlRenderer(provider, provider.GetRequiredService<ILoggerFactory>());
+            await renderer.Dispatcher.InvokeAsync(async () =>
+            {
+                var chart = await renderer.RenderComponentAsync<TimeSeriesChart>(ParameterView.FromDictionary(new Dictionary<string, object?>
+                {
+                    [nameof(TimeSeriesChart.Title)] = "Custom device",
+                    [nameof(TimeSeriesChart.Points)] = new[] { new TimeSeriesPoint(DateTimeOffset.UtcNow, null) }
+                }));
+                var html = System.Net.WebUtility.HtmlDecode(chart.ToHtmlString());
+                Assert.Contains("Custom device", html);
+                Assert.Contains(tableLabel, html);
+                Assert.Contains(missingLabel, html);
+            });
+        }
+        finally { System.Globalization.CultureInfo.CurrentUICulture = previous; }
     }
 
     [TestMethod]
@@ -66,6 +189,7 @@ public sealed class SharedComponentsTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddMudServices();
+        services.AddLocalization();
         services.AddSingleton<IJSRuntime, UnavailableJavaScript>();
         services.AddSingleton<NavigationManager, TestNavigationManager>();
         await using var provider = services.BuildServiceProvider();

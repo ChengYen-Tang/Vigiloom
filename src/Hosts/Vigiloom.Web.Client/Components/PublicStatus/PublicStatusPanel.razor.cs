@@ -223,11 +223,11 @@ public partial class PublicStatusPanel : IAsyncDisposable
         if (loading || changingRange) return;
         if (!DateTime.TryParse(customStart, CultureInfo.InvariantCulture, DateTimeStyles.None, out var start) ||
             !DateTime.TryParse(customEnd, CultureInfo.InvariantCulture, DateTimeStyles.None, out var end))
-        { rangeError = "請輸入有效的開始與結束時間。"; return; }
+        { rangeError = L["請輸入有效的開始與結束時間。"]; return; }
         var from = new DateTimeOffset(DateTime.SpecifyKind(start, DateTimeKind.Utc));
         var to = new DateTimeOffset(DateTime.SpecifyKind(end, DateTimeKind.Utc));
-        if (from >= to) { rangeError = "開始時間必須早於結束時間。"; return; }
-        if (to - from > TimeSpan.FromDays(90)) { rangeError = "時間範圍最多 90 天。"; return; }
+        if (from >= to) { rangeError = L["開始時間必須早於結束時間。"]; return; }
+        if (to - from > TimeSpan.FromDays(90)) { rangeError = L["時間範圍最多 90 天。"]; return; }
         changingRange = true;
         try
         {

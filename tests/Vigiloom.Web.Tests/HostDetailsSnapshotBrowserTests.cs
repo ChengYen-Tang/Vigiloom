@@ -218,6 +218,18 @@ public sealed class HostDetailsSnapshotBrowserTests
         await host.GetByRole(AriaRole.Button, new() { Name = "漏洞", Exact = true }).ClickAsync();
         await host.GetByText("此作業系統版本尚未支援漏洞比對", new() { Exact = false }).WaitForAsync();
         Assert.AreEqual(0, await host.GetByText("目前以 Ubuntu 來源套件版本比對", new() { Exact = false }).CountAsync());
+        vulnerabilities.UnsupportedMode = false;
+        vulnerabilities.WindowsMode = true;
+        var vulnerabilityPath = $"/devices/{device.Id:D}?tab=vulnerabilities";
+        await page.GotoAsync($"{url}/culture/set?culture=en&returnUrl={Uri.EscapeDataString(vulnerabilityPath)}");
+        await host.GetByText("Windows vulnerability advisory matching", new() { Exact = true }).WaitForAsync();
+        await host.GetByText("Mapped product: Windows Server 2022 (Server Core installation)", new() { Exact = true }).WaitForAsync();
+        await host.GetByText("Related KBs: 1234567", new() { Exact = true }).WaitForAsync();
+        await host.GetByText("1 candidate advisories, applicability unknown", new() { Exact = false }).WaitForAsync();
+        await host.GetByText("View advisory remediation leads", new() { Exact = true }).ClickAsync();
+        await host.GetByText("Fixed build 10.0.20348.3000", new() { Exact = false }).WaitForAsync();
+        await page.GotoAsync($"{url}/culture/set?culture=zh-Hans&returnUrl={Uri.EscapeDataString(vulnerabilityPath)}");
+        await host.GetByText("Windows 漏洞公告比对", new() { Exact = true }).WaitForAsync();
     }, TestContext.CancellationToken);
 
     private sealed class VulnerabilityFixture : IVulnerabilityClient

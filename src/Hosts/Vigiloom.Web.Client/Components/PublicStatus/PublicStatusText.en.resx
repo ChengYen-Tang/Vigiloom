@@ -1,0 +1,243 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="對外網路設備">
+    <value>Public network devices</value>
+  </data>
+  <data xml:space="preserve" name="顯示管理員允許公開的連線狀態與延遲。">
+    <value>Connection status and latency shared by the administrator.</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可顯示的公開設備。">
+    <value>No public devices to display.</value>
+  </data>
+  <data xml:space="preserve" name="設備名稱">
+    <value>Device</value>
+  </data>
+  <data xml:space="preserve" name="目前狀態">
+    <value>Current status</value>
+  </data>
+  <data xml:space="preserve" name="延遲與觀測時間">
+    <value>Latency and observed time</value>
+  </data>
+  <data xml:space="preserve" name="查看延遲歷史">
+    <value>View latency history</value>
+  </data>
+  <data xml:space="preserve" name="對外應用服務">
+    <value>Public application services</value>
+  </data>
+  <data xml:space="preserve" name="應用服務的健康狀態獨立於設備連線。">
+    <value>Application health is independent of device connectivity.</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可顯示的公開服務。">
+    <value>No public services to display.</value>
+  </data>
+  <data xml:space="preserve" name="服務名稱">
+    <value>Service</value>
+  </data>
+  <data xml:space="preserve" name="歷史狀態">
+    <value>Status history</value>
+  </data>
+  <data xml:space="preserve" name="此服務未提供公開歷史。">
+    <value>This service has no public history.</value>
+  </data>
+  <data xml:space="preserve" name="歷史資料暫時無法讀取。">
+    <value>History is temporarily unavailable.</value>
+  </data>
+  <data xml:space="preserve" name="正在讀取歷史資料…">
+    <value>Loading history…</value>
+  </data>
+  <data xml:space="preserve" name="正常">
+    <value>Operational</value>
+  </data>
+  <data xml:space="preserve" name="部分影響">
+    <value>Degraded</value>
+  </data>
+  <data xml:space="preserve" name="異常">
+    <value>Unavailable</value>
+  </data>
+  <data xml:space="preserve" name="未知或無資料">
+    <value>Unknown or no data</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可公開的歷史資料。">
+    <value>No public history is available.</value>
+  </data>
+  <data xml:space="preserve" name="服務每日狀態歷史，可左右捲動，選擇日期查看文字摘要">
+    <value>Daily service history. Scroll horizontally and select a day for details.</value>
+  </data>
+  <data xml:space="preserve" name="所選歷史時間範圍">
+    <value>Selected history range</value>
+  </data>
+  <data xml:space="preserve" name="至">
+    <value>to</value>
+  </data>
+  <data xml:space="preserve" name="本頁取得時間：">
+    <value>Retrieved: </value>
+  </data>
+  <data xml:space="preserve" name="資料涵蓋率">
+    <value>Data coverage</value>
+  </data>
+  <data xml:space="preserve" name="公開監測狀態">
+    <value>Public status</value>
+  </data>
+  <data xml:space="preserve" name="僅顯示管理員公開的設備與應用服務；狀態依目前可用資料顯示。">
+    <value>Only devices and services shared by an administrator are shown. Status is based on available data.</value>
+  </data>
+  <data xml:space="preserve" name="即時連線暫時中斷，頁面會重新確認公開狀態。">
+    <value>The live connection was interrupted. Public status will be checked again.</value>
+  </data>
+  <data xml:space="preserve" name="公開群組">
+    <value>Public groups</value>
+  </data>
+  <data xml:space="preserve" name="全部公開項目">
+    <value>All public items</value>
+  </data>
+  <data xml:space="preserve" name="上一頁">
+    <value>Previous</value>
+  </data>
+  <data xml:space="preserve" name="下一頁">
+    <value>Next</value>
+  </data>
+  <data xml:space="preserve" name="查詢條件">
+    <value>Filters</value>
+  </data>
+  <data xml:space="preserve" name="搜尋公開名稱">
+    <value>Search public names</value>
+  </data>
+  <data xml:space="preserve" name="搜尋">
+    <value>Search</value>
+  </data>
+  <data xml:space="preserve" name="服務歷史">
+    <value>Service history</value>
+  </data>
+  <data xml:space="preserve" name="最近 7 天">
+    <value>Last 7 days</value>
+  </data>
+  <data xml:space="preserve" name="最近 30 天">
+    <value>Last 30 days</value>
+  </data>
+  <data xml:space="preserve" name="最近 90 天">
+    <value>Last 90 days</value>
+  </data>
+  <data xml:space="preserve" name="自訂範圍">
+    <value>Custom range</value>
+  </data>
+  <data xml:space="preserve" name="時間以 UTC 顯示">
+    <value>Times shown in UTC</value>
+  </data>
+  <data xml:space="preserve" name="開始時間（UTC）">
+    <value>Start time (UTC)</value>
+  </data>
+  <data xml:space="preserve" name="結束時間（UTC）">
+    <value>End time (UTC)</value>
+  </data>
+  <data xml:space="preserve" name="套用時間範圍">
+    <value>Apply time range</value>
+  </data>
+  <data xml:space="preserve" name="狀態圖例：">
+    <value>Status legend: </value>
+  </data>
+  <data xml:space="preserve" name="正在載入公開狀態…">
+    <value>Loading public status…</value>
+  </data>
+  <data xml:space="preserve" name="暫時無法讀取公開狀態">
+    <value>Public status is temporarily unavailable</value>
+  </data>
+  <data xml:space="preserve" name="請確認網路連線後重試。">
+    <value>Check your network connection and try again.</value>
+  </data>
+  <data xml:space="preserve" name="重新嘗試">
+    <value>Try again</value>
+  </data>
+  <data xml:space="preserve" name="正在讀取延遲歷史…">
+    <value>Loading latency history…</value>
+  </data>
+  <data xml:space="preserve" name="延遲歷史暫時無法讀取，請稍後重試。">
+    <value>Latency history is temporarily unavailable. Try again later.</value>
+  </data>
+  <data xml:space="preserve" name="此設備未提供公開延遲歷史。">
+    <value>This device has no public latency history.</value>
+  </data>
+  <data xml:space="preserve" name="公開延遲歷史">
+    <value>Public latency history</value>
+  </data>
+  <data xml:space="preserve" name="設備最多顯示所選區間最後 7 天；資料為已結束的五分鐘平均延遲，沒有資料不代表正常或中斷。">
+    <value>Up to the last 7 days of the selected range are shown. Values are completed five-minute average latencies; missing data does not imply availability or an outage.</value>
+  </data>
+  <data xml:space="preserve" name="登入後查看設備詳情">
+    <value>Sign in to view device details</value>
+  </data>
+  <data xml:space="preserve" name="正在讀取允許公開的狀態時間…">
+    <value>Loading public status intervals…</value>
+  </data>
+  <data xml:space="preserve" name="狀態時間暫時無法讀取，請稍後重試。">
+    <value>Status intervals are temporarily unavailable. Try again later.</value>
+  </data>
+  <data xml:space="preserve" name="此服務只提供每日狀態摘要。">
+    <value>This service provides daily status summaries only.</value>
+  </data>
+  <data xml:space="preserve" name="此時段沒有可公開的狀態時間。">
+    <value>No public status intervals are available for this period.</value>
+  </data>
+  <data xml:space="preserve" name="正在確認可公開的歷史…">
+    <value>Checking public history…</value>
+  </data>
+  <data xml:space="preserve" name="歷史資料暫時無法讀取，請稍後重試。">
+    <value>History is temporarily unavailable. Try again later.</value>
+  </data>
+  <data xml:space="preserve" name="此服務目前未提供該時段的公開歷史。">
+    <value>This service has no public history for this period.</value>
+  </data>
+  <data xml:space="preserve" name="選擇上方歷史色條可查看日期摘要。">
+    <value>Select a history bar above to view a daily summary.</value>
+  </data>
+  <data xml:space="preserve" name="登入後查看服務詳情">
+    <value>Sign in to view service details</value>
+  </data>
+  <data xml:space="preserve" name="未知代表資料不足或無法確認，並非正常運作。公開狀態不包含內部診斷資訊。">
+    <value>Unknown means there is insufficient data or the status cannot be confirmed. Public status excludes internal diagnostics.</value>
+  </data>
+  <data xml:space="preserve" name="請輸入有效的開始與結束時間。">
+    <value>Enter a valid start and end time.</value>
+  </data>
+  <data xml:space="preserve" name="開始時間必須早於結束時間。">
+    <value>The start time must be before the end time.</value>
+  </data>
+  <data xml:space="preserve" name="時間範圍最多 90 天。">
+    <value>The time range cannot exceed 90 days.</value>
+  </data>
+  <data xml:space="preserve" name="無資料">
+    <value>No data</value>
+  </data>
+  <data xml:space="preserve" name="狀態變更">
+    <value>Status changed</value>
+  </data>
+  <data xml:space="preserve" name="區間起點">
+    <value>Interval start</value>
+  </data>
+  <data xml:space="preserve" name="第 {0} 頁">
+    <value>Page {0}</value>
+  </data>
+  <data xml:space="preserve" name="設備第 {0} 頁">
+    <value>Devices: page {0}</value>
+  </data>
+  <data xml:space="preserve" name="服務第 {0} 頁">
+    <value>Services: page {0}</value>
+  </data>
+  <data xml:space="preserve" name="{0} 個公開設備・{1} 個公開服務">
+    <value>{0} public devices · {1} public services</value>
+  </data>
+  <data xml:space="preserve" name="資料涵蓋率 {0}；可用率 {1}。">
+    <value>Data coverage {0}; availability {1}.</value>
+  </data>
+</root>

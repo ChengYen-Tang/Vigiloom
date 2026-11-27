@@ -42,17 +42,17 @@ internal static class OperationAuditEndpoints
             return OperationAuditQueryService.Valid(query) ? Results.Ok(await audit.QueryAuditRetentionAsync(query, token)) : Results.ValidationProblem(new Dictionary<string, string[]> { ["range"] = ["Use a UTC range of at most 31 days and a valid page."] });
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<OperationAuditPage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Query audit retention settings changes");
-        app.MapGet("/api/v1/settings/audit-retention", async (AuditRetentionSettings settings, CancellationToken token) => Results.Ok(await settings.GetAsync(token)))
+        app.MapGet("/api/v1/settings/audit-retention", async (Vigiloom.Web.Operations.AuditRetentionAccess settings, CancellationToken token) => Results.Ok(await settings.GetAsync(token)))
             .RequireAuthorization(AccessPolicies.Administrator).Produces<AuditRetentionSnapshot>().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Get settings audit retention");
-        app.MapPost("/api/v1/settings/audit-retention/preview", async (AuditRetentionPreviewRequest input, HttpContext context, AuditRetentionSettings settings, CancellationToken token) =>
+        app.MapPost("/api/v1/settings/audit-retention/preview", async (AuditRetentionPreviewRequest input, HttpContext context, Vigiloom.Web.Operations.AuditRetentionAccess settings, CancellationToken token) =>
         {
             if (!AuditRetentionLimits.IsValid(input.Days)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["Invalid retention period."] });
             return await ApiMutation.ExecuteAsync(context, async actor => await settings.PreviewAsync(input, actor, token) is { } preview
                 ? Results.Ok(preview) : Results.Conflict(), allowApiCredential: false);
         }).RequireAuthorization(AccessPolicies.Administrator).Produces<AuditRetentionPreview>().Produces(409).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403)
             .WithSummary("Preview settings audit retention");
-        app.MapPut("/api/v1/settings/audit-retention", async (AuditRetentionInput input, HttpContext context, AuditRetentionSettings settings, CancellationToken token) =>
+        app.MapPut("/api/v1/settings/audit-retention", async (AuditRetentionInput input, HttpContext context, Vigiloom.Web.Operations.AuditRetentionAccess settings, CancellationToken token) =>
         {
             if (!AuditRetentionLimits.IsValid(input.Days)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["Invalid retention period."] });
             return await ApiMutation.ExecuteAsync(context, async actor =>

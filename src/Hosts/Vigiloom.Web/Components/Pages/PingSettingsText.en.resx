@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="Ping 監測設定" xml:space="preserve"><value>Ping monitoring settings</value></data>
+  <data name="Ping 監測" xml:space="preserve"><value>Ping monitoring</value></data>
+  <data name="從中央位置持續量測所有已啟用設備的主要與額外目標。" xml:space="preserve"><value>Continuously measure primary and additional targets of enabled devices from the central location.</value></data>
+  <data name="每輪每目標發送一次。未達門檻時維持先前狀態；DNS、權限或監測器錯誤顯示未知，不算設備失敗。Ping 不通不代表 Agent 或應用服務故障。" xml:space="preserve"><value>One Ping is sent to each target per round. Previous status remains until the threshold is reached. DNS, permission and monitor errors show as unknown and do not count as device failures. A failed Ping does not imply Agent or application failure.</value></data>
+  <data name="無法讀取設定，請稍後重新整理。" xml:space="preserve"><value>Unable to load settings. Refresh later.</value></data>
+  <data name="量測間隔（10～3600 秒）" xml:space="preserve"><value>Measurement interval (10–3600 seconds)</value></data>
+  <data name="逾時（1～10 秒，須小於間隔）" xml:space="preserve"><value>Timeout (1–10 seconds, less than interval)</value></data>
+  <data name="連續失敗門檻（1～10 次）" xml:space="preserve"><value>Consecutive failure threshold (1–10)</value></data>
+  <data name="連續成功門檻（1～10 次）" xml:space="preserve"><value>Consecutive success threshold (1–10)</value></data>
+  <data name="每個 Worker 最大並行數（1～256）" xml:space="preserve"><value>Maximum concurrency per Worker (1–256)</value></data>
+  <data name="超過兩個量測間隔且至少 90 秒沒有資料，會標記資料過期。Worker 重新啟動會恢復排程，停機期間的取樣不會補造。" xml:space="preserve"><value>Data becomes stale after more than two measurement intervals and at least 90 seconds without data. The Worker resumes scheduling after restart; samples missed during downtime are not fabricated.</value></data>
+  <data name="儲存 Ping 設定" xml:space="preserve"><value>Save Ping settings</value></data>
+  <data name="Ping 歷史資料保存" xml:space="preserve"><value>Ping history retention</value></data>
+  <data name="設定原始樣本與五分鐘彙總的保存期限。" xml:space="preserve"><value>Set retention for raw samples and five-minute rollups.</value></data>
+  <data name="管理保存期限" xml:space="preserve"><value>Manage retention</value></data>
+  <data name="請檢查設定範圍，逾時須小於量測間隔。" xml:space="preserve"><value>Check setting ranges; timeout must be less than the measurement interval.</value></data>
+  <data name="設定已儲存，Worker 會在下一輪使用新設定。" xml:space="preserve"><value>Settings saved. The Worker will use them in the next round.</value></data>
+  <data name="設定已被其他操作變更，請重新整理後再試。" xml:space="preserve"><value>Settings changed elsewhere. Refresh and try again.</value></data>
+  <data name="無法確認儲存結果，請重新整理並檢查。" xml:space="preserve"><value>Unable to confirm the save result. Refresh and check.</value></data>
+  <data name="Ping 資料保存" xml:space="preserve"><value>Ping data retention</value></data>
+  <data name="設定原始量測與五分鐘彙總的保存期限。" xml:space="preserve"><value>Set retention for raw measurements and five-minute rollups.</value></data>
+  <data name="過期資料會定期清理；尚未完成彙總的樣本會保留。刪除後，延長期限無法還原資料。" xml:space="preserve"><value>Expired data is cleaned periodically; samples awaiting rollup are retained. Extending retention cannot restore deleted data.</value></data>
+  <data name="無法讀取保存設定，請重新整理後再試。" xml:space="preserve"><value>Unable to load retention settings. Refresh and try again.</value></data>
+  <data name="原始樣本保存天數（1～3650 天）" xml:space="preserve"><value>Raw sample retention (1–3650 days)</value></data>
+  <data name="五分鐘彙總保存天數（1～3650 天）" xml:space="preserve"><value>Five-minute rollup retention (1–3650 days)</value></data>
+  <data name="以 {0} 為準，預計有 {1} 筆原始樣本及 {2} 筆彙總符合清理條件。實際數量會隨時間及資料變動。" xml:space="preserve"><value>As of {0}, an estimated {1} raw samples and {2} rollups qualify for cleanup. Actual counts change over time and with data.</value></data>
+  <data name="確認後將依排程清理；預覽在 5 分鐘內有效。" xml:space="preserve"><value>After confirmation, cleanup follows its schedule. The preview is valid for 5 minutes.</value></data>
+  <data name="確認儲存" xml:space="preserve"><value>Confirm save</value></data>
+  <data name="取消" xml:space="preserve"><value>Cancel</value></data>
+  <data name="預覽變更" xml:space="preserve"><value>Preview changes</value></data>
+  <data name="返回 Ping 設定" xml:space="preserve"><value>Back to Ping settings</value></data>
+  <data name="請輸入有效的保存天數。" xml:space="preserve"><value>Enter a valid retention period.</value></data>
+  <data name="保存設定已儲存。" xml:space="preserve"><value>Retention settings saved.</value></data>
+  <data name="預覽已過期或天數已變更，請重新預覽。" xml:space="preserve"><value>The preview expired or the periods changed. Preview again.</value></data>
+  <data name="無法確認儲存結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm the save result. Refresh and check.</value></data>
+</root>

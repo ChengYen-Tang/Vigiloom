@@ -34,8 +34,10 @@ internal sealed class AuditFeedReader(IdentityAuditReader identity, DeviceAuditF
         return source switch
         {
             AuditFeedSource.Accounts or AuditFeedSource.ApiCredentials => await identity.QueryAsync(principal, source, query, token),
-            AuditFeedSource.Devices => await devices.QueryAsync(query, token),
-            AuditFeedSource.AgentIdentity => await agent.QueryAsync(source, query, token),
+            AuditFeedSource.Devices => string.IsNullOrWhiteSpace(configuration["Services:Resources:Url"])
+                ? await devices.QueryAsync(query, token) : await services.GetRequiredService<RemoteDeviceAuditFeed>().QueryAsync(query, token),
+            AuditFeedSource.AgentIdentity => string.IsNullOrWhiteSpace(configuration["Services:Resources:Url"])
+                ? await agent.QueryAsync(source, query, token) : await services.GetRequiredService<AgentIdentityAuditFeed>().QueryAsync(query, token),
             AuditFeedSource.AgentSettings or AuditFeedSource.AgentQueueCapacity or AuditFeedSource.AgentMetricSettings or AuditFeedSource.HostMetricThresholds or AuditFeedSource.HostLogSources =>
                 string.IsNullOrWhiteSpace(configuration["Services:HostMonitoring:Url"])
                     ? await agent.QueryAsync(source, query, token)

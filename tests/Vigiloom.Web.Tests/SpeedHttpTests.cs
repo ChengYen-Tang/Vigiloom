@@ -115,6 +115,18 @@ public sealed class SpeedHttpTests
             Assert.Contains("86400 → 3600 秒", auditText);
             Assert.Contains("7 → 2 天", auditText);
         }
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var english = await admin.GetAsync("/settings/agents", token))
+        {
+            var text = await TextAsync(english, token);
+            Assert.Contains("Agent receipt retention and cleanup", text);
+            Assert.Contains("Current replay deadline: 3600 seconds", text);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplified = await admin.GetAsync("/settings/agents", token))
+            Assert.Contains("Agent 收据保留与清理", await TextAsync(simplified, token));
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var settingsPage = await admin.GetAsync("/settings/agents", token);
         var form = await FormAsync(settingsPage, "agent-inbox-retention", token);
         Assert.AreEqual("Input.ReplaySeconds", form.QuerySelector("#inbox-replay")?.GetAttribute("name"));
@@ -275,6 +287,22 @@ public sealed class SpeedHttpTests
         var beforeRetention = await admin.GetFromJsonAsync<SpeedRetentionSnapshot>("/api/v1/settings/speed-retention", token);
         Assert.IsNotNull(beforeRetention);
         using (var denied = await admin.PostAsJsonAsync("/api/v1/settings/speed-retention/preview", new SpeedRetentionPreviewRequest(30, beforeRetention.Version), token)) Assert.AreEqual(HttpStatusCode.BadRequest, denied.StatusCode);
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var english = await admin.GetAsync("/settings/speed-tests", token))
+        {
+            var englishText = await TextAsync(english, token);
+            Assert.Contains("Speed test settings", englishText);
+            Assert.Contains("Speed test retention", englishText);
+            var englishFields = Hidden(await FormAsync(english, "speed-retention", token));
+            englishFields["Input.Days"] = "30";
+            using var englishPreview = await admin.PostAsync("/settings/speed-tests", new FormUrlEncodedContent(englishFields), token);
+            Assert.Contains("Confirm save", await TextAsync(englishPreview, token));
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplified = await admin.GetAsync("/settings/speed-tests", token))
+            Assert.Contains("网络测速设置", await TextAsync(simplified, token));
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var initial = await admin.GetAsync("/settings/speed-tests", token);
         var scheduleFields = Hidden(await FormAsync(initial, "speed-settings", token));
         scheduleFields["Input.Hours"] = "6"; scheduleFields["Input.MaxMiB"] = "100"; scheduleFields["Input.Timeout"] = "45";
@@ -361,6 +389,22 @@ public sealed class SpeedHttpTests
         }
         using var reader = Client(factory);
         await LoginAsync(reader, "reader", token);
+        reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var englishDetails = await reader.GetAsync($"/speed-tests/{withCoordinates.Id:D}", token))
+        {
+            var text = await TextAsync(englishDetails, token);
+            Assert.Contains("Speed test result", text);
+            Assert.Contains("Server coordinates", text);
+            Assert.Contains("25.033, 121.5654", text);
+            Assert.Contains("Completed", text);
+        }
+        using (var englishList = await reader.GetAsync("/speed-tests", token))
+            Assert.Contains("Speed test history", await TextAsync(englishList, token));
+        reader.DefaultRequestHeaders.AcceptLanguage.Clear();
+        reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplifiedDetails = await reader.GetAsync($"/speed-tests/{withCoordinates.Id:D}", token))
+            Assert.Contains("测速结果", await TextAsync(simplifiedDetails, token));
+        reader.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var populatedPage = await reader.GetAsync($"/speed-tests/{withCoordinates.Id:D}", token);
         Assert.AreEqual(HttpStatusCode.OK, populatedPage.StatusCode);
         Assert.Contains("25.033, 121.5654", await TextAsync(populatedPage, token));

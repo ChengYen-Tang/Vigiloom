@@ -98,16 +98,7 @@ builder.Services.AddSingleton(services =>
         ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."));
 });
 builder.Services.AddScoped<SchedulingOverview>();
-builder.Services.AddSingleton(services =>
-{
-    var config = services.GetRequiredService<IConfiguration>();
-    var connection = config.GetConnectionString("Scheduling") ?? config.GetConnectionString("Operations")
-        ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required.");
-    var options = new DbContextOptionsBuilder<SchedulingDbContext>()
-        .UseSqlServer(connection, sql => sql.UseCompatibilityLevel(SqlServerRegistration.CompatibilityLevel)
-            .MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
-    return new SchedulingHealth(new PooledDbContextFactory<SchedulingDbContext>(options));
-});
+builder.Services.AddSingleton<SchedulingHealth>();
 builder.Services.AddScoped<WorkerDiagnosticsStore>();
 builder.Services.AddScoped<NetworkDiagnosticsStore>();
 builder.Services.AddHealthChecks().AddCheck<OperationsDatabaseHealth>("database");

@@ -1,0 +1,425 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="深入監控資料" xml:space="preserve"><value>深入监控数据</value></data>
+  <data name="各資料來源各自回報；Ping、Agent 與應用服務狀態互不推定。" xml:space="preserve"><value>各数据来源各自报告；Ping、Agent 与应用服务状态互不推定。</value></data>
+  <data name="主機資料分類" xml:space="preserve"><value>主机数据分类</value></data>
+  <data name="資產盤點" xml:space="preserve"><value>资产清单</value></data>
+  <data name="效能" xml:space="preserve"><value>性能</value></data>
+  <data name="程序與服務" xml:space="preserve"><value>进程与服务</value></data>
+  <data name="主機日誌" xml:space="preserve"><value>主机日志</value></data>
+  <data name="行為偵測" xml:space="preserve"><value>行为检测</value></data>
+  <data name="漏洞" xml:space="preserve"><value>漏洞</value></data>
+  <data name="檔案完整性" xml:space="preserve"><value>文件完整性</value></data>
+  <data name="查詢時間" xml:space="preserve"><value>查询时间</value></data>
+  <data name="最近 24 小時" xml:space="preserve"><value>最近 24 小时</value></data>
+  <data name="最近 7 天" xml:space="preserve"><value>最近 7 天</value></data>
+  <data name="最近 30 天" xml:space="preserve"><value>最近 30 天</value></data>
+  <data name="最近 1 年" xml:space="preserve"><value>最近 1 年</value></data>
+  <data name="最近 {0} 天（保存期限）" xml:space="preserve"><value>最近 {0} 天（保留期限）</value></data>
+  <data name="正在載入…" xml:space="preserve"><value>正在加载…</value></data>
+  <data name="登入已失效或權限已變更，請重新登入。" xml:space="preserve"><value>登录已失效或权限已更改，请重新登录。</value></data>
+  <data name="重新載入" xml:space="preserve"><value>重新加载</value></data>
+  <data name="顯示最後一次掃描與保留基線；覆蓋缺口不代表檔案完整無異常。" xml:space="preserve"><value>显示最后一次扫描与保留基线；覆盖缺口不代表文件完整无异常。</value></data>
+  <data name="左右滑動查看完整表格。" xml:space="preserve"><value>左右滑动查看完整表格。</value></data>
+  <data name="完整性範圍表格，可左右捲動" xml:space="preserve"><value>完整性范围表格，可左右滚动</value></data>
+  <data name="範圍" xml:space="preserve"><value>范围</value></data>
+  <data name="最後掃描" xml:space="preserve"><value>最后扫描</value></data>
+  <data name="結果" xml:space="preserve"><value>结果</value></data>
+  <data name="基線" xml:space="preserve"><value>基线</value></data>
+  <data name="已停用" xml:space="preserve"><value>已停用</value></data>
+  <data name="平台：{0}" xml:space="preserve"><value>平台：{0}</value></data>
+  <data name="（有覆蓋缺口）" xml:space="preserve"><value>（有覆盖缺口）</value></data>
+  <data name="（原因：{0}）" xml:space="preserve"><value>（原因：{0}）</value></data>
+  <data name="（設定已變更）" xml:space="preserve"><value>（设置已更改）</value></data>
+  <data name="查看基線" xml:space="preserve"><value>查看基线</value></data>
+  <data name="基線項目" xml:space="preserve"><value>基线项目</value></data>
+  <data name="範圍 ID：{0} · 基線設定版本：{1} · 觀察時間（UTC）：{2} · 第 {3} / {4} 頁" xml:space="preserve"><value>范围 ID：{0} · 基线设置版本：{1} · 观察时间（UTC）：{2} · 第 {3} / {4} 页</value></data>
+  <data name="目前設定的路徑：{0}。基線版本若與目前設定不同，原始掃描路徑可能不同，歷史路徑未提供。" xml:space="preserve"><value>当前设置的路径：{0}。基线版本若与当前设置不同，原始扫描路径可能不同，历史路径未提供。</value></data>
+  <data name="基線表格，可左右捲動" xml:space="preserve"><value>基线表格，可左右滚动</value></data>
+  <data name="項目" xml:space="preserve"><value>项目</value></data>
+  <data name="類型" xml:space="preserve"><value>类型</value></data>
+  <data name="證據" xml:space="preserve"><value>证据</value></data>
+  <data name="上一頁" xml:space="preserve"><value>上一页</value></data>
+  <data name="下一頁" xml:space="preserve"><value>下一页</value></data>
+  <data name="尚未設定完整性監控範圍。" xml:space="preserve"><value>尚未设置完整性监控范围。</value></data>
+  <data name="最近變更" xml:space="preserve"><value>最近变更</value></data>
+  <data name="完整性變更表格，可左右捲動" xml:space="preserve"><value>完整性变更表格，可左右滚动</value></data>
+  <data name="觀察時間（UTC）" xml:space="preserve"><value>观察时间（UTC）</value></data>
+  <data name="覆蓋" xml:space="preserve"><value>覆盖</value></data>
+  <data name="變更證據" xml:space="preserve"><value>变更证据</value></data>
+  <data name="有缺口" xml:space="preserve"><value>有缺口</value></data>
+  <data name="變更前" xml:space="preserve"><value>变更前</value></data>
+  <data name="變更後" xml:space="preserve"><value>变更后</value></data>
+  <data name="這段時間沒有可用的變更紀錄。" xml:space="preserve"><value>这段时间没有可用的变更记录。</value></data>
+  <data name="較新變更" xml:space="preserve"><value>较新变更</value></data>
+  <data name="較早變更" xml:space="preserve"><value>较早变更</value></data>
+  <data name="（時間異常）" xml:space="preserve"><value>（时间异常）</value></data>
+  <data name="（超過 24 小時）" xml:space="preserve"><value>（超过 24 小时）</value></data>
+  <data name="完整" xml:space="preserve"><value>完整</value></data>
+  <data name="部分" xml:space="preserve"><value>部分</value></data>
+  <data name="權限不足" xml:space="preserve"><value>权限不足</value></data>
+  <data name="不支援" xml:space="preserve"><value>不支持</value></data>
+  <data name="掃描失敗" xml:space="preserve"><value>扫描失败</value></data>
+  <data name="尚無回報" xml:space="preserve"><value>尚无报告</value></data>
+  <data name="已接受完整資料" xml:space="preserve"><value>已接受完整数据</value></data>
+  <data name="部分資料" xml:space="preserve"><value>部分数据</value></data>
+  <data name="接收逾期" xml:space="preserve"><value>接收逾期</value></data>
+  <data name="已拒收" xml:space="preserve"><value>已拒收</value></data>
+  <data name="尚未完成" xml:space="preserve"><value>尚未完成</value></data>
+  <data name="基線已更新，請重新載入最新資料。" xml:space="preserve"><value>基线已更新，请重新加载最新数据。</value></data>
+  <data name="無法讀取此項資料，請稍後重試。" xml:space="preserve"><value>无法读取此项数据，请稍后重试。</value></data>
+  <data name="查看證據" xml:space="preserve"><value>查看证据</value></data>
+  <data name="無此項目。" xml:space="preserve"><value>无此项目。</value></data>
+  <data name="擁有者" xml:space="preserve"><value>所有者</value></data>
+  <data name="未提供" xml:space="preserve"><value>未提供</value></data>
+  <data name="內容雜湊" xml:space="preserve"><value>内容哈希</value></data>
+  <data name="安全性雜湊" xml:space="preserve"><value>安全性哈希</value></data>
+  <data name="依中央接收時間排序；記錄來源時間可能未知。" xml:space="preserve"><value>按中央接收时间排序；记录来源时间可能未知。</value></data>
+  <data name="保存期限 {0} 天；安全偵測所需資料可能延長保留。" xml:space="preserve"><value>保留期限 {0} 天；安全检测所需数据可能延长保留。</value></data>
+  <data name="日誌表格，可左右捲動" xml:space="preserve"><value>日志表格，可左右滚动</value></data>
+  <data name="接收時間（UTC）" xml:space="preserve"><value>接收时间（UTC）</value></data>
+  <data name="來源" xml:space="preserve"><value>来源</value></data>
+  <data name="內容" xml:space="preserve"><value>内容</value></data>
+  <data name="採集缺口：" xml:space="preserve"><value>采集缺口：</value></data>
+  <data name="這段時間沒有主機日誌。" xml:space="preserve"><value>这段时间没有主机日志。</value></data>
+  <data name="較新紀錄" xml:space="preserve"><value>较新记录</value></data>
+  <data name="較早紀錄" xml:space="preserve"><value>较早记录</value></data>
+  <data name="顯示已啟用規則的命中與未評估紀錄；沒有紀錄不代表設備沒有異常。" xml:space="preserve"><value>显示已启用规则的命中与未评估记录；没有记录不代表设备没有异常。</value></data>
+  <data name="行為偵測紀錄，可左右捲動" xml:space="preserve"><value>行为检测记录，可左右滚动</value></data>
+  <data name="規則" xml:space="preserve"><value>规则</value></data>
+  <data name="結果與證據" xml:space="preserve"><value>结果与证据</value></data>
+  <data name="命中" xml:space="preserve"><value>命中</value></data>
+  <data name="未評估" xml:space="preserve"><value>未评估</value></data>
+  <data name="{0} 筆事件 · {1} 至 {2}（UTC）" xml:space="preserve"><value>{0} 条事件 · {1} 至 {2}（UTC）</value></data>
+  <data name="查看來源與事件識別" xml:space="preserve"><value>查看来源与事件标识</value></data>
+  <data name="來源版本：{0}" xml:space="preserve"><value>来源版本：{0}</value></data>
+  <data name="規則摘要：{0}" xml:space="preserve"><value>规则摘要：{0}</value></data>
+  <data name="事件：{0}" xml:space="preserve"><value>事件：{0}</value></data>
+  <data name="這段時間沒有偵測紀錄。" xml:space="preserve"><value>这段时间没有检测记录。</value></data>
+  <data name="IOC 比對線索" xml:space="preserve"><value>IOC 比对线索</value></data>
+  <data name="查看 YARA 掃描" xml:space="preserve"><value>查看 YARA 扫描</value></data>
+  <data name="僅顯示已啟用比對後收到的事件；命中需要調查，並不代表已入侵。" xml:space="preserve"><value>仅显示启用比对后收到的事件；命中需要调查，并不代表已入侵。</value></data>
+  <data name="線索依 Log 政策保存 {0} 天。" xml:space="preserve"><value>线索按日志策略保留 {0} 天。</value></data>
+  <data name="IOC 比對線索，可左右捲動" xml:space="preserve"><value>IOC 比对线索，可左右滚动</value></data>
+  <data name="指標" xml:space="preserve"><value>指标</value></data>
+  <data name="來源與證據" xml:space="preserve"><value>来源与证据</value></data>
+  <data name="事件 {0}" xml:space="preserve"><value>事件 {0}</value></data>
+  <data name="查看來源" xml:space="preserve"><value>查看来源</value></data>
+  <data name="授權" xml:space="preserve"><value>许可</value></data>
+  <data name="這段時間沒有 IOC 命中紀錄。" xml:space="preserve"><value>这段时间没有 IOC 命中记录。</value></data>
+  <data name="較新線索" xml:space="preserve"><value>较新线索</value></data>
+  <data name="較早線索" xml:space="preserve"><value>较早线索</value></data>
+  <data name="資料缺口" xml:space="preserve"><value>数据缺口</value></data>
+  <data name="偵測資料缺口，可左右捲動" xml:space="preserve"><value>检测数据缺口，可左右滚动</value></data>
+  <data name="紀錄時間（UTC）" xml:space="preserve"><value>记录时间（UTC）</value></data>
+  <data name="原因" xml:space="preserve"><value>原因</value></data>
+  <data name="事件" xml:space="preserve"><value>事件</value></data>
+  <data name="原始日誌無法取得" xml:space="preserve"><value>原始日志无法获取</value></data>
+  <data name="規則無法使用" xml:space="preserve"><value>规则无法使用</value></data>
+  <data name="這段時間沒有已記錄的資料缺口。" xml:space="preserve"><value>这段时间没有已记录的数据缺口。</value></data>
+  <data name="較新缺口" xml:space="preserve"><value>较新缺口</value></data>
+  <data name="較早缺口" xml:space="preserve"><value>较早缺口</value></data>
+  <data name="依 Agent 註冊與來源分開顯示；未收到的資料不視為零。更新或離線期間可能暫停採集，圖表按時間區間彙整，短暫空窗可能不會顯示。" xml:space="preserve"><value>按 Agent 注册与来源分别显示；未收到的数据不视为零。更新或离线期间可能暂停采集，图表按时间区间汇总，短暂空窗可能不会显示。</value></data>
+  <data name="近期採集未完成的紀錄（各來源顯示最近一筆，最多 10 筆，非目前狀態）：" xml:space="preserve"><value>近期采集未完成的记录（每个来源显示最近一条，最多 10 条，非当前状态）：</value></data>
+  <data name="原始樣本保存 {0} 天，五分鐘彙總保存 {1} 天。" xml:space="preserve"><value>原始样本保留 {0} 天，五分钟汇总保留 {1} 天。</value></data>
+  <data name="來源與 Agent" xml:space="preserve"><value>来源与 Agent</value></data>
+  <data name="閾值評估結果" xml:space="preserve"><value>阈值评估结果</value></data>
+  <data name="大於等於" xml:space="preserve"><value>大于等于</value></data>
+  <data name="小於等於" xml:space="preserve"><value>小于等于</value></data>
+  <data name="閾值：{0} {1} {2} · 樣本有效時間：{3} 秒" xml:space="preserve"><value>阈值：{0} {1} {2} · 样本有效时间：{3} 秒</value></data>
+  <data name="最新樣本：{0} {1} · 量測時間：{2}（UTC）" xml:space="preserve"><value>最新样本：{0} {1} · 测量时间：{2}（UTC）</value></data>
+  <data name="評估時間：{0}（UTC）。此結果使用當時的設定與最新樣本，與下方歷史趨勢分開。" xml:space="preserve"><value>评估时间：{0}（UTC）。此结果使用当时的设置与最新样本，与下方历史趋势分开。</value></data>
+  <data name="更新評估" xml:space="preserve"><value>更新评估</value></data>
+  <data name="設定此來源的閾值" xml:space="preserve"><value>设置此来源的阈值</value></data>
+  <data name="部分時段的原始資料已到期，無法精確計算；圖表略過這些區間。" xml:space="preserve"><value>部分时段的原始数据已过期，无法精确计算；图表跳过这些区间。</value></data>
+  <data name="效能趨勢" xml:space="preserve"><value>性能趋势</value></data>
+  <data name="此時間範圍沒有可繪製的資料。" xml:space="preserve"><value>此时间范围没有可绘制的数据。</value></data>
+  <data name="還有其他資料來源，可切換下一頁查看。" xml:space="preserve"><value>还有其他数据来源，可切换下一页查看。</value></data>
+  <data name="這段時間沒有此指標。" xml:space="preserve"><value>这段时间没有此指标。</value></data>
+  <data name="上一頁來源" xml:space="preserve"><value>上一页来源</value></data>
+  <data name="下一頁來源" xml:space="preserve"><value>下一页来源</value></data>
+  <data name="平台不支援" xml:space="preserve"><value>平台不支持</value></data>
+  <data name="採集錯誤" xml:space="preserve"><value>采集错误</value></data>
+  <data name="資料未能取得，原因未知" xml:space="preserve"><value>数据未能获取，原因未知</value></data>
+  <data name="未設定閾值" xml:space="preserve"><value>未设置阈值</value></data>
+  <data name="閾值已停用" xml:space="preserve"><value>阈值已停用</value></data>
+  <data name="未達觸發條件" xml:space="preserve"><value>未达触发条件</value></data>
+  <data name="已達閾值" xml:space="preserve"><value>已达阈值</value></data>
+  <data name="未知：尚無樣本" xml:space="preserve"><value>未知：尚无样本</value></data>
+  <data name="未知：樣本已過期" xml:space="preserve"><value>未知：样本已过期</value></data>
+  <data name="未知：樣本時間晚於平台時間" xml:space="preserve"><value>未知：样本时间晚于平台时间</value></data>
+  <data name="未知：無法判定" xml:space="preserve"><value>未知：无法判定</value></data>
+  <data name="CPU 使用率" xml:space="preserve"><value>CPU 使用率</value></data>
+  <data name="CPU 核心使用率" xml:space="preserve"><value>CPU 核心使用率</value></data>
+  <data name="系統負載（1 分鐘）" xml:space="preserve"><value>系统负载（1 分钟）</value></data>
+  <data name="系統負載（5 分鐘）" xml:space="preserve"><value>系统负载（5 分钟）</value></data>
+  <data name="系統負載（15 分鐘）" xml:space="preserve"><value>系统负载（15 分钟）</value></data>
+  <data name="總記憶體" xml:space="preserve"><value>总内存</value></data>
+  <data name="可用記憶體" xml:space="preserve"><value>可用内存</value></data>
+  <data name="交換空間總量" xml:space="preserve"><value>交换空间总量</value></data>
+  <data name="可用交換空間" xml:space="preserve"><value>可用交换空间</value></data>
+  <data name="分頁檔總量" xml:space="preserve"><value>分页文件总量</value></data>
+  <data name="已用分頁檔" xml:space="preserve"><value>已用分页文件</value></data>
+  <data name="總磁碟空間" xml:space="preserve"><value>总磁盘空间</value></data>
+  <data name="可用磁碟空間" xml:space="preserve"><value>可用磁盘空间</value></data>
+  <data name="磁碟讀取" xml:space="preserve"><value>磁盘读取</value></data>
+  <data name="磁碟寫入" xml:space="preserve"><value>磁盘写入</value></data>
+  <data name="磁碟讀取延遲" xml:space="preserve"><value>磁盘读取延迟</value></data>
+  <data name="磁碟寫入延遲" xml:space="preserve"><value>磁盘写入延迟</value></data>
+  <data name="網路接收" xml:space="preserve"><value>网络接收</value></data>
+  <data name="網路傳送" xml:space="preserve"><value>网络发送</value></data>
+  <data name="網路接收錯誤" xml:space="preserve"><value>网络接收错误</value></data>
+  <data name="網路傳送錯誤" xml:space="preserve"><value>网络发送错误</value></data>
+  <data name="程序 CPU 使用率" xml:space="preserve"><value>进程 CPU 使用率</value></data>
+  <data name="程序工作集記憶體" xml:space="preserve"><value>进程工作集内存</value></data>
+  <data name="未知指標" xml:space="preserve"><value>未知指标</value></data>
+  <data name="負載" xml:space="preserve"><value>负载</value></data>
+  <data name="顯示 Agent 最近一次保留的快照；部分採集或採集失敗不代表其他項目已消失。" xml:space="preserve"><value>显示 Agent 最近一次保留的快照；部分采集或采集失败不代表其他项目已消失。</value></data>
+  <data name="Windows 軟體的 32／64 位元標示是登錄檢視，並非軟體本身的架構。" xml:space="preserve"><value>Windows 软件的 32／64 位标记是注册表视图，并非软件本身的架构。</value></data>
+  <data name="程序、作業系統服務與監聽連線是週期性快照，不是即時建立或終止事件；兩次採集間短暫出現的程序可能不會被記錄。" xml:space="preserve"><value>进程、操作系统服务与监听连接是周期性快照，不是实时创建或终止事件；两次采集间短暂出现的进程可能不会被记录。</value></data>
+  <data name="目前沒有這類盤點資料。" xml:space="preserve"><value>目前没有这类清单数据。</value></data>
+  <data name="資料來源" xml:space="preserve"><value>数据来源</value></data>
+  <data name="最近嘗試：{0} · Agent 結果：{1} · 平台接收：{2}" xml:space="preserve"><value>最近尝试：{0} · Agent 结果：{1} · 平台接收：{2}</value></data>
+  <data name="最後成功盤點：{0} · 保留完整快照觀察時間：{1} · 目前顯示快照觀察時間：{2}（UTC）" xml:space="preserve"><value>最后成功盘点：{0} · 保留完整快照观察时间：{1} · 当前显示快照观察时间：{2}（UTC）</value></data>
+  <data name="平台拒收原因：{0}" xml:space="preserve"><value>平台拒收原因：{0}</value></data>
+  <data name="快照" xml:space="preserve"><value>快照</value></data>
+  <data name="最近部分快照" xml:space="preserve"><value>最近部分快照</value></data>
+  <data name="保留的完整快照" xml:space="preserve"><value>保留的完整快照</value></data>
+  <data name="快照時間晚於目前檢視端的時間，請確認時鐘。" xml:space="preserve"><value>快照时间晚于当前查看端时间，请确认时钟。</value></data>
+  <data name="這份快照已超過 24 小時，可能不是目前狀態。" xml:space="preserve"><value>这份快照已超过 24 小时，可能不是当前状态。</value></data>
+  <data name="這是部分快照，清單可能不完整。原因：{0}" xml:space="preserve"><value>这是部分快照，列表可能不完整。原因：{0}</value></data>
+  <data name="尚無可查看的快照。" xml:space="preserve"><value>尚无可查看的快照。</value></data>
+  <data name="第 {0} / {1} 頁，每頁最多 100 筆。" xml:space="preserve"><value>第 {0} / {1} 页，每页最多 100 条。</value></data>
+  <data name="快照沒有項目。" xml:space="preserve"><value>快照没有项目。</value></data>
+  <data name="盤點表格，可左右捲動" xml:space="preserve"><value>清单表格，可左右滚动</value></data>
+  <data name="名稱" xml:space="preserve"><value>名称</value></data>
+  <data name="識別／詳細資料" xml:space="preserve"><value>标识／详细信息</value></data>
+  <data name="採集失敗" xml:space="preserve"><value>采集失败</value></data>
+  <data name="Windows 軟體（32 位元登錄檢視）" xml:space="preserve"><value>Windows 软件（32 位注册表视图）</value></data>
+  <data name="Windows 軟體（64 位元登錄檢視）" xml:space="preserve"><value>Windows 软件（64 位注册表视图）</value></data>
+  <data name="Debian 軟體" xml:space="preserve"><value>Debian 软件</value></data>
+  <data name="RPM 軟體" xml:space="preserve"><value>RPM 软件</value></data>
+  <data name="Linux 帳號" xml:space="preserve"><value>Linux 账号</value></data>
+  <data name="Windows 帳號" xml:space="preserve"><value>Windows 账号</value></data>
+  <data name="Linux 群組" xml:space="preserve"><value>Linux 群组</value></data>
+  <data name="Windows 群組" xml:space="preserve"><value>Windows 群组</value></data>
+  <data name="Windows 修補程式" xml:space="preserve"><value>Windows 补丁</value></data>
+  <data name="Windows Update 快取觀察" xml:space="preserve"><value>Windows Update 缓存观察</value></data>
+  <data name="系統資訊" xml:space="preserve"><value>系统信息</value></data>
+  <data name="網路介面" xml:space="preserve"><value>网络接口</value></data>
+  <data name="磁碟空間" xml:space="preserve"><value>磁盘空间</value></data>
+  <data name="程序" xml:space="preserve"><value>进程</value></data>
+  <data name="作業系統服務" xml:space="preserve"><value>操作系统服务</value></data>
+  <data name="監聽連線" xml:space="preserve"><value>监听连接</value></data>
+  <data name="識別" xml:space="preserve"><value>标识</value></data>
+  <data name="版本" xml:space="preserve"><value>版本</value></data>
+  <data name="作業系統" xml:space="preserve"><value>操作系统</value></data>
+  <data name="架構" xml:space="preserve"><value>架构</value></data>
+  <data name="作業系統系列" xml:space="preserve"><value>操作系统系列</value></data>
+  <data name="發行版" xml:space="preserve"><value>发行版</value></data>
+  <data name="發行版版本" xml:space="preserve"><value>发行版版本</value></data>
+  <data name="Windows 安裝類型" xml:space="preserve"><value>Windows 安装类型</value></data>
+  <data name="程序架構" xml:space="preserve"><value>进程架构</value></data>
+  <data name="執行階段" xml:space="preserve"><value>运行时</value></data>
+  <data name="Agent 版本" xml:space="preserve"><value>Agent 版本</value></data>
+  <data name="可用處理器數" xml:space="preserve"><value>可用处理器数</value></data>
+  <data name="供應商" xml:space="preserve"><value>供应商</value></data>
+  <data name="安裝日期" xml:space="preserve"><value>安装日期</value></data>
+  <data name="程序 ID" xml:space="preserve"><value>进程 ID</value></data>
+  <data name="帳號／群組 ID" xml:space="preserve"><value>账号／组 ID</value></data>
+  <data name="主要群組 ID" xml:space="preserve"><value>主要组 ID</value></data>
+  <data name="啟動時間（UTC）" xml:space="preserve"><value>启动时间（UTC）</value></data>
+  <data name="記憶體（bytes）" xml:space="preserve"><value>内存（bytes）</value></data>
+  <data name="容量（bytes）" xml:space="preserve"><value>容量（bytes）</value></data>
+  <data name="位址" xml:space="preserve"><value>地址</value></data>
+  <data name="連接埠" xml:space="preserve"><value>端口</value></data>
+  <data name="通訊協定" xml:space="preserve"><value>协议</value></data>
+  <data name="狀態" xml:space="preserve"><value>状态</value></data>
+  <data name="啟動模式" xml:space="preserve"><value>启动模式</value></data>
+  <data name="執行身分" xml:space="preserve"><value>运行身份</value></data>
+  <data name="執行檔" xml:space="preserve"><value>可执行文件</value></data>
+  <data name="命令列" xml:space="preserve"><value>命令行</value></data>
+  <data name="父程序 ID" xml:space="preserve"><value>父进程 ID</value></data>
+  <data name="程序啟動時間（UTC）" xml:space="preserve"><value>进程启动时间（UTC）</value></data>
+  <data name="擁有程序 ID" xml:space="preserve"><value>所属进程 ID</value></data>
+  <data name="更新 ID" xml:space="preserve"><value>更新 ID</value></data>
+  <data name="更新修訂" xml:space="preserve"><value>更新修订</value></data>
+  <data name="已安裝" xml:space="preserve"><value>已安装</value></data>
+  <data name="需要重新啟動" xml:space="preserve"><value>需要重新启动</value></data>
+  <data name="是" xml:space="preserve"><value>是</value></data>
+  <data name="否" xml:space="preserve"><value>否</value></data>
+  <data name="{0} 筆{1}" xml:space="preserve"><value>{0} 条{1}</value></data>
+  <data name="查看成員（{0}）" xml:space="preserve"><value>查看成员（{0}）</value></data>
+  <data name="收合成員（{0}）" xml:space="preserve"><value>收起成员（{0}）</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>第 {0} 页</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>尚无数据</value></data>
+  <data name="盤點變更" xml:space="preserve"><value>清单变更</value></data>
+  <data name="依觀察時間顯示這台設備各次 Agent 註冊的歷史；部分觀察不代表完整新增或移除。" xml:space="preserve"><value>按观察时间显示此设备各次 Agent 注册的历史；部分观察不代表完整新增或移除。</value></data>
+  <data name="查看盤點變更" xml:space="preserve"><value>查看清单变更</value></data>
+  <data name="全部來源（包含程序與服務）" xml:space="preserve"><value>全部来源（包含进程与服务）</value></data>
+  <data name="正在載入盤點變更…" xml:space="preserve"><value>正在加载清单变更…</value></data>
+  <data name="無法讀取盤點變更，請稍後重試。" xml:space="preserve"><value>无法读取清单变更，请稍后重试。</value></data>
+  <data name="盤點變更表格，可左右捲動" xml:space="preserve"><value>清单变更表格，可左右滚动</value></data>
+  <data name="來源／Agent" xml:space="preserve"><value>来源／Agent</value></data>
+  <data name="變更" xml:space="preserve"><value>变更</value></data>
+  <data name="詳細資料" xml:space="preserve"><value>详细信息</value></data>
+  <data name="這段時間沒有盤點變更。" xml:space="preserve"><value>这段时间没有清单变更。</value></data>
+  <data name="較新盤點變更" xml:space="preserve"><value>较新清单变更</value></data>
+  <data name="較早盤點變更" xml:space="preserve"><value>较早清单变更</value></data>
+  <data name="新增" xml:space="preserve"><value>新增</value></data>
+  <data name="修改" xml:space="preserve"><value>修改</value></data>
+  <data name="移除" xml:space="preserve"><value>移除</value></data>
+  <data name="部分觀察：首次看到" xml:space="preserve"><value>部分观察：首次看到</value></data>
+  <data name="部分觀察：資料變化" xml:space="preserve"><value>部分观察：数据变化</value></data>
+  <data name="未知" xml:space="preserve"><value>未知</value></data>
+  <data name="漏洞比對" xml:space="preserve"><value>漏洞比对</value></data>
+  <data name="比對結果需要結合盤點與情報判讀" xml:space="preserve"><value>比对结果需要结合清单与情报判断</value></data>
+  <data name="目前以 {0} 來源套件版本比對；套件來自發行版的身分是未驗證的假設。未知或無公告資料不代表安全。" xml:space="preserve"><value>当前按 {0} 来源包版本比对；软件包来自发行版的身份是未经验证的假设。未知或无公告数据不代表安全。</value></data>
+  <data name="正在載入漏洞資料…" xml:space="preserve"><value>正在加载漏洞数据…</value></data>
+  <data name="作業系統生命週期尚未核實；舊系統的情報與修補覆蓋可能不足。" xml:space="preserve"><value>操作系统生命周期尚未核实；旧系统的情报与补丁覆盖可能不足。</value></data>
+  <data name="此作業系統版本尚未支援漏洞比對，無法判斷是否有漏洞。" xml:space="preserve"><value>此操作系统版本尚不支持漏洞比对，无法判断是否有漏洞。</value></data>
+  <data name="尚無評估結果" xml:space="preserve"><value>尚无评估结果</value></data>
+  <data name="請確認設備已完成盤點，並已啟用適用的漏洞情報來源。" xml:space="preserve"><value>请确认设备已完成清单采集，并已启用适用的漏洞情报来源。</value></data>
+  <data name="資料已過期或來源、Agent、盤點已變更；以下為上次評估，請勿視為目前狀態。" xml:space="preserve"><value>数据已过期或来源、Agent、清单已更改；以下为上次评估，请勿视为当前状态。</value></data>
+  <data name="盤點覆蓋" xml:space="preserve"><value>清单覆盖</value></data>
+  <data name="個套件" xml:space="preserve"><value>个软件包</value></data>
+  <data name="其中 {0} 個套件有未知結果。" xml:space="preserve"><value>其中 {0} 个软件包有未知结果。</value></data>
+  <data name="評估說明" xml:space="preserve"><value>评估说明</value></data>
+  <data name="版本比對是風險線索，不能證明實際遭入侵；未列出不代表沒有漏洞。" xml:space="preserve"><value>版本比对是风险线索，不能证明实际遭入侵；未列出不代表没有漏洞。</value></data>
+  <data name="無法建立公告比對的套件" xml:space="preserve"><value>无法建立公告比对的软件包</value></data>
+  <data name="以下列出缺少套件身分或未找到公告的套件；其他未知結果會列在公告比對表中。" xml:space="preserve"><value>以下列出缺少软件包身份或未找到公告的软件包；其他未知结果会列在公告比对表中。</value></data>
+  <data name="已安裝版本 {0}" xml:space="preserve"><value>已安装版本 {0}</value></data>
+  <data name="套件漏洞結果" xml:space="preserve"><value>软件包漏洞结果</value></data>
+  <data name="已標示 CISA 已知遭利用項目。" xml:space="preserve"><value>已标记 CISA 已知遭利用项目。</value></data>
+  <data name="已標示非官方驗證來源的 KEV 資料；來源未經系統驗證。" xml:space="preserve"><value>已标记非官方验证来源的 KEV 数据；来源未经系统验证。</value></data>
+  <data name="未標示不代表安全或未遭利用。" xml:space="preserve"><value>未标记不代表安全或未遭利用。</value></data>
+  <data name="已知遭利用情報目前不可用或已過期，未提供此標示。" xml:space="preserve"><value>已知遭利用情报当前不可用或已过期，未提供此标记。</value></data>
+  <data name="EPSS 情報目前不可用或已過期，未使用分數排序。" xml:space="preserve"><value>EPSS 情报当前不可用或已过期，未使用分数排序。</value></data>
+  <data name="套件或公告" xml:space="preserve"><value>软件包或公告</value></data>
+  <data name="例如 openssl 或 CVE" xml:space="preserve"><value>例如 openssl 或 CVE</value></data>
+  <data name="評估狀態" xml:space="preserve"><value>评估状态</value></data>
+  <data name="全部狀態" xml:space="preserve"><value>全部状态</value></data>
+  <data name="可能受影響" xml:space="preserve"><value>可能受影响</value></data>
+  <data name="版本顯示已修補" xml:space="preserve"><value>版本显示已修补</value></data>
+  <data name="不受影響" xml:space="preserve"><value>不受影响</value></data>
+  <data name="尚未評估" xml:space="preserve"><value>尚未评估</value></data>
+  <data name="查詢" xml:space="preserve"><value>查询</value></data>
+  <data name="沒有符合條件的公告比對結果；這不代表沒有漏洞。" xml:space="preserve"><value>没有符合条件的公告比对结果；这不代表没有漏洞。</value></data>
+  <data name="漏洞結果表格，可左右捲動" xml:space="preserve"><value>漏洞结果表格，可左右滚动</value></data>
+  <data name="套件" xml:space="preserve"><value>软件包</value></data>
+  <data name="公告" xml:space="preserve"><value>公告</value></data>
+  <data name="套件版本" xml:space="preserve"><value>软件包版本</value></data>
+  <data name="來源信心" xml:space="preserve"><value>来源可信度</value></data>
+  <data name="最後評估（UTC）" xml:space="preserve"><value>最后评估（UTC）</value></data>
+  <data name="歷史" xml:space="preserve"><value>历史</value></data>
+  <data name="查看歷史" xml:space="preserve"><value>查看历史</value></data>
+  <data name="正在載入歷史…" xml:space="preserve"><value>正在加载历史…</value></data>
+  <data name="此時間範圍沒有評估紀錄。" xml:space="preserve"><value>此时间范围没有评估记录。</value></data>
+  <data name="載入較早紀錄" xml:space="preserve"><value>加载较早记录</value></data>
+  <data name="資料或情報已更新，已回到第一頁。" xml:space="preserve"><value>数据或情报已更新，已返回第一页。</value></data>
+  <data name="無法載入漏洞資料，請稍後重試。" xml:space="preserve"><value>无法加载漏洞数据，请稍后重试。</value></data>
+  <data name="無法載入歷史，請稍後重試。" xml:space="preserve"><value>无法加载历史，请稍后重试。</value></data>
+  <data name="假設為發行版來源" xml:space="preserve"><value>假设为发行版来源</value></data>
+  <data name="來源衝突" xml:space="preserve"><value>来源冲突</value></data>
+  <data name="來源已驗證" xml:space="preserve"><value>来源已验证</value></data>
+  <data name="來源未知" xml:space="preserve"><value>来源未知</value></data>
+  <data name="依發行版公告的版本範圍判斷" xml:space="preserve"><value>按发行版公告的版本范围判断</value></data>
+  <data name="沒有找到可比對的公告，無法判定安全" xml:space="preserve"><value>没有找到可比对的公告，无法判定安全</value></data>
+  <data name="套件身分或版本不完整" xml:space="preserve"><value>软件包身份或版本不完整</value></data>
+  <data name="公告資料不足或有歧義" xml:space="preserve"><value>公告数据不足或有歧义</value></data>
+  <data name="判斷原因未知" xml:space="preserve"><value>判断原因未知</value></data>
+  <data name="Windows 更新與公告線索" xml:space="preserve"><value>Windows 更新与公告线索</value></data>
+  <data name="公告候選依 Microsoft 產品範圍取得；Windows Hotfix 與 Update 快取只提供部分修補觀察，沒有觀察到 KB 不代表未安裝。" xml:space="preserve"><value>公告候选按 Microsoft 产品范围获取；Windows Hotfix 与 Update 缓存只提供部分补丁观察，未观察到 KB 不代表未安装。</value></data>
+  <data name="觀察資料已過期、已變更或尚未取得，請確認 Agent 盤點狀態。" xml:space="preserve"><value>观察数据已过期、已更改或尚未获取，请确认 Agent 清单状态。</value></data>
+  <data name="Windows 漏洞公告比對" xml:space="preserve"><value>Windows 漏洞公告比对</value></data>
+  <data name="尚無評估結果；請確認主機盤點與 Microsoft 漏洞情報已就緒。" xml:space="preserve"><value>尚无评估结果；请确认主机清单与 Microsoft 漏洞情报已就绪。</value></data>
+  <data name="盤點或情報已變更或過期，以下為上次評估。" xml:space="preserve"><value>清单或情报已更改或过期，以下为上次评估。</value></data>
+  <data name="部分公告沒有完整的產品範圍，候選清單可能不完整。" xml:space="preserve"><value>部分公告没有完整的产品范围，候选列表可能不完整。</value></data>
+  <data name="更新取代關係尚未完整取得或已過期，修補狀態需要進一步確認。" xml:space="preserve"><value>更新替代关系尚未完整获取或已过期，补丁状态需要进一步确认。</value></data>
+  <data name="公告候選需要進一步確認是否適用及是否完成修補；沒有列出並不代表安全。" xml:space="preserve"><value>公告候选需要进一步确认是否适用及是否完成修补；没有列出并不代表安全。</value></data>
+  <data name="依評估狀態及可用的 KEV、EPSS 情報排序；這些資料不代表此設備已遭入侵。" xml:space="preserve"><value>按评估状态及可用的 KEV、EPSS 情报排序；这些数据不代表此设备已遭入侵。</value></data>
+  <data name="部分風險情報目前不可用或已過期，未使用該情報排序。" xml:space="preserve"><value>部分风险情报当前不可用或已过期，未使用该情报排序。</value></data>
+  <data name="產品或公告" xml:space="preserve"><value>产品或公告</value></data>
+  <data name="例如 CVE" xml:space="preserve"><value>例如 CVE</value></data>
+  <data name="沒有符合條件的公告候選。" xml:space="preserve"><value>没有符合条件的公告候选。</value></data>
+  <data name="更新盤點顯示已修補" xml:space="preserve"><value>更新清单显示已修补</value></data>
+  <data name="已知遭利用（CISA KEV）" xml:space="preserve"><value>已知遭利用（CISA KEV）</value></data>
+  <data name="KEV 命中（來源未驗證）" xml:space="preserve"><value>KEV 命中（来源未验证）</value></data>
+  <data name="Microsoft 公告最高嚴重度：{0}" xml:space="preserve"><value>Microsoft 公告最高严重程度：{0}</value></data>
+  <data name="Microsoft 公告最高嚴重度：未提供或無法確認" xml:space="preserve"><value>Microsoft 公告最高严重程度：未提供或无法确认</value></data>
+  <data name="Microsoft 將此產品列在受影響範圍。" xml:space="preserve"><value>Microsoft 将此产品列在受影响范围。</value></data>
+  <data name="已觀察到相關 KB：{0}。" xml:space="preserve"><value>已观察到相关 KB：{0}。</value></data>
+  <data name="已觀察到取代更新：{0}。" xml:space="preserve"><value>已观察到替代更新：{0}。</value></data>
+  <data name="查看 Microsoft Update Catalog 來源" xml:space="preserve"><value>查看 Microsoft Update Catalog 来源</value></data>
+  <data name="KB{0} 取代 KB{1} · 更新 {2} · 取得時間 {3} UTC" xml:space="preserve"><value>KB{0} 替代 KB{1} · 更新 {2} · 获取时间 {3} UTC</value></data>
+  <data name="部分取代關係來源未列出。" xml:space="preserve"><value>部分替代关系来源未列出。</value></data>
+  <data name="Microsoft 公告標示需要客戶採取行動。" xml:space="preserve"><value>Microsoft 公告标示需要客户采取行动。</value></data>
+  <data name="公告標示需要客戶採取行動。" xml:space="preserve"><value>公告标示需要客户采取行动。</value></data>
+  <data name="相關更新回報需要重新啟動。" xml:space="preserve"><value>相关更新报告需要重新启动。</value></data>
+  <data name="公告的產品適用範圍有歧義。" xml:space="preserve"><value>公告的产品适用范围有歧义。</value></data>
+  <data name="無法讀取這筆評估的詳細依據。" xml:space="preserve"><value>无法读取此评估的详细依据。</value></data>
+  <data name="查看評估依據" xml:space="preserve"><value>查看评估依据</value></data>
+  <data name="情報提供者：Microsoft Security Update Guide" xml:space="preserve"><value>情报提供者：Microsoft Security Update Guide</value></data>
+  <data name="情報版本：{0} · 比對器：{1}" xml:space="preserve"><value>情报版本：{0} · 比对器：{1}</value></data>
+  <data name="無可用快照" xml:space="preserve"><value>无可用快照</value></data>
+  <data name="主機盤點" xml:space="preserve"><value>主机清单</value></data>
+  <data name="盤點來源" xml:space="preserve"><value>清单来源</value></data>
+  <data name="已觀察的更新" xml:space="preserve"><value>已观察的更新</value></data>
+  <data name="觀察時間：{0} UTC" xml:space="preserve"><value>观察时间：{0} UTC</value></data>
+  <data name="對應產品：{0}" xml:space="preserve"><value>对应产品：{0}</value></data>
+  <data name="尚無可確認的產品對應，無法比對公告是否提及此主機產品。" xml:space="preserve"><value>尚无可确认的产品对应，无法比对公告是否提及此主机产品。</value></data>
+  <data name="系統組建：{0}.{1}" xml:space="preserve"><value>系统版本：{0}.{1}</value></data>
+  <data name="Microsoft 公告目前無法查詢；下方只顯示更新快取提供的 CVE。" xml:space="preserve"><value>Microsoft 公告当前无法查询；下方仅显示更新缓存提供的 CVE。</value></data>
+  <data name="此頁部分 CVE 未顯示或未查詢，請勿將結果視為完整清單。" xml:space="preserve"><value>此页部分 CVE 未显示或未查询，请勿将结果视为完整列表。</value></data>
+  <data name="這次沒有可顯示的更新觀察；不代表沒有漏洞。" xml:space="preserve"><value>本次没有可显示的更新观察；不代表没有漏洞。</value></data>
+  <data name="更新 {0} · 修訂 {1} · {2} · {3}" xml:space="preserve"><value>更新 {0} · 修订 {1} · {2} · {3}</value></data>
+  <data name="快取顯示已安裝" xml:space="preserve"><value>缓存显示已安装</value></data>
+  <data name="快取顯示未安裝" xml:space="preserve"><value>缓存显示未安装</value></data>
+  <data name="快取未標示需要重新啟動" xml:space="preserve"><value>缓存未标示需要重新启动</value></data>
+  <data name="相關 KB：{0}" xml:space="preserve"><value>相关 KB：{0}</value></data>
+  <data name="（僅列出部分）" xml:space="preserve"><value>（仅列出部分）</value></data>
+  <data name="查看更新取代線索" xml:space="preserve"><value>查看更新替代线索</value></data>
+  <data name="快取回報此更新可能取代下列更新；這些識別碼不含修訂版本，不能證明包含特定漏洞修補。" xml:space="preserve"><value>缓存报告此更新可能替代以下更新；这些标识符不含修订版本，不能证明包含特定漏洞修补。</value></data>
+  <data name="搜尋來源設定：{0}" xml:space="preserve"><value>搜索来源设置：{0}</value></data>
+  <data name="服務 {0}" xml:space="preserve"><value>服务 {0}</value></data>
+  <data name="預設來源（實際服務未確認）" xml:space="preserve"><value>默认来源（实际服务未确认）</value></data>
+  <data name="受管理的更新伺服器" xml:space="preserve"><value>受管理的更新服务器</value></data>
+  <data name="其他更新服務" xml:space="preserve"><value>其他更新服务</value></data>
+  <data name="未取得" xml:space="preserve"><value>未获取</value></data>
+  <data name="僅列出部分取代線索。" xml:space="preserve"><value>仅列出部分替代线索。</value></data>
+  <data name="更新資料未列出 CVE，無法判定漏洞狀態。" xml:space="preserve"><value>更新数据未列出 CVE，无法判定漏洞状态。</value></data>
+  <data name="{0} 份候選公告，適用性未知" xml:space="preserve"><value>{0} 份候选公告，适用性未知</value></data>
+  <data name="尚未取得候選公告" xml:space="preserve"><value>尚未获取候选公告</value></data>
+  <data name="{0} 份提及同一產品" xml:space="preserve"><value>{0} 份提及同一产品</value></data>
+  <data name="Microsoft 公告標示需要客戶採取行動，" xml:space="preserve"><value>Microsoft 公告标示需要客户采取行动，</value></data>
+  <data name="查看官方公告" xml:space="preserve"><value>查看官方公告</value></data>
+  <data name="。" xml:space="preserve"><value>。</value></data>
+  <data name="查看公告修補線索" xml:space="preserve"><value>查看公告修补线索</value></data>
+  <data name="以下由供應商公告列出，不代表已確認適用此設備或已安裝。" xml:space="preserve"><value>以下由供应商公告列出，不代表已确认适用此设备或已安装。</value></data>
+  <data name="公告描述 {0}" xml:space="preserve"><value>公告描述 {0}</value></data>
+  <data name="修補組建 {0}" xml:space="preserve"><value>修补版本 {0}</value></data>
+  <data name="公告描述與此更新快取的 KB 編號相同；仍需確認實際修補狀態。" xml:space="preserve"><value>公告描述与此更新缓存的 KB 编号相同；仍需确认实际修补状态。</value></data>
+  <data name="僅列出部分修補線索。" xml:space="preserve"><value>仅列出部分修补线索。</value></data>
+  <data name="依評估狀態、可用的 KEV 及 EPSS 排序。EPSS 是未來 30 天遭利用的預測機率，不代表此設備受影響或已遭入侵；資料時間：{0} UTC。" xml:space="preserve"><value>按评估状态、可用的 KEV 及 EPSS 排序。EPSS 是未来 30 天遭利用的预测概率，不代表此设备受影响或已遭入侵；数据时间：{0} UTC。</value></data>
+  <data name="Ubuntu 優先級：{0}" xml:space="preserve"><value>Ubuntu 优先级：{0}</value></data>
+  <data name="未提供或無法確認" xml:space="preserve"><value>未提供或无法确认</value></data>
+  <data name="{0} 的評估歷史" xml:space="preserve"><value>{0} 的评估历史</value></data>
+  <data name="判斷原因：{0}" xml:space="preserve"><value>判断原因：{0}</value></data>
+  <data name="修補線索：{0}" xml:space="preserve"><value>修补线索：{0}</value></data>
+  <data name="來源套件版本 {0}" xml:space="preserve"><value>来源软件包版本 {0}</value></data>
+  <data name="情報提供者：{0}" xml:space="preserve"><value>情报提供者：{0}</value></data>
+  <data name="情報版本：{0}" xml:space="preserve"><value>情报版本：{0}</value></data>
+  <data name="比對器版本：{0}" xml:space="preserve"><value>比对器版本：{0}</value></data>
+  <data name="主機盤點：{0}" xml:space="preserve"><value>主机清单：{0}</value></data>
+  <data name="套件盤點：{0}" xml:space="preserve"><value>软件包清单：{0}</value></data>
+  <data name="來源套件版本 {0}；更新後需重新盤點確認。" xml:space="preserve"><value>来源软件包版本 {0}；更新后需重新盘点确认。</value></data>
+  <data name="來源未提供可確認的修補版本。" xml:space="preserve"><value>来源未提供可确认的修补版本。</value></data>
+  <data name="證據不足，無法確認修補版本。" xml:space="preserve"><value>证据不足，无法确认修补版本。</value></data>
+  <data name="目前狀態未判定為受影響。" xml:space="preserve"><value>当前状态未判定为受影响。</value></data>
+  <data name="資料超出處理上限，無法確認修補版本。" xml:space="preserve"><value>数据超出处理上限，无法确认修补版本。</value></data>
+  <data name="無法確認修補版本。" xml:space="preserve"><value>无法确认修补版本。</value></data>
+</root>

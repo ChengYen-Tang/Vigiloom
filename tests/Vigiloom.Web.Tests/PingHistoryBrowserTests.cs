@@ -104,6 +104,14 @@ public sealed class PingHistoryBrowserTests(TestContext context)
         await page.Locator(".ping-history[data-runtime='WebAssembly'][data-interactive='true']").WaitForAsync(new() { Timeout = 60000 });
         await page.GetByText("目前設定保留原始樣本 30 天、五分鐘彙總 365 天", new() { Exact = false }).WaitForAsync();
         await page.GetByRole(AriaRole.Cell, new() { Name = "12 ms", Exact = true }).WaitForAsync(new() { Timeout = 30000 });
+        var historyPath = $"/devices/{device.Id:D}/ping-history";
+        await page.GotoAsync($"{url}/culture/set?culture=en&returnUrl={Uri.EscapeDataString(historyPath)}");
+        await page.GetByRole(AriaRole.Heading, new() { Name = "Five-minute average latency trend", Exact = true }).WaitForAsync();
+        await page.GetByText("Timed out", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Cell, new() { Name = "12 ms", Exact = true }).WaitForAsync();
+        await page.GotoAsync($"{url}/culture/set?culture=zh-Hans&returnUrl={Uri.EscapeDataString(historyPath)}");
+        await page.GetByRole(AriaRole.Heading, new() { Name = "五分钟平均延迟趋势", Exact = true }).WaitForAsync();
+        await page.GetByText("超时", new() { Exact = true }).WaitForAsync();
         await page.GotoAsync($"{url}/devices/{longDevice.Id:D}/ping-history");
         await page.GetByText(new string('W', 256), new() { Exact = true }).WaitForAsync();
         Assert.IsTrue(await page.EvaluateAsync<bool>("() => document.documentElement.scrollWidth <= window.innerWidth"));

@@ -1,0 +1,123 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="主要導覽">
+    <value>主要导航</value>
+  </data>
+  <data xml:space="preserve" name="總覽">
+    <value>总览</value>
+  </data>
+  <data xml:space="preserve" name="設備">
+    <value>设备</value>
+  </data>
+  <data xml:space="preserve" name="應用服務">
+    <value>应用服务</value>
+  </data>
+  <data xml:space="preserve" name="群組">
+    <value>群组</value>
+  </data>
+  <data xml:space="preserve" name="網路測速">
+    <value>网络测速</value>
+  </data>
+  <data xml:space="preserve" name="事件">
+    <value>事件</value>
+  </data>
+  <data xml:space="preserve" name="設定與帳號">
+    <value>设置与账号</value>
+  </data>
+  <data xml:space="preserve" name="待加入服務">
+    <value>待添加服务</value>
+  </data>
+  <data xml:space="preserve" name="管線接入">
+    <value>管道接入</value>
+  </data>
+  <data xml:space="preserve" name="服務執行個體">
+    <value>服务实例</value>
+  </data>
+  <data xml:space="preserve" name="服務健康檢查">
+    <value>服务健康检查</value>
+  </data>
+  <data xml:space="preserve" name="Log 收集配額">
+    <value>日志配额</value>
+  </data>
+  <data xml:space="preserve" name="Trace 收集配額">
+    <value>链路追踪配额</value>
+  </data>
+  <data xml:space="preserve" name="Ping 監測">
+    <value>Ping 监测</value>
+  </data>
+  <data xml:space="preserve" name="公開範本">
+    <value>公开模板</value>
+  </data>
+  <data xml:space="preserve" name="Agent 設定">
+    <value>Agent 设置</value>
+  </data>
+  <data xml:space="preserve" name="Agent 套件管理">
+    <value>Agent 安装包</value>
+  </data>
+  <data xml:space="preserve" name="情報來源">
+    <value>情报来源</value>
+  </data>
+  <data xml:space="preserve" name="行為規則">
+    <value>行为规则</value>
+  </data>
+  <data xml:space="preserve" name="LINE 通知">
+    <value>LINE 通知</value>
+  </data>
+  <data xml:space="preserve" name="背景工作">
+    <value>后台任务</value>
+  </data>
+  <data xml:space="preserve" name="操作稽核">
+    <value>操作审计</value>
+  </data>
+  <data xml:space="preserve" name="帳號管理">
+    <value>账号管理</value>
+  </data>
+  <data xml:space="preserve" name="API 憑證">
+    <value>API 凭证</value>
+  </data>
+  <data xml:space="preserve" name="通知紀錄">
+    <value>通知记录</value>
+  </data>
+  <data xml:space="preserve" name="雙重驗證">
+    <value>双重验证</value>
+  </data>
+  <data xml:space="preserve" name="修改密碼">
+    <value>修改密码</value>
+  </data>
+  <data xml:space="preserve" name="登出">
+    <value>退出登录</value>
+  </data>
+  <data xml:space="preserve" name="登入">
+    <value>登录</value>
+  </data>
+  <data xml:space="preserve" name="語言">
+    <value>语言</value>
+  </data>
+  <data xml:space="preserve" name="An unhandled error has occurred.">
+    <value>发生未处理的错误。</value>
+  </data>
+  <data xml:space="preserve" name="Reload">
+    <value>重新加载</value>
+  </data>
+  <data name="連線已中斷，正在重新連線。畫面資料可能不是最新狀態。" xml:space="preserve"><value>连接已中断，正在重新连接。画面数据可能不是最新状态。</value></data>
+  <data name="重新連線失敗，將在 " xml:space="preserve"><value>重新连接失败，将在 </value></data>
+  <data name=" 秒後重試。" xml:space="preserve"><value> 秒后重试。</value></data>
+  <data name="無法重新連線。" xml:space="preserve"><value>无法重新连接。</value></data>
+  <data name="請重試或重新整理頁面。" xml:space="preserve"><value>请重试或刷新页面。</value></data>
+  <data name="重試" xml:space="preserve"><value>重试</value></data>
+  <data name="伺服器已暫停此工作階段。" xml:space="preserve"><value>服务器已暂停此会话。</value></data>
+  <data name="無法恢復工作階段。" xml:space="preserve"><value>无法恢复会话。</value></data>
+  <data name="恢復" xml:space="preserve"><value>恢复</value></data>
+</root>

@@ -6,6 +6,7 @@ using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Application.PingHistory;
 using System.Threading.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Localization;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Contracts.Operations;
@@ -73,6 +74,7 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Resources:Url"]))
 
 // Keep malformed minimal-API requests as 400 responses in Development as well as Production.
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
+builder.Services.AddLocalization();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
@@ -114,14 +116,24 @@ builder.Services.AddScoped<IHostLogRetention, HostLogRetention>();
 builder.Services.AddScoped<ISecurityDetectionRetention, SecurityDetectionRetention>();
 builder.Services.AddScoped<OperationAuditQueryService>();
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Retention.AuditRetentionSettings>();
+builder.Services.AddHttpClient<Vigiloom.Web.Operations.AuditRetentionAccess>((services, client) =>
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"];
+    client.BaseAddress = new Uri((string.IsNullOrWhiteSpace(address) ? "http://localhost" : address).TrimEnd('/') + "/");
+})
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<IdentityAuditFeed>();
 builder.Services.AddScoped<DeviceAuditFeed>();
+builder.Services.AddHttpClient<Vigiloom.Web.Diagnostics.RemoteDeviceAuditFeed>((services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Resources:Url"] ?? "http://localhost").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<AgentAuditFeed>();
 builder.Services.AddHttpClient<RemoteHostAuditFeed>((services, client) =>
     client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]!.TrimEnd('/') + "/"))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<InventoryAuditFeed>();
 builder.Services.AddScoped<AuditFeedReader>();
+builder.Services.AddScoped<Vigiloom.Web.Diagnostics.AgentIdentityAuditFeed>();
 builder.Services.AddScoped<IdentityAuditReader>();
 builder.Services.AddVigiloomScheduling(builder.Configuration);
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
@@ -409,7 +421,10 @@ builder.Services.AddScoped<HostLogMonitoring>();
 builder.Services.AddScoped<IHostLogMonitoring>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? services.GetRequiredService<HostLogMonitoring>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>());
 builder.Services.AddHttpClient<Vigiloom.Web.LogQuota.LogQuotaReader>((services, client) =>
-    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations").TrimEnd('/') + "/"))
+{
+    var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"];
+    client.BaseAddress = new Uri((string.IsNullOrWhiteSpace(address) ? "http://localhost" : address).TrimEnd('/') + "/");
+})
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddScoped<HostLogHistory>();
 builder.Services.AddHttpClient<Vigiloom.Web.HostMonitoring.HostLogEvidenceReader>((services, client) =>
@@ -473,7 +488,8 @@ builder.Services.AddScoped<Vigiloom.Web.HostMonitoring.RemoteSecuritySettings>()
 builder.Services.AddScoped<AgentInventorySettingsMonitoring>(services => new(
     services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>(), services.GetRequiredService<IDeviceAgentSource>(),
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Security:Url"]) ? services.GetRequiredService<IInventorySettingsReader>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteSecuritySettings>(), services.GetRequiredService<TimeProvider>(),
-    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>()));
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>(),
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Security:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteSecuritySettings>().InventoryAsync));
 builder.Services.AddScoped<AgentInventoryStatus>();
 builder.Services.AddScoped<DeviceInventoryAgent>();
 builder.Services.AddScoped<AgentOwnerResolver>();
@@ -510,7 +526,8 @@ builder.Services.AddScoped<IntegrityChangeQuery>();
 builder.Services.AddScoped<AgentIntegritySettingsMonitoring>(services => new(
     services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>(), services.GetRequiredService<IDeviceAgentSource>(),
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Security:Url"]) ? services.GetRequiredService<Vigiloom.Contracts.Agent.Integrity.IIntegritySettingsReader>() : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteSecuritySettings>(), services.GetRequiredService<TimeProvider>(),
-    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>()));
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:HostMonitoring:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteAgentStatus>(),
+    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Security:Url"]) ? null : services.GetRequiredService<Vigiloom.Web.HostMonitoring.RemoteSecuritySettings>().IntegrityAsync));
 builder.Services.AddScoped<InventoryChangeQuery>();
 builder.Services.AddScoped<AgentReceiverMonitoring>();
 builder.Services.AddHttpClient<Vigiloom.Web.HostMonitoring.RemoteAgentReceiver>((services, client) =>
@@ -730,6 +747,20 @@ app.UseWhen(context => !context.Request.Path.StartsWithSegments("/api") && !cont
     web.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseHttpsRedirection();
 app.UseRouting();
+app.UseRequestLocalization(new RequestLocalizationOptions()
+    .SetDefaultCulture("zh-Hant")
+    .AddSupportedCultures("en", "zh-Hant", "zh-Hans")
+    .AddSupportedUICultures("en", "zh-Hant", "zh-Hans"));
+app.MapGet("/culture/set", (string? culture, string? returnUrl, HttpContext context) =>
+{
+    if (culture is not ("en" or "zh-Hant" or "zh-Hans")) return Results.BadRequest();
+    context.Response.Cookies.Append(CookieRequestCultureProvider.DefaultCookieName,
+        CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(culture)),
+        new CookieOptions { IsEssential = true, SameSite = SameSiteMode.Lax, Secure = context.Request.IsHttps, MaxAge = TimeSpan.FromDays(365) });
+    var destination = returnUrl is { Length: > 0 } && returnUrl[0] == '/' &&
+        (returnUrl.Length == 1 || returnUrl[1] is not ('/' or '\\')) ? returnUrl : "/";
+    return Results.LocalRedirect(destination);
+}).AllowAnonymous();
 app.UseMiddleware<OtlpTransportGuard>();
 app.UseMiddleware<AgentTransportGuard>();
 app.UseRateLimiter();

@@ -1,3 +1,5 @@
+@inject Microsoft.Extensions.Localization.IStringLocalizer<MainLayout> L
+
 <script type="module" src="@Assets["Components/Layout/ReconnectModal.razor.js"]"></script>
 
 <dialog id="components-reconnect-modal" data-nosnippet>
@@ -7,25 +9,25 @@
             <div></div>
         </div>
         <p class="components-reconnect-first-attempt-visible">
-            連線已中斷，正在重新連線。畫面資料可能不是最新狀態。
+            @L["連線已中斷，正在重新連線。畫面資料可能不是最新狀態。"]
         </p>
         <p class="components-reconnect-repeated-attempt-visible">
-            重新連線失敗，將在 <span id="components-seconds-to-next-attempt"></span> 秒後重試。
+            @L["重新連線失敗，將在 "]<span id="components-seconds-to-next-attempt"></span>@L[" 秒後重試。"]
         </p>
         <p class="components-reconnect-failed-visible">
-            無法重新連線。<br />請重試或重新整理頁面。
+            @L["無法重新連線。"]<br />@L["請重試或重新整理頁面。"]
         </p>
         <button id="components-reconnect-button" class="components-reconnect-failed-visible">
-            重試
+            @L["重試"]
         </button>
         <p class="components-pause-visible">
-            伺服器已暫停此工作階段。
+            @L["伺服器已暫停此工作階段。"]
         </p>
         <p class="components-resume-failed-visible">
-            無法恢復工作階段。<br />請重試或重新整理頁面。
+            @L["無法恢復工作階段。"]<br />@L["請重試或重新整理頁面。"]
         </p>
         <button id="components-resume-button" class="components-pause-visible components-resume-failed-visible">
-            恢復
+            @L["恢復"]
         </button>
     </div>
 </dialog>

@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="Title">
+    <value>双重验证</value>
+  </data>
+  <data xml:space="preserve" name="Description">
+    <value>输入验证器应用中的 6 位数代码。</value>
+  </data>
+  <data xml:space="preserve" name="VerificationCode">
+    <value>验证码</value>
+  </data>
+  <data xml:space="preserve" name="VerifyAndSignIn">
+    <value>验证并登录</value>
+  </data>
+  <data xml:space="preserve" name="UseRecovery">
+    <value>使用恢复码</value>
+  </data>
+  <data xml:space="preserve" name="RecoveryCode">
+    <value>恢复码</value>
+  </data>
+  <data xml:space="preserve" name="SignInWithRecovery">
+    <value>使用恢复码登录</value>
+  </data>
+  <data xml:space="preserve" name="BackToSignIn">
+    <value>返回登录</value>
+  </data>
+  <data xml:space="preserve" name="InvalidCode">
+    <value>代码无效或登录已过期，请重试或重新登录。</value>
+  </data>
+  <data xml:space="preserve" name="RequiredCode">
+    <value>请输入代码。</value>
+  </data>
+  <data xml:space="preserve" name="CodeLength">
+    <value>代码不能超过 {1} 个字符。</value>
+  </data>
+</root>

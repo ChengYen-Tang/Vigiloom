@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="設備 Ping 歷史 - Vigiloom" xml:space="preserve"><value>Device Ping history - Vigiloom</value></data>
+  <data name="← 返回設備詳情" xml:space="preserve"><value>← Back to device details</value></data>
+  <data name="無法載入設備，請稍後再試。" xml:space="preserve"><value>Unable to load the device. Please try again later.</value></data>
+  <data name="找不到設備" xml:space="preserve"><value>Device not found</value></data>
+  <data name="此設備不存在。" xml:space="preserve"><value>This device does not exist.</value></data>
+  <data name="設備 Ping 歷史" xml:space="preserve"><value>Device Ping history</value></data>
+  <data name="公開設定 - Vigiloom" xml:space="preserve"><value>Publication settings - Vigiloom</value></data>
+  <data name="← 返回" xml:space="preserve"><value>← Back</value></data>
+  <data name="公開設定" xml:space="preserve"><value>Publication settings</value></data>
+  <data name="設定此資源對外顯示的內容。" xml:space="preserve"><value>Choose what to display publicly for this resource.</value></data>
+  <data name="無法載入資源，請稍後再試。" xml:space="preserve"><value>Unable to load the resource. Please try again later.</value></data>
+  <data name="找不到資源" xml:space="preserve"><value>Resource not found</value></data>
+  <data name="資源不存在或已無法管理。" xml:space="preserve"><value>The resource does not exist or can no longer be managed.</value></data>
+  <data name="設備名稱" xml:space="preserve"><value>Device name</value></data>
+  <data name="服務名稱" xml:space="preserve"><value>Service name</value></data>
+  <data name="群組名稱" xml:space="preserve"><value>Group name</value></data>
+  <data name="資源名稱" xml:space="preserve"><value>Resource name</value></data>
+  <data name="公開範本 - Vigiloom" xml:space="preserve"><value>Publication templates - Vigiloom</value></data>
+  <data name="公開範本" xml:space="preserve"><value>Publication templates</value></data>
+  <data name="管理設備公開欄位與預設範本。" xml:space="preserve"><value>Manage public device fields and the default template.</value></data>
+  <data name="主機日誌證據 - Vigiloom" xml:space="preserve"><value>Host log evidence - Vigiloom</value></data>
+  <data name="← 返回設備日誌" xml:space="preserve"><value>← Back to device logs</value></data>
+  <data name="主機日誌證據" xml:space="preserve"><value>Host log evidence</value></data>
+  <data name="找不到此事件；資料可能已超過保存期限。" xml:space="preserve"><value>Event not found; its retention period may have expired.</value></data>
+  <data name="來源：{0} · 解析版本：{1} · 平台接收：{2}" xml:space="preserve"><value>Source: {0} · Parser version: {1} · Received by platform: {2}</value></data>
+  <data name="Agent：{0} · 事件：{1}" xml:space="preserve"><value>Agent: {0} · Event: {1}</value></data>
+  <data name="無法載入事件，請稍後再試。" xml:space="preserve"><value>Unable to load the event. Try again later.</value></data>
+  <data name="找不到頁面" xml:space="preserve"><value>Page not found</value></data>
+  <data name="找不到你要尋找的內容。" xml:space="preserve"><value>The content you are looking for does not exist.</value></data>
+  <data name="錯誤" xml:space="preserve"><value>Error</value></data>
+  <data name="處理要求時發生錯誤。" xml:space="preserve"><value>An error occurred while processing your request.</value></data>
+  <data name="要求 ID：" xml:space="preserve"><value>Request ID:</value></data>
+  <data name="開發模式" xml:space="preserve"><value>Development mode</value></data>
+  <data name="切換至 Development 環境會顯示更詳細的錯誤資訊。" xml:space="preserve"><value>Switching to the Development environment displays more detailed error information.</value></data>
+  <data name="已部署的應用程式不應啟用 Development 環境。" xml:space="preserve"><value>The Development environment should not be enabled for deployed applications.</value></data>
+  <data name="這可能向使用者顯示例外中的敏感資訊。本機偵錯時，可將 ASPNETCORE_ENVIRONMENT 環境變數設為 Development 並重新啟動應用程式。" xml:space="preserve"><value>This may expose sensitive exception information to users. For local debugging, set ASPNETCORE_ENVIRONMENT to Development and restart the application.</value></data>
+</root>

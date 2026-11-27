@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="正在載入公開範本…" xml:space="preserve"><value>Loading publication templates…</value></data>
+  <data name="設為預設不會重新指派設備；IP 位址一律不公開。" xml:space="preserve"><value>Setting a default does not reassign devices. IP addresses are never public.</value></data>
+  <data name="公開範本" xml:space="preserve"><value>Publication templates</value></data>
+  <data name="設定設備可公開的欄位；更換預設不會改變既有設備。" xml:space="preserve"><value>Select public device fields. Changing the default does not change existing devices.</value></data>
+  <data name="新增範本" xml:space="preserve"><value>Add template</value></data>
+  <data name="無法讀取範本。" xml:space="preserve"><value>Unable to load templates.</value></data>
+  <data name="重試" xml:space="preserve"><value>Retry</value></data>
+  <data name="尚無公開範本，可先新增一個。" xml:space="preserve"><value>No publication templates yet. Add one to begin.</value></data>
+  <data name="左右滑動以查看設備數與操作。" xml:space="preserve"><value>Scroll horizontally to see device counts and actions.</value></data>
+  <data name="公開範本清單，可左右捲動" xml:space="preserve"><value>Publication templates, scroll horizontally</value></data>
+  <data name="範本名稱" xml:space="preserve"><value>Template name</value></data>
+  <data name="公開欄位" xml:space="preserve"><value>Public fields</value></data>
+  <data name="指派設備" xml:space="preserve"><value>Assigned devices</value></data>
+  <data name="操作" xml:space="preserve"><value>Actions</value></data>
+  <data name="預設" xml:space="preserve"><value>Default</value></data>
+  <data name="名稱、狀態" xml:space="preserve"><value>Name, status</value></data>
+  <data name="、目前延遲" xml:space="preserve"><value>, current latency</value></data>
+  <data name="、觀測時間" xml:space="preserve"><value>, observation time</value></data>
+  <data name="、歷史平均延遲（{0} 天）" xml:space="preserve"><value>, average latency history ({0} days)</value></data>
+  <data name="（歷史尚未就緒）" xml:space="preserve"><value> (history not ready)</value></data>
+  <data name="編輯" xml:space="preserve"><value>Edit</value></data>
+  <data name="設為預設" xml:space="preserve"><value>Set default</value></data>
+  <data name="刪除" xml:space="preserve"><value>Delete</value></data>
+  <data name="載入更多範本" xml:space="preserve"><value>Load more templates</value></data>
+  <data name="編輯範本" xml:space="preserve"><value>Edit template</value></data>
+  <data name="已指派 {0} 台設備" xml:space="preserve"><value>Assigned to {0} devices</value></data>
+  <data name="可公開的設備欄位" xml:space="preserve"><value>Public device fields</value></data>
+  <data name="公開名稱與簡易狀態固定顯示。" xml:space="preserve"><value>Public name and simple status are always displayed.</value></data>
+  <data name="目前延遲時間" xml:space="preserve"><value>Current latency</value></data>
+  <data name="觀測時間" xml:space="preserve"><value>Observation time</value></data>
+  <data name="歷史平均延遲" xml:space="preserve"><value>Average latency history</value></data>
+  <data name="不公開歷史" xml:space="preserve"><value>Keep history private</value></data>
+  <data name="最近 {0} 天" xml:space="preserve"><value>Last {0} days</value></data>
+  <data name="歷史平均延遲與目前延遲可分開設定。" xml:space="preserve"><value>Average latency history and current latency can be configured separately.</value></data>
+  <data name="啟用或擴大範圍後，從變更生效時開始顯示。" xml:space="preserve"><value>When enabled or expanded, history starts from the effective time.</value></data>
+  <data name="縮短範圍不重設起點。" xml:space="preserve"><value>Reducing the range does not reset its start.</value></data>
+  <data name="IP 與主機進階資訊不會公開。" xml:space="preserve"><value>IP addresses and advanced host information are private.</value></data>
+  <data name="建立範本" xml:space="preserve"><value>Create template</value></data>
+  <data name="預覽變更" xml:space="preserve"><value>Preview changes</value></data>
+  <data name="取消" xml:space="preserve"><value>Cancel</value></data>
+  <data name="確認變更" xml:space="preserve"><value>Confirm changes</value></data>
+  <data name="影響 {0} 台指派設備，其中 {1} 台目前公開。" xml:space="preserve"><value>Affects {0} assigned devices, including {1} currently public.</value></data>
+  <data name="延遲時間：{0} → {1}；觀測時間：{2} → {3}。" xml:space="preserve"><value>Latency: {0} → {1}; observation time: {2} → {3}.</value></data>
+  <data name="範本名稱：{0} → {1}" xml:space="preserve"><value>Template name: {0} → {1}</value></data>
+  <data name="歷史平均延遲：{0} → {1}。" xml:space="preserve"><value>Average latency history: {0} → {1}.</value></data>
+  <data name="啟用或擴大歷史範圍後，從變更生效時開始累積可公開資料，不會回填之前的歷史。" xml:space="preserve"><value>When enabled or expanded, public history starts at the effective time; earlier history is not backfilled.</value></data>
+  <data name="確認儲存" xml:space="preserve"><value>Confirm save</value></data>
+  <data name="返回修改" xml:space="preserve"><value>Back to edit</value></data>
+  <data name="刪除「{0}」" xml:space="preserve"><value>Delete “{0}”</value></data>
+  <data name="使用此範本的設備將停止匿名輸出，不會自動套用其他範本。" xml:space="preserve"><value>Devices using this template will no longer be available anonymously and will not be assigned another template automatically.</value></data>
+  <data name="替代預設範本" xml:space="preserve"><value>Replacement default template</value></data>
+  <data name="請選擇" xml:space="preserve"><value>Select</value></data>
+  <data name="替代預設只影響未指定範本的預選，不會重新指派設備。" xml:space="preserve"><value>The replacement only changes the preselection for devices without a template; devices are not reassigned.</value></data>
+  <data name="這是最後一個範本，刪除後將清除預設。" xml:space="preserve"><value>This is the last template. Deleting it clears the default.</value></data>
+  <data name="預覽影響" xml:space="preserve"><value>Preview impact</value></data>
+  <data name="共有 {0} 台設備指派此範本，其中 {1} 台目前公開，刪除後將停止匿名輸出。" xml:space="preserve"><value>This template is assigned to {0} devices, including {1} currently public. Deletion stops anonymous access.</value></data>
+  <data name="替代預設：{0}；設備不會自動重新指派。" xml:space="preserve"><value>Replacement default: {0}; devices will not be reassigned automatically.</value></data>
+  <data name="無，將清除預設" xml:space="preserve"><value>None; clear default</value></data>
+  <data name="確認刪除" xml:space="preserve"><value>Confirm deletion</value></data>
+  <data name="無法載入公開範本，請重試。" xml:space="preserve"><value>Unable to load publication templates. Try again.</value></data>
+  <data name="預設範本已更新。" xml:space="preserve"><value>Default template updated.</value></data>
+  <data name="請輸入範本名稱。" xml:space="preserve"><value>Enter a template name.</value></data>
+  <data name="範本已建立，但歷史尚未就緒；請稍後編輯並重新儲存。" xml:space="preserve"><value>Template created, but history is not ready. Edit and save again later.</value></data>
+  <data name="範本已建立。" xml:space="preserve"><value>Template created.</value></data>
+  <data name="範本已更新，但歷史尚未就緒；請稍後編輯並重新儲存。" xml:space="preserve"><value>Template updated, but history is not ready. Edit and save again later.</value></data>
+  <data name="範本已更新。" xml:space="preserve"><value>Template updated.</value></data>
+  <data name="範本已刪除。" xml:space="preserve"><value>Template deleted.</value></data>
+  <data name="登入已過期或權限已變更，請重新登入。" xml:space="preserve"><value>Your session expired or permissions changed. Please sign in again.</value></data>
+  <data name="無法完成操作，請重新整理後再試。" xml:space="preserve"><value>Unable to complete the operation. Refresh and try again.</value></data>
+  <data name="請檢查輸入或重新預覽。刪除預設範本時，若有其他範本請選擇替代預設。" xml:space="preserve"><value>Check the input or preview again. When deleting the default, select a replacement if another template exists.</value></data>
+  <data name="範本或受影響設備已變更，請重新整理並預覽。" xml:space="preserve"><value>The template or affected devices changed. Refresh and preview again.</value></data>
+  <data name="範本不存在或已刪除，請重新整理。" xml:space="preserve"><value>The template does not exist or was deleted. Please refresh.</value></data>
+  <data name="公開" xml:space="preserve"><value>Public</value></data>
+  <data name="不公開" xml:space="preserve"><value>Private</value></data>
+  <data name="可達" xml:space="preserve"><value>Reachable</value></data>
+  <data name="不可達" xml:space="preserve"><value>Unreachable</value></data>
+  <data name="未知或尚無資料" xml:space="preserve"><value>Unknown or no data</value></data>
+  <data name="範本或受影響設備已變更，請重新預覽。" xml:space="preserve"><value>The template or affected devices changed. Preview again.</value></data>
+  <data name="受影響設備" xml:space="preserve"><value>Affected devices</value></data>
+  <data name="沒有指派設備。" xml:space="preserve"><value>No devices are assigned.</value></data>
+  <data name="目前公開" xml:space="preserve"><value>Currently public</value></data>
+  <data name="上一頁" xml:space="preserve"><value>Previous</value></data>
+  <data name="下一頁" xml:space="preserve"><value>Next</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>Page {0}</value></data>
+  <data name="目前這一頁沒有可顯示的公開設備資料。" xml:space="preserve"><value>No public device data is available on this page.</value></data>
+  <data name="變更前" xml:space="preserve"><value>Before</value></data>
+  <data name="變更後" xml:space="preserve"><value>After</value></data>
+  <data name="目前公開的歷史" xml:space="preserve"><value>Currently public history</value></data>
+  <data name="目前不公開歷史。" xml:space="preserve"><value>History is currently private.</value></data>
+  <data name="目前無法取得可公開的歷史預覽。" xml:space="preserve"><value>Public history preview is currently unavailable.</value></data>
+  <data name="目前沒有可顯示的歷史資料。" xml:space="preserve"><value>No history is available to display.</value></data>
+  <data name="無延遲資料" xml:space="preserve"><value>No latency data</value></data>
+  <data name="不公開歷史。" xml:space="preserve"><value>History is private.</value></data>
+  <data name="最多 {0} 天；從變更生效後開始累積，不公開之前的歷史。" xml:space="preserve"><value>Up to {0} days, starting at the effective time; earlier history is private.</value></data>
+  <data name="此範圍沒有可顯示的歷史資料。" xml:space="preserve"><value>No history is available in this range.</value></data>
+  <data name="顯示已結束的五分鐘平均延遲；資料可能持續彙整。" xml:space="preserve"><value>Shows completed five-minute average latency; data may still be aggregating.</value></data>
+</root>

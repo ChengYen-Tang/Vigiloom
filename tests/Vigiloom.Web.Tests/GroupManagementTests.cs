@@ -144,6 +144,52 @@ public sealed class GroupManagementTests
         Assert.AreEqual(0, ungrouped.Total);
         using var adminClient = Client(factory);
         await LoginAsync(adminClient, "admin", "Strong-Password-123", token);
+        adminClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var ungroupedPage = await adminClient.GetAsync("/groups/ungrouped", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await ungroupedPage.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Ungrouped devices", document.Body!.TextContent);
+            Assert.Contains("No ungrouped devices match your search.", document.Body.TextContent);
+        }
+        using (var ungroupedServicesPage = await adminClient.GetAsync("/groups/ungrouped-services", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await ungroupedServicesPage.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Ungrouped services", document.Body!.TextContent);
+            Assert.Contains("No ungrouped services match your search.", document.Body.TextContent);
+        }
+        using (var serviceGuide = await adminClient.GetAsync($"/services/connect?service={serviceId:D}", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await serviceGuide.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Application service onboarding guide", document.Body!.TextContent);
+            Assert.Contains("Configure independent health checks", document.Body.TextContent);
+            Assert.Contains("service.instance.id", document.Body.TextContent);
+        }
+        using (var servicePage = await adminClient.GetAsync($"/services/{serviceId:D}", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await servicePage.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Groups", document.QuerySelector("#service-groups-heading")!.TextContent);
+            Assert.Contains("Service health", document.Body!.TextContent);
+            Assert.Contains("Deployment relationships", document.Body.TextContent);
+            Assert.IsNotNull(document.QuerySelector($"a[href='/groups/{group.Id:D}']"));
+        }
+        using (var groupList = await adminClient.GetAsync("/groups", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await groupList.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Add group", document.Body!.TextContent);
+            Assert.Contains("Office", document.Body.TextContent);
+        }
+        using (var newGroup = await adminClient.GetAsync("/groups/new", token))
+        {
+            var newGroupFields = Hidden(await FormAsync(newGroup, "group-edit", token));
+            newGroupFields["Input.Name"] = "Office";
+            newGroupFields["Input.Description"] = "Original description";
+            using var duplicate = await adminClient.PostAsync("/groups/new", new FormUrlEncodedContent(newGroupFields), token);
+            var document = await new HtmlParser().ParseDocumentAsync(await duplicate.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("A group with this name already exists.", document.Body!.TextContent);
+            Assert.AreEqual("Office", document.QuerySelector("#group-name")!.GetAttribute("value"));
+            Assert.AreEqual("Original description", document.QuerySelector("#group-description")!.TextContent);
+        }
+        adminClient.DefaultRequestHeaders.AcceptLanguage.Clear();
         using (var noCsrf = await adminClient.PostAsJsonAsync("/api/v1/groups/", new GroupInput("No CSRF", null), token)) Assert.AreEqual(HttpStatusCode.BadRequest, noCsrf.StatusCode);
         using (var edit = await adminClient.GetAsync($"/devices/{device.Id:D}/edit", token))
         {
@@ -197,11 +243,23 @@ public sealed class GroupManagementTests
             using var addedByPage = await adminClient.PostAsync($"/groups/{group2.Id:D}?serviceFilter=available", new FormUrlEncodedContent(serviceFields), token);
             Assert.AreEqual(HttpStatusCode.Redirect, addedByPage.StatusCode, await addedByPage.Content.ReadAsStringAsync(token));
         }
+        adminClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var englishGroup = await adminClient.GetAsync($"/groups/{group2.Id:D}", token))
+        {
+            var document = await new HtmlParser().ParseDocumentAsync(await englishGroup.Content.ReadAsStringAsync(token), token);
+            Assert.Contains("Systems", document.Body!.TextContent);
+            Assert.Contains("Health status", document.Body.TextContent);
+            Assert.IsNotNull(document.QuerySelector($"a[href='/services/{serviceId:D}']"));
+            Assert.IsNotNull(document.QuerySelector($"input[name='deviceIds'][value='{device.Id:D}'][aria-label^='Select ']") );
+        }
+        adminClient.DefaultRequestHeaders.AcceptLanguage.Clear();
         Dictionary<string, string> staleServiceFields;
         using (var membersPage = await adminClient.GetAsync($"/groups/{group2.Id:D}", token))
         {
             var memberForm = await FormAsync(membersPage, "group-services", token);
             Assert.IsNotNull(memberForm.QuerySelector($"a[href='/services/{serviceId:D}']"));
+            Assert.Contains("健康狀態", memberForm.TextContent);
+            Assert.Contains("未知或資料不足", memberForm.TextContent);
             Assert.IsNull(memberForm.QuerySelector("button[value='add']"));
             Assert.IsNotNull(memberForm.QuerySelector("button[value='remove']"));
             var memberFields = Hidden(memberForm);
@@ -272,6 +330,23 @@ public sealed class GroupManagementTests
         Assert.HasCount(10, events.Items);
         Assert.AreEqual(3, events.Items.Count(x => x.Group?.Action == GroupAction.ServicesChanged));
         Assert.IsTrue(events.Items.Any(x => x.ResourceId == group.Id && x.Group?.Action == GroupAction.Deleted));
+        adminClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var englishAudit = await adminClient.GetAsync("/settings/audit?source=groups", token))
+        {
+            var auditText = WebUtility.HtmlDecode(await englishAudit.Content.ReadAsStringAsync(token));
+            Assert.Contains("Audit log", auditText);
+            Assert.Contains("Change services", auditText);
+            Assert.Contains("Group ID:", auditText);
+            Assert.Contains("Added", auditText);
+            Assert.Contains("Saved", auditText);
+        }
+        using (var invalidDates = await adminClient.GetAsync("/settings/audit?from=2026-02-02&to=2026-02-01", token))
+            Assert.Contains("Start date cannot be after end date.", WebUtility.HtmlDecode(await invalidDates.Content.ReadAsStringAsync(token)));
+        adminClient.DefaultRequestHeaders.AcceptLanguage.Clear();
+        adminClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplifiedAudit = await adminClient.GetAsync("/settings/audit?source=groups", token))
+            Assert.Contains("操作稽核", WebUtility.HtmlDecode(await simplifiedAudit.Content.ReadAsStringAsync(token)));
+        adminClient.DefaultRequestHeaders.AcceptLanguage.Clear();
         using (var auditPage = await adminClient.GetAsync("/settings/audit?source=groups", token))
         {
             Assert.AreEqual(HttpStatusCode.OK, auditPage.StatusCode);

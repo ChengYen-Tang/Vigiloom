@@ -683,6 +683,13 @@ public sealed class AgentIdentityHttpTests
                 Assert.Contains("/tmp/historical", text);
                 Assert.Contains("4.6.0", text);
             }
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var localizedEvidence = await reader.GetAsync($"/events/rules/{sigmaTestId:D}", token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await localizedEvidence.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("行为规则证据", text);
+            }
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var ruleEvidence = await reader.GetAsync($"/events/rules/{sigmaTestId:D}", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, ruleEvidence.StatusCode);
@@ -722,6 +729,21 @@ public sealed class AgentIdentityHttpTests
             var filtered = await filteredResponse.Content.ReadFromJsonAsync<Vigiloom.Contracts.Events.EventTimelinePage>(cancellationToken: token);
             Assert.IsNotNull(filtered);
             Assert.IsEmpty(filtered.Items);
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishEvents = await reader.GetAsync("/events", token))
+            {
+                var englishHtml = WebUtility.HtmlDecode(await englishEvents.Content.ReadAsStringAsync(token));
+                Assert.Contains("Events and evidence", englishHtml);
+                Assert.Contains("Host logs", englishHtml);
+                Assert.Contains(item.MessageId.ToString("D"), englishHtml);
+            }
+            using (var invalidEvents = await reader.GetAsync("/events?from=2026-02-02&to=2026-02-01", token))
+                Assert.Contains("Start date cannot be after end date.", WebUtility.HtmlDecode(await invalidEvents.Content.ReadAsStringAsync(token)));
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplifiedEvents = await reader.GetAsync("/events", token))
+                Assert.Contains("事件与证据", WebUtility.HtmlDecode(await simplifiedEvents.Content.ReadAsStringAsync(token)));
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var eventPage = await reader.GetAsync("/events", token);
             Assert.AreEqual(HttpStatusCode.OK, eventPage.StatusCode);
             var eventPageHtml = await eventPage.Content.ReadAsStringAsync(token);
@@ -732,6 +754,22 @@ public sealed class AgentIdentityHttpTests
             var scan = await scans.CreateAsync(device.Id, new("/tmp/sample", "rule example { condition: true }", 1024, 60), Guid.CreateVersion7(), token);
             Assert.IsNotNull(scan);
             var scanPage = $"/devices/{device.Id:D}/yara-scans";
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var englishScan = await reader.GetAsync(scanPage, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await englishScan.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("YARA scans", text);
+                Assert.Contains("/tmp/sample", text);
+                Assert.Contains("rule example { condition: true }", text);
+            }
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
+            reader.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplifiedScan = await reader.GetAsync(scanPage, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await simplifiedScan.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("扫描记录", text);
+            }
+            reader.DefaultRequestHeaders.AcceptLanguage.Clear();
             using var readerPage = await reader.GetAsync(scanPage, token);
             Assert.DoesNotContain($"yara-scan-cancel-{scan.Id:D}", await readerPage.Content.ReadAsStringAsync(token));
             using var admin = PingTestSite.Client(factory);
@@ -1310,6 +1348,21 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotActAsAgent.StatusCode);
             using (var cookieCannotHeartbeat = await admin.PostAsync("/api/v1/agent/heartbeat", null, token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotHeartbeat.StatusCode);
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync($"/devices/{device.Id:D}/agent", token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("Manage Agent identity", text);
+                Assert.Contains(device.Id.ToString(), text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync($"/devices/{device.Id:D}/agent", token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("管理 Agent 身份", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var page = await admin.GetAsync($"/devices/{device.Id:D}/agent", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);

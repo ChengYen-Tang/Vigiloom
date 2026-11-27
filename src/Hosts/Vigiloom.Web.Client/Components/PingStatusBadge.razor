@@ -1,6 +1,7 @@
 @using Vigiloom.Contracts.Network
+@inject Microsoft.Extensions.Localization.IStringLocalizer<PingText> L
 
-<StatusBadge Text="@(ReadError ? "無法讀取" : Status?.DisplayState ?? "尚無量測資料")" Tone="Tone" />
+<StatusBadge Text="@L[ReadError ? "無法讀取" : Status?.DisplayState ?? "尚無量測資料"].Value" Tone="Tone" />
 
 @code {
     [Parameter] public PingTargetStatus? Status { get; set; }

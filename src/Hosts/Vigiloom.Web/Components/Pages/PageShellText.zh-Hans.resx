@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="設備 Ping 歷史 - Vigiloom" xml:space="preserve"><value>设备 Ping 历史 - Vigiloom</value></data>
+  <data name="← 返回設備詳情" xml:space="preserve"><value>← 返回设备详情</value></data>
+  <data name="無法載入設備，請稍後再試。" xml:space="preserve"><value>无法加载设备，请稍后重试。</value></data>
+  <data name="找不到設備" xml:space="preserve"><value>找不到设备</value></data>
+  <data name="此設備不存在。" xml:space="preserve"><value>此设备不存在。</value></data>
+  <data name="設備 Ping 歷史" xml:space="preserve"><value>设备 Ping 历史</value></data>
+  <data name="公開設定 - Vigiloom" xml:space="preserve"><value>公开设置 - Vigiloom</value></data>
+  <data name="← 返回" xml:space="preserve"><value>← 返回</value></data>
+  <data name="公開設定" xml:space="preserve"><value>公开设置</value></data>
+  <data name="設定此資源對外顯示的內容。" xml:space="preserve"><value>设置此资源对外显示的内容。</value></data>
+  <data name="無法載入資源，請稍後再試。" xml:space="preserve"><value>无法加载资源，请稍后重试。</value></data>
+  <data name="找不到資源" xml:space="preserve"><value>找不到资源</value></data>
+  <data name="資源不存在或已無法管理。" xml:space="preserve"><value>资源不存在或已无法管理。</value></data>
+  <data name="設備名稱" xml:space="preserve"><value>设备名称</value></data>
+  <data name="服務名稱" xml:space="preserve"><value>服务名称</value></data>
+  <data name="群組名稱" xml:space="preserve"><value>群组名称</value></data>
+  <data name="資源名稱" xml:space="preserve"><value>资源名称</value></data>
+  <data name="公開範本 - Vigiloom" xml:space="preserve"><value>公开模板 - Vigiloom</value></data>
+  <data name="公開範本" xml:space="preserve"><value>公开模板</value></data>
+  <data name="管理設備公開欄位與預設範本。" xml:space="preserve"><value>管理设备公开字段与默认模板。</value></data>
+  <data name="主機日誌證據 - Vigiloom" xml:space="preserve"><value>主机日志证据 - Vigiloom</value></data>
+  <data name="← 返回設備日誌" xml:space="preserve"><value>← 返回设备日志</value></data>
+  <data name="主機日誌證據" xml:space="preserve"><value>主机日志证据</value></data>
+  <data name="找不到此事件；資料可能已超過保存期限。" xml:space="preserve"><value>找不到此事件；数据可能已超过保存期限。</value></data>
+  <data name="來源：{0} · 解析版本：{1} · 平台接收：{2}" xml:space="preserve"><value>来源：{0} · 解析版本：{1} · 平台接收：{2}</value></data>
+  <data name="Agent：{0} · 事件：{1}" xml:space="preserve"><value>Agent：{0} · 事件：{1}</value></data>
+  <data name="無法載入事件，請稍後再試。" xml:space="preserve"><value>无法加载事件，请稍后重试。</value></data>
+  <data name="找不到頁面" xml:space="preserve"><value>找不到页面</value></data>
+  <data name="找不到你要尋找的內容。" xml:space="preserve"><value>找不到你要寻找的内容。</value></data>
+  <data name="錯誤" xml:space="preserve"><value>错误</value></data>
+  <data name="處理要求時發生錯誤。" xml:space="preserve"><value>处理请求时发生错误。</value></data>
+  <data name="要求 ID：" xml:space="preserve"><value>请求 ID：</value></data>
+  <data name="開發模式" xml:space="preserve"><value>开发模式</value></data>
+  <data name="切換至 Development 環境會顯示更詳細的錯誤資訊。" xml:space="preserve"><value>切换至 Development 环境会显示更详细的错误信息。</value></data>
+  <data name="已部署的應用程式不應啟用 Development 環境。" xml:space="preserve"><value>已部署的应用程序不应启用 Development 环境。</value></data>
+  <data name="這可能向使用者顯示例外中的敏感資訊。本機偵錯時，可將 ASPNETCORE_ENVIRONMENT 環境變數設為 Development 並重新啟動應用程式。" xml:space="preserve"><value>这可能向用户显示异常中的敏感信息。本地调试时，可将 ASPNETCORE_ENVIRONMENT 环境变量设为 Development 并重启应用程序。</value></data>
+</root>

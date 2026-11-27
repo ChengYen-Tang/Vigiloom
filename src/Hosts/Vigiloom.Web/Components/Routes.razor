@@ -1,7 +1,9 @@
+@inject Microsoft.Extensions.Localization.IStringLocalizer<Vigiloom.Web.Components.Account.AccountActionText> L
+
 <Router AppAssembly="typeof(Program).Assembly" AdditionalAssemblies="new[] { typeof(Client._Imports).Assembly }" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
         <Microsoft.AspNetCore.Components.Authorization.AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
-            <NotAuthorized><p>沒有權限或登入已過期。<a href="/account/login">前往登入</a></p></NotAuthorized>
+            <NotAuthorized><p>@L["沒有權限或登入已過期。"]<a href="/account/login">@L["前往登入"]</a></p></NotAuthorized>
         </Microsoft.AspNetCore.Components.Authorization.AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>

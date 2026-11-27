@@ -7,11 +7,12 @@
 @using Vigiloom.Web.Authentication
 @inject Vigiloom.Web.Authentication.AccountPasswordOperations SetupAdministrator
 @inject NavigationManager Navigation
+@inject Microsoft.Extensions.Localization.IStringLocalizer<SetupText> L
 
-<PageTitle>建立管理員 - Vigiloom</PageTitle>
+<PageTitle>@L["Title"] - Vigiloom</PageTitle>
 <section class="account-card" aria-labelledby="setup-title">
-    <h1 id="setup-title">建立管理員</h1>
-    <p class="account-description">完成首次設定，開始使用 Vigiloom。</p>
+    <h1 id="setup-title">@L["Title"]</h1>
+    <p class="account-description">@L["Description"]</p>
     @if (error is not null)
     {
         <p class="account-error" role="alert">@error</p>
@@ -19,29 +20,29 @@
     <EditForm Model="Input" FormName="setup" method="post" OnValidSubmit="CreateAsync">
         <DataAnnotationsValidator />
         <div class="account-field">
-            <label for="setup-token">設定密鑰</label>
+            <label for="setup-token">@L["SetupToken"]</label>
             <input id="setup-token" name="Input.SetupToken" type="password" autocomplete="off" maxlength="256" required />
             <ValidationMessage For="() => Input.SetupToken" />
-            <span class="account-hint">請輸入安裝時設定的密鑰。</span>
+            <span class="account-hint">@L["TokenHint"]</span>
         </div>
         <div class="account-field">
-            <label for="setup-name">管理員帳號</label>
+            <label for="setup-name">@L["Administrator"]</label>
             <InputText id="setup-name" @bind-Value="Input.UserName" autocomplete="username" maxlength="256" required />
             <ValidationMessage For="() => Input.UserName" />
         </div>
         <div class="account-field">
-            <label for="setup-password">密碼</label>
+            <label for="setup-password">@L["Password"]</label>
             <input id="setup-password" name="Input.Password" type="password" autocomplete="new-password" maxlength="1024" required />
             <ValidationMessage For="() => Input.Password" />
-            <span class="account-hint">至少 12 個字元，包含大小寫英文字母、數字及符號。</span>
+            <span class="account-hint">@L["PasswordHint"]</span>
         </div>
         <div class="account-field">
-            <label for="setup-confirm">確認密碼</label>
+            <label for="setup-confirm">@L["ConfirmPassword"]</label>
             <input id="setup-confirm" name="Input.ConfirmPassword" type="password" autocomplete="new-password" maxlength="1024" required />
             <ValidationMessage For="() => Input.ConfirmPassword" />
         </div>
-        <button class="account-primary" type="submit">建立管理員</button>
-        <p class="account-footer"><a href="/account/login">已有帳號？登入</a></p>
+        <button class="account-primary" type="submit">@L["Title"]</button>
+        <p class="account-footer"><a href="/account/login">@L["AlreadyHaveAccount"]</a></p>
     </EditForm>
 </section>
 
@@ -62,16 +63,29 @@
         }
         error = result.Status switch
         {
-            InitialAdministratorStatus.ValidationFailed => string.Join(" ", result.Errors),
-            _ => "無法完成首次設定，請確認設定密鑰與系統狀態。"
+            InitialAdministratorStatus.ValidationFailed => string.Join(" ", result.Errors.Select((message, index) =>
+                LocalizeError(result.ErrorCodes is { } codes && index < codes.Count ? codes[index] : null, message))),
+            _ => L["SetupFailed"]
         };
+    }
+
+    private string LocalizeError(string? code, string fallback)
+    {
+        if (code is null) return fallback;
+        var message = L[$"Identity.{code}"];
+        return message.ResourceNotFound ? fallback : message.Value;
     }
 
     private sealed class SetupInput
     {
-        [Required(ErrorMessage = "請輸入設定密鑰。"), StringLength(256)] public string SetupToken { get; set; } = "";
-        [Required(ErrorMessage = "請輸入帳號。"), StringLength(256)] public string UserName { get; set; } = "";
-        [Required(ErrorMessage = "請輸入密碼。"), StringLength(1024)] public string Password { get; set; } = "";
-        [Required, StringLength(1024), Compare(nameof(Password), ErrorMessage = "兩次密碼不一致。")] public string ConfirmPassword { get; set; } = "";
+        [Required(ErrorMessageResourceType = typeof(SetupText), ErrorMessageResourceName = nameof(SetupText.RequiredToken))]
+        [StringLength(256, ErrorMessageResourceType = typeof(SetupText), ErrorMessageResourceName = nameof(SetupText.TokenLength))] public string SetupToken { get; set; } = "";
+        [Required(ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.RequiredUserName))]
+        [StringLength(256, ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.UserNameLength))] public string UserName { get; set; } = "";
+        [Required(ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.RequiredPassword))]
+        [StringLength(1024, ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.PasswordLength))] public string Password { get; set; } = "";
+        [Required(ErrorMessageResourceType = typeof(SetupText), ErrorMessageResourceName = nameof(SetupText.RequiredConfirmation))]
+        [StringLength(1024, ErrorMessageResourceType = typeof(LoginText), ErrorMessageResourceName = nameof(LoginText.PasswordLength))]
+        [Compare(nameof(Password), ErrorMessageResourceType = typeof(SetupText), ErrorMessageResourceName = nameof(SetupText.PasswordMismatch))] public string ConfirmPassword { get; set; } = "";
     }
 }

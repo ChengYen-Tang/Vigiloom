@@ -9,25 +9,26 @@
 @using Vigiloom.Modules.IdentityAccess.Domain
 @inject Vigiloom.Web.Authentication.TwoFactorChallenge Challenge
 @inject NavigationManager Navigation
+@inject Microsoft.Extensions.Localization.IStringLocalizer<TwoFactorText> L
 
-<PageTitle>雙重驗證 - Vigiloom</PageTitle>
+<PageTitle>@L["Title"] - Vigiloom</PageTitle>
 <section class="account-card" aria-labelledby="two-factor-title">
-    <h1 id="two-factor-title">雙重驗證</h1>
-    <p class="account-description">輸入驗證器 App 中的 6 位數代碼。</p>
+    <h1 id="two-factor-title">@L["Title"]</h1>
+    <p class="account-description">@L["Description"]</p>
     @if (error is not null) { <p class="account-error" role="alert">@error</p> }
     <EditForm Model="TotpInput" FormName="totp-login" method="post" OnValidSubmit="LoginWithAuthenticatorAsync">
         <DataAnnotationsValidator />
-        <div class="account-field"><label for="totp-code">驗證碼</label><input id="totp-code" name="TotpInput.Code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" required /><ValidationMessage For="() => TotpInput.Code" /></div>
-        <button class="account-primary" type="submit">驗證並登入</button>
+        <div class="account-field"><label for="totp-code">@L["VerificationCode"]</label><input id="totp-code" name="TotpInput.Code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" required /><ValidationMessage For="() => TotpInput.Code" /></div>
+        <button class="account-primary" type="submit">@L["VerifyAndSignIn"]</button>
     </EditForm>
-    <details class="account-secondary"><summary>使用復原碼</summary>
+    <details class="account-secondary"><summary>@L["UseRecovery"]</summary>
         <EditForm Model="RecoveryInput" FormName="recovery-login" method="post" OnValidSubmit="LoginWithRecoveryAsync">
             <DataAnnotationsValidator />
-            <div class="account-field"><label for="recovery-code">復原碼</label><input id="recovery-code" name="RecoveryInput.Code" autocomplete="off" maxlength="64" required /><ValidationMessage For="() => RecoveryInput.Code" /></div>
-            <button class="management-button" type="submit">使用復原碼登入</button>
+            <div class="account-field"><label for="recovery-code">@L["RecoveryCode"]</label><input id="recovery-code" name="RecoveryInput.Code" autocomplete="off" maxlength="64" required /><ValidationMessage For="() => RecoveryInput.Code" /></div>
+            <button class="management-button" type="submit">@L["SignInWithRecovery"]</button>
         </EditForm>
     </details>
-    <p class="account-footer"><a href="/account/login">返回登入</a></p>
+    <p class="account-footer"><a href="/account/login">@L["BackToSignIn"]</a></p>
 </section>
 
 @code {
@@ -62,7 +63,12 @@
             Navigation.NavigateTo(RedirectHttpResult.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/", forceLoad: true);
             return;
         }
-        error = "代碼無效或登入已過期，請重試或重新登入。";
+        error = L["InvalidCode"];
     }
-    private sealed class CodeModel { [Required, StringLength(64)] public string Code { get; set; } = ""; }
+    private sealed class CodeModel
+    {
+        [Required(ErrorMessageResourceType = typeof(TwoFactorText), ErrorMessageResourceName = nameof(TwoFactorText.RequiredCode))]
+        [StringLength(64, ErrorMessageResourceType = typeof(TwoFactorText), ErrorMessageResourceName = nameof(TwoFactorText.CodeLength))]
+        public string Code { get; set; } = "";
+    }
 }

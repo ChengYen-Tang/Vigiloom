@@ -1,0 +1,687 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="設備">
+    <value>设备</value>
+  </data>
+  <data xml:space="preserve" name="管理網路設備與深入監控設備，查看各自的監測狀態。">
+    <value>管理网络设备与深入监控设备，查看各自的监测状态。</value>
+  </data>
+  <data xml:space="preserve" name="新增設備">
+    <value>添加设备</value>
+  </data>
+  <data xml:space="preserve" name="搜尋名稱或目標">
+    <value>搜索名称或目标</value>
+  </data>
+  <data xml:space="preserve" name="名稱、IP 或 DNS">
+    <value>名称、IP 或 DNS</value>
+  </data>
+  <data xml:space="preserve" name="排序">
+    <value>排序</value>
+  </data>
+  <data xml:space="preserve" name="名稱">
+    <value>名称</value>
+  </data>
+  <data xml:space="preserve" name="目標">
+    <value>目标</value>
+  </data>
+  <data xml:space="preserve" name="建立時間">
+    <value>创建时间</value>
+  </data>
+  <data xml:space="preserve" name="反向排序">
+    <value>反向排序</value>
+  </data>
+  <data xml:space="preserve" name="顯示已封存">
+    <value>显示已归档</value>
+  </data>
+  <data xml:space="preserve" name="搜尋">
+    <value>搜索</value>
+  </data>
+  <data xml:space="preserve" name="無法載入設備，請稍後重新整理。">
+    <value>无法加载设备，请稍后刷新。</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的封存設備。">
+    <value>没有符合条件的归档设备。</value>
+  </data>
+  <data xml:space="preserve" name="沒有符合條件的設備。">
+    <value>没有符合条件的设备。</value>
+  </data>
+  <data xml:space="preserve" name="共 {0} 台設備">
+    <value>共 {0} 台设备</value>
+  </data>
+  <data xml:space="preserve" name="主要目標">
+    <value>主要目标</value>
+  </data>
+  <data xml:space="preserve" name="監控模式">
+    <value>监控模式</value>
+  </data>
+  <data xml:space="preserve" name="主要目標 Ping">
+    <value>主要目标 Ping</value>
+  </data>
+  <data xml:space="preserve" name="建立時間（UTC）">
+    <value>创建时间（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="深入監控">
+    <value>深入监控</value>
+  </data>
+  <data xml:space="preserve" name="僅 Ping">
+    <value>仅 Ping</value>
+  </data>
+  <data xml:space="preserve" name="已封存">
+    <value>已归档</value>
+  </data>
+  <data xml:space="preserve" name="已停用">
+    <value>已停用</value>
+  </data>
+  <data xml:space="preserve" name="查看詳情">
+    <value>查看详情</value>
+  </data>
+  <data xml:space="preserve" name="設備分頁">
+    <value>设备分页</value>
+  </data>
+  <data xml:space="preserve" name="上一頁">
+    <value>上一页</value>
+  </data>
+  <data xml:space="preserve" name="下一頁">
+    <value>下一页</value>
+  </data>
+  <data xml:space="preserve" name="第 {0} 頁">
+    <value>第 {0} 页</value>
+  </data>
+  <data xml:space="preserve" name="編輯設備">
+    <value>编辑设备</value>
+  </data>
+  <data xml:space="preserve" name="← 返回">
+    <value>← 返回</value>
+  </data>
+  <data xml:space="preserve" name="設定設備目標與監控模式；設備預設為私人。">
+    <value>设置设备目标与监控模式；设备默认为私有。</value>
+  </data>
+  <data xml:space="preserve" name="無法載入設備，請確認設備存在且未封存。">
+    <value>无法加载设备，请确认设备存在且未归档。</value>
+  </data>
+  <data xml:space="preserve" name="設備名稱">
+    <value>设备名称</value>
+  </data>
+  <data xml:space="preserve" name="主要 Ping 目標">
+    <value>主要 Ping 目标</value>
+  </data>
+  <data xml:space="preserve" name="IPv4、IPv6 或 DNS 名稱">
+    <value>IPv4、IPv6 或 DNS 名称</value>
+  </data>
+  <data xml:space="preserve" name="額外 Ping 目標（選填，每行一個）">
+    <value>额外 Ping 目标（选填，每行一个）</value>
+  </data>
+  <data xml:space="preserve" name="兩種模式都會 Ping；深入監控需要另外註冊 Agent。">
+    <value>两种模式都会 Ping；深入监控需要另外注册 Agent。</value>
+  </data>
+  <data xml:space="preserve" name="啟用監控">
+    <value>启用监控</value>
+  </data>
+  <data xml:space="preserve" name="儲存後設定公開資訊">
+    <value>保存后设置公开信息</value>
+  </data>
+  <data xml:space="preserve" name="設備先以 Private 建立；下一步可確認公開名稱與範本。">
+    <value>设备先以私有状态创建；下一步可确认公开名称与模板。</value>
+  </data>
+  <data xml:space="preserve" name="部分目標已被其他設備使用：{0}。設備不會自動合併。">
+    <value>部分目标已被其他设备使用：{0}。设备不会自动合并。</value>
+  </data>
+  <data xml:space="preserve" name="仍要使用這些目標">
+    <value>仍要使用这些目标</value>
+  </data>
+  <data xml:space="preserve" name="目標變更會用新目標進行未來量測；設備身分與歷史資料會保留。">
+    <value>目标变更后将使用新目标进行未来测量；设备身份与历史数据会保留。</value>
+  </data>
+  <data xml:space="preserve" name="我了解目標變更的影響">
+    <value>我了解目标变更的影响</value>
+  </data>
+  <data xml:space="preserve" name="儲存設備">
+    <value>保存设备</value>
+  </data>
+  <data xml:space="preserve" name="取消">
+    <value>取消</value>
+  </data>
+  <data xml:space="preserve" name="所屬群組">
+    <value>所属群组</value>
+  </data>
+  <data xml:space="preserve" name="加入或移出設備請到群組頁操作；離開前請先儲存設備的變更。">
+    <value>添加或移出设备请到群组页面操作；离开前请先保存设备的变更。</value>
+  </data>
+  <data xml:space="preserve" name="無法載入所屬群組，請重新整理後再試。">
+    <value>无法加载所属群组，请刷新后重试。</value>
+  </data>
+  <data xml:space="preserve" name="此設備尚未加入群組。">
+    <value>此设备尚未加入群组。</value>
+  </data>
+  <data xml:space="preserve" name="共 {0} 個群組。">
+    <value>共 {0} 个群组。</value>
+  </data>
+  <data xml:space="preserve" name="此頁沒有群組，請回到上一頁。">
+    <value>此页没有群组，请返回上一页。</value>
+  </data>
+  <data xml:space="preserve" name="所屬群組分頁">
+    <value>所属群组分页</value>
+  </data>
+  <data xml:space="preserve" name="管理群組">
+    <value>管理群组</value>
+  </data>
+  <data xml:space="preserve" name="設備已變更或不存在，請重新整理後再試。">
+    <value>设备已变更或不存在，请刷新后重试。</value>
+  </data>
+  <data xml:space="preserve" name="無法確認儲存結果，請返回清單確認後再試。">
+    <value>无法确认保存结果，请返回清单确认后重试。</value>
+  </data>
+  <data xml:space="preserve" name="請重新整理後再試。">
+    <value>请刷新后重试。</value>
+  </data>
+  <data xml:space="preserve" name="請輸入 1 至 256 個字元的設備名稱。">
+    <value>请输入 1 至 256 个字符的设备名称。</value>
+  </data>
+  <data xml:space="preserve" name="請輸入有效的 IPv4、IPv6 或 DNS 名稱。">
+    <value>请输入有效的 IPv4、IPv6 或 DNS 名称。</value>
+  </data>
+  <data xml:space="preserve" name="額外目標最多 16 個。">
+    <value>额外目标最多 16 个。</value>
+  </data>
+  <data xml:space="preserve" name="額外目標須為有效且不重複的 IPv4、IPv6 或 DNS 名稱。">
+    <value>额外目标须为有效且不重复的 IPv4、IPv6 或 DNS 名称。</value>
+  </data>
+  <data xml:space="preserve" name="設備詳情">
+    <value>设备详情</value>
+  </data>
+  <data xml:space="preserve" name="← 返回設備清單">
+    <value>← 返回设备清单</value>
+  </data>
+  <data xml:space="preserve" name="無法載入設備，請稍後重試。">
+    <value>无法加载设备，请稍后重试。</value>
+  </data>
+  <data xml:space="preserve" name="找不到設備">
+    <value>找不到设备</value>
+  </data>
+  <data xml:space="preserve" name="此設備不存在，請返回清單。">
+    <value>此设备不存在，请返回清单。</value>
+  </data>
+  <data xml:space="preserve" name="監控已啟用">
+    <value>监控已启用</value>
+  </data>
+  <data xml:space="preserve" name="監控已停用">
+    <value>监控已停用</value>
+  </data>
+  <data xml:space="preserve" name="公開設定">
+    <value>公开设置</value>
+  </data>
+  <data xml:space="preserve" name="監測資訊">
+    <value>监测信息</value>
+  </data>
+  <data xml:space="preserve" name="查看 Ping 歷史">
+    <value>查看 Ping 历史</value>
+  </data>
+  <data xml:space="preserve" name="額外目標">
+    <value>额外目标</value>
+  </data>
+  <data xml:space="preserve" name="無">
+    <value>无</value>
+  </data>
+  <data xml:space="preserve" name="Ping 狀態">
+    <value>Ping 状态</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取">
+    <value>无法读取</value>
+  </data>
+  <data xml:space="preserve" name="尚無量測資料">
+    <value>暂无测量数据</value>
+  </data>
+  <data xml:space="preserve" name="尚無資料">
+    <value>暂无数据</value>
+  </data>
+  <data xml:space="preserve" name="Ping 量測">
+    <value>Ping 测量</value>
+  </data>
+  <data xml:space="preserve" name="每個目標分別量測，DNS 或監測器錯誤不代表設備不可達。">
+    <value>每个目标分别测量，DNS 或监测器错误不代表设备不可达。</value>
+  </data>
+  <data xml:space="preserve" name="目前每 {0} 秒一次，逾時 {1} 秒；連續 {2} 次失敗判不可達、{3} 次成功恢復。">
+    <value>目前每 {0} 秒一次，超时 {1} 秒；连续 {2} 次失败判不可达、{3} 次成功恢复。</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取 Ping 資料，請稍後再試。">
+    <value>无法读取 Ping 数据，请稍后重试。</value>
+  </data>
+  <data xml:space="preserve" name="設備已封存，不排入新量測。">
+    <value>设备已归档，不排入新测量。</value>
+  </data>
+  <data xml:space="preserve" name="設備已停用，不排入新量測。">
+    <value>设备已停用，不排入新测量。</value>
+  </data>
+  <data xml:space="preserve" name="實際位址">
+    <value>实际地址</value>
+  </data>
+  <data xml:space="preserve" name="目前狀態">
+    <value>当前状态</value>
+  </data>
+  <data xml:space="preserve" name="最近結果">
+    <value>最近结果</value>
+  </data>
+  <data xml:space="preserve" name="成功延遲">
+    <value>成功延迟</value>
+  </data>
+  <data xml:space="preserve" name="量測時間（UTC）">
+    <value>测量时间（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="位置">
+    <value>位置</value>
+  </data>
+  <data xml:space="preserve" name="恢復設備">
+    <value>恢复设备</value>
+  </data>
+  <data xml:space="preserve" name="封存設備">
+    <value>归档设备</value>
+  </data>
+  <data xml:space="preserve" name="恢復後保留原設備身分，監控維持停用；需要時可編輯啟用。">
+    <value>恢复后保留原设备身份，监控维持停用；需要时可编辑启用。</value>
+  </data>
+  <data xml:space="preserve" name="封存會停止後續監測並保留設備與歷史資料。應用服務不會因此刪除。">
+    <value>归档会停止后续监测并保留设备与历史数据。应用服务不会因此删除。</value>
+  </data>
+  <data xml:space="preserve" name="我了解以上影響">
+    <value>我了解以上影响</value>
+  </data>
+  <data xml:space="preserve" name="確認恢復">
+    <value>确认恢复</value>
+  </data>
+  <data xml:space="preserve" name="確認封存">
+    <value>确认归档</value>
+  </data>
+  <data xml:space="preserve" name="請先確認操作影響。">
+    <value>请先确认操作影响。</value>
+  </data>
+  <data xml:space="preserve" name="設備狀態已變更，請重新整理後再試。">
+    <value>设备状态已变更，请刷新后重试。</value>
+  </data>
+  <data xml:space="preserve" name="無法確認操作結果，請重新整理並檢查設備狀態。">
+    <value>无法确认操作结果，请刷新并检查设备状态。</value>
+  </data>
+  <data xml:space="preserve" name="成功">
+    <value>成功</value>
+  </data>
+  <data xml:space="preserve" name="逾時">
+    <value>超时</value>
+  </data>
+  <data xml:space="preserve" name="無法到達">
+    <value>无法到达</value>
+  </data>
+  <data xml:space="preserve" name="DNS 失敗">
+    <value>DNS 失败</value>
+  </data>
+  <data xml:space="preserve" name="權限不足">
+    <value>权限不足</value>
+  </data>
+  <data xml:space="preserve" name="監測器錯誤">
+    <value>监测器错误</value>
+  </data>
+  <data xml:space="preserve" name="資料過期">
+    <value>数据已过期</value>
+  </data>
+  <data xml:space="preserve" name="DNS 解析失敗">
+    <value>DNS 解析失败</value>
+  </data>
+  <data xml:space="preserve" name="監測器權限不足">
+    <value>监测器权限不足</value>
+  </data>
+  <data xml:space="preserve" name="可達">
+    <value>可达</value>
+  </data>
+  <data xml:space="preserve" name="不可達">
+    <value>不可达</value>
+  </data>
+  <data xml:space="preserve" name="待確認">
+    <value>待确认</value>
+  </data>
+  <data xml:space="preserve" name="Agent 狀態">
+    <value>Agent 状态</value>
+  </data>
+  <data xml:space="preserve" name="Agent 最後回報（UTC）">
+    <value>Agent 最后回报（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="Agent CPU（單一邏輯處理器為 100%）">
+    <value>Agent CPU（单一逻辑处理器为 100%）</value>
+  </data>
+  <data xml:space="preserve" name="Agent 記憶體工作集">
+    <value>Agent 内存工作集</value>
+  </data>
+  <data xml:space="preserve" name="Agent 資源回報（UTC）">
+    <value>Agent 资源回报（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="本次 Agent 執行期間的最近採集錯誤">
+    <value>本次 Agent 运行期间的最近采集错误</value>
+  </data>
+  <data xml:space="preserve" name="尚無資料。">
+    <value>暂无数据。</value>
+  </data>
+  <data xml:space="preserve" name="尚無回報的採集錯誤。">
+    <value>尚无回报的采集错误。</value>
+  </data>
+  <data xml:space="preserve" name="Agent 狀態與設備 Ping 分開判斷；{0} 秒未回報顯示失聯。重新整理頁面可查看最新狀態。">
+    <value>Agent 状态与设备 Ping 分开判断；{0} 秒未回报显示失联。刷新页面可查看最新状态。</value>
+  </data>
+  <data xml:space="preserve" name="查看 Agent 版本">
+    <value>查看 Agent 版本</value>
+  </data>
+  <data xml:space="preserve" name="管理 Agent 身分">
+    <value>管理 Agent 身份</value>
+  </data>
+  <data xml:space="preserve" name="管理主機日誌來源">
+    <value>管理主机日志来源</value>
+  </data>
+  <data xml:space="preserve" name="管理完整性監控">
+    <value>管理完整性监控</value>
+  </data>
+  <data xml:space="preserve" name="Agent 設定同步">
+    <value>Agent 设置同步</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取設定狀態，請稍後重新整理。">
+    <value>无法读取设置状态，请稍后刷新。</value>
+  </data>
+  <data xml:space="preserve" name="尚無設定狀態。">
+    <value>暂无设置状态。</value>
+  </data>
+  <data xml:space="preserve" name="同步狀態">
+    <value>同步状态</value>
+  </data>
+  <data xml:space="preserve" name="期望心跳間隔">
+    <value>期望心跳间隔</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用心跳間隔">
+    <value>Agent 已应用心跳间隔</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用設定同步間隔">
+    <value>Agent 已应用设置同步间隔</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用資料傳送間隔">
+    <value>Agent 已应用数据传送间隔</value>
+  </data>
+  <data xml:space="preserve" name="最後設定回報（UTC）">
+    <value>最后设置回报（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="設定由 Agent 定期同步；離線時顯示最後回報的狀態，不代表設定已更新。">
+    <value>设置由 Agent 定期同步；离线时显示最后回报的状态，不代表设置已更新。</value>
+  </data>
+  <data xml:space="preserve" name="編輯此設備的 Agent 設定">
+    <value>编辑此设备的 Agent 设置</value>
+  </data>
+  <data xml:space="preserve" name="{0} 秒">
+    <value>{0} 秒</value>
+  </data>
+  <data xml:space="preserve" name="{0} 位元組">
+    <value>{0} 字节</value>
+  </data>
+  <data xml:space="preserve" name="未註冊或已撤銷">
+    <value>未注册或已撤销</value>
+  </data>
+  <data xml:space="preserve" name="等待首次回報">
+    <value>等待首次回报</value>
+  </data>
+  <data xml:space="preserve" name="已連線">
+    <value>已连接</value>
+  </data>
+  <data xml:space="preserve" name="已失聯">
+    <value>已失联</value>
+  </data>
+  <data xml:space="preserve" name="系統時間異常">
+    <value>系统时间异常</value>
+  </data>
+  <data xml:space="preserve" name="尚未註冊 Agent">
+    <value>尚未注册 Agent</value>
+  </data>
+  <data xml:space="preserve" name="等待首次心跳">
+    <value>等待首次心跳</value>
+  </data>
+  <data xml:space="preserve" name="等待設定回報">
+    <value>等待设置回报</value>
+  </data>
+  <data xml:space="preserve" name="待同步">
+    <value>待同步</value>
+  </data>
+  <data xml:space="preserve" name="已套用">
+    <value>已应用</value>
+  </data>
+  <data xml:space="preserve" name="同步失敗">
+    <value>同步失败</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已失聯">
+    <value>Agent 已失联</value>
+  </data>
+  <data xml:space="preserve" name="設定回報已過期">
+    <value>设置回报已过期</value>
+  </data>
+  <data xml:space="preserve" name="無法連線至平台，Agent 會保留上次設定並重試。">
+    <value>无法连接至平台，Agent 会保留上次设置并重试。</value>
+  </data>
+  <data xml:space="preserve" name="收到的設定無法套用，Agent 會保留上次設定。">
+    <value>收到的设置无法应用，Agent 会保留上次设置。</value>
+  </data>
+  <data xml:space="preserve" name="Agent 身分未獲授權，請檢查註冊狀態。">
+    <value>Agent 身份未获授权，请检查注册状态。</value>
+  </data>
+  <data xml:space="preserve" name="Agent 無法讀寫本機設定，請檢查 Agent 狀態。">
+    <value>Agent 无法读写本地设置，请检查 Agent 状态。</value>
+  </data>
+  <data xml:space="preserve" name="設定同步發生衝突，Agent 會再次嘗試。">
+    <value>设置同步发生冲突，Agent 会再次尝试。</value>
+  </data>
+  <data xml:space="preserve" name="Agent 回報設定同步異常。">
+    <value>Agent 回报设置同步异常。</value>
+  </data>
+  <data xml:space="preserve" name="資源指標">
+    <value>资源指标</value>
+  </data>
+  <data xml:space="preserve" name="日誌">
+    <value>日志</value>
+  </data>
+  <data xml:space="preserve" name="資產盤點">
+    <value>资产盘点</value>
+  </data>
+  <data xml:space="preserve" name="完整性監控">
+    <value>完整性监控</value>
+  </data>
+  <data xml:space="preserve" name="安全基線">
+    <value>安全基线</value>
+  </data>
+  <data xml:space="preserve" name="未知模組">
+    <value>未知模块</value>
+  </data>
+  <data xml:space="preserve" name="Agent 本機傳送佇列">
+    <value>Agent 本地传送队列</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取佇列容量設定狀態。">
+    <value>无法读取队列容量设置状态。</value>
+  </data>
+  <data xml:space="preserve" name="容量設定狀態">
+    <value>容量设置状态</value>
+  </data>
+  <data xml:space="preserve" name="目標容量">
+    <value>目标容量</value>
+  </data>
+  <data xml:space="preserve" name="Agent 已套用容量">
+    <value>Agent 已应用容量</value>
+  </data>
+  <data xml:space="preserve" name="尚無已套用回報">
+    <value>暂无已应用回报</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取傳送狀態，請稍後重新整理。">
+    <value>无法读取传送状态，请稍后刷新。</value>
+  </data>
+  <data xml:space="preserve" name="目前 Agent 最後提交批次（UTC）">
+    <value>当前 Agent 最后提交批次（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="保留範圍內無資料">
+    <value>保留范围内无数据</value>
+  </data>
+  <data xml:space="preserve" name="顯示平台已提交的批次，不代表 Agent 已收到確認；重送相同批次不會更新時間。">
+    <value>显示平台已提交的批次，不代表 Agent 已收到确认；重送相同批次不会更新时间。</value>
+  </data>
+  <data xml:space="preserve" name="最近記錄的時間拒收：{0}。">
+    <value>最近记录的时间拒收：{0}。</value>
+  </data>
+  <data xml:space="preserve" name="平台時間異常，請確認平台時鐘">
+    <value>平台时间异常，请确认平台时钟</value>
+  </data>
+  <data xml:space="preserve" name="批次入列時間超前，請核對 Agent 與平台時鐘">
+    <value>批次入列时间超前，请核对 Agent 与平台时钟</value>
+  </data>
+  <data xml:space="preserve" name="平台拒收超過補送期限的批次">
+    <value>平台拒收超过补送期限的批次</value>
+  </data>
+  <data xml:space="preserve" name="未知原因">
+    <value>未知原因</value>
+  </data>
+  <data xml:space="preserve" name="記錄時間（UTC）：{0}。這是歷史紀錄，不代表問題目前仍持續。">
+    <value>记录时间（UTC）：{0}。这是历史记录，不代表问题目前仍持续。</value>
+  </data>
+  <data xml:space="preserve" name="此批次回報的入列時間，比平台記錄的接收時間超前超過 5 分鐘；請核對 Agent 與平台時鐘。">
+    <value>此批次回报的入列时间，比平台记录的接收时间超前超过 5 分钟；请核对 Agent 与平台时钟。</value>
+  </data>
+  <data xml:space="preserve" name="入列（UTC）：">
+    <value>入列（UTC）：</value>
+  </data>
+  <data xml:space="preserve" name="接收（UTC）：">
+    <value>接收（UTC）：</value>
+  </data>
+  <data xml:space="preserve" name="這是歷史批次觀察，不代表目前時鐘狀態。">
+    <value>这是历史批次观察，不代表当前时钟状态。</value>
+  </data>
+  <data xml:space="preserve" name="批次接收時間晚於目前平台時間，請確認平台時鐘。">
+    <value>批次接收时间晚于当前平台时间，请确认平台时钟。</value>
+  </data>
+  <data xml:space="preserve" name="尚無佇列回報。">
+    <value>暂无队列回报。</value>
+  </data>
+  <data xml:space="preserve" name="最後佇列回報（UTC）">
+    <value>最后队列回报（UTC）</value>
+  </data>
+  <data xml:space="preserve" name="等待傳送">
+    <value>等待传送</value>
+  </data>
+  <data xml:space="preserve" name="已隔離">
+    <value>已隔离</value>
+  </data>
+  <data xml:space="preserve" name="佇列容量">
+    <value>队列容量</value>
+  </data>
+  <data xml:space="preserve" name="批次容量">
+    <value>批次容量</value>
+  </data>
+  <data xml:space="preserve" name="Agent 無法讀取佇列，資料狀態未知。">
+    <value>Agent 无法读取队列，数据状态未知。</value>
+  </data>
+  <data xml:space="preserve" name="佇列已達容量，新資料可能需要等待空間。">
+    <value>队列已达容量，新数据可能需要等待空间。</value>
+  </data>
+  <data xml:space="preserve" name="隔離原因摘要尚未提供。">
+    <value>隔离原因摘要尚未提供。</value>
+  </data>
+  <data xml:space="preserve" name="隔離批次仍保留在 Agent，暫停自動傳送：">
+    <value>隔离批次仍保留在 Agent，暂停自动传送：</value>
+  </data>
+  <data xml:space="preserve" name="數值是 Agent 最後一次回報的快照，可能不是目前狀態；隔離批次仍占用容量。">
+    <value>数值是 Agent 最后一次回报的快照，可能不是当前状态；隔离批次仍占用容量。</value>
+  </data>
+  <data xml:space="preserve" name="佇列回報已過時或時間異常，請確認 Agent 傳送狀態。">
+    <value>队列回报已过时或时间异常，请确认 Agent 传送状态。</value>
+  </data>
+  <data xml:space="preserve" name="Agent 指標資料完整性">
+    <value>Agent 指标数据完整性</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取資料完整性狀態，請稍後重新整理。">
+    <value>无法读取数据完整性状态，请稍后刷新。</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可用的指標遺失統計，無法判定是否有資料遺失。">
+    <value>当前没有可用的指标丢失统计，无法判定是否有数据丢失。</value>
+  </data>
+  <data xml:space="preserve" name="目前統計帳本已確認遺失">
+    <value>当前统计账本已确认丢失</value>
+  </data>
+  <data xml:space="preserve" name="至少 {0} 筆指標（{1} 批）">
+    <value>至少 {0} 条指标（{1} 批）</value>
+  </data>
+  <data xml:space="preserve" name="統計起點（Agent 時間，UTC）">
+    <value>统计起点（Agent 时间，UTC）</value>
+  </data>
+  <data xml:space="preserve" name="最後回報（平台時間，UTC）">
+    <value>最后回报（平台时间，UTC）</value>
+  </data>
+  <data xml:space="preserve" name="部分資料的完整性無法確認，實際遺失數可能更多。">
+    <value>部分数据的完整性无法确认，实际丢失数可能更多。</value>
+  </data>
+  <data xml:space="preserve" name="此數字只包含統計起點後已確認遺失的指標。等待傳送或隔離的批次仍有保留，不視為已遺失。">
+    <value>此数字只包含统计起点后已确认丢失的指标。等待传送或隔离的批次仍有保留，不视为已丢失。</value>
+  </data>
+  <data xml:space="preserve" name="以上為最後一次回報；統計已過時或平台時間異常，請確認 Agent 狀態。">
+    <value>以上为最后一次回报；统计已过时或平台时间异常，请确认 Agent 状态。</value>
+  </data>
+  <data xml:space="preserve" name="中央收據容量">
+    <value>中央收据容量</value>
+  </data>
+  <data xml:space="preserve" name="無法讀取中央收據容量，請稍後重新整理。">
+    <value>无法读取中央收据容量，请稍后刷新。</value>
+  </data>
+  <data xml:space="preserve" name="目前沒有可用的中央收據容量資訊。">
+    <value>目前没有可用的中央收据容量信息。</value>
+  </data>
+  <data xml:space="preserve" name="中央收據筆數">
+    <value>中央收据条数</value>
+  </data>
+  <data xml:space="preserve" name="原始批次長度累計">
+    <value>原始批次长度累计</value>
+  </data>
+  <data xml:space="preserve" name="這是查詢時的收據用量；原始批次長度不代表 SQL 磁碟用量，也不代表平台保留完整批次內容。">
+    <value>这是查询时的收据用量；原始批次长度不代表 SQL 磁盘用量，也不代表平台保留完整批次内容。</value>
+  </data>
+  <data xml:space="preserve" name="中央新批次接收已達限制；既有收據仍可確認重送，目前尚無自動清理。">
+    <value>中央新批次接收已达限制；既有收据仍可确认重送，目前尚无自动清理。</value>
+  </data>
+  <data xml:space="preserve" name="{0} 批">
+    <value>{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="{0}／{1} 批">
+    <value>{0}／{1} 批</value>
+  </data>
+  <data xml:space="preserve" name="{0} / {1} 批">
+    <value>{0} / {1} 批</value>
+  </data>
+  <data xml:space="preserve" name="{0} / {1} 筆">
+    <value>{0} / {1} 条</value>
+  </data>
+  <data xml:space="preserve" name="本機批次格式無效：{0} 批">
+    <value>本地批次格式无效：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="平台拒絕無效內容：{0} 批">
+    <value>平台拒绝无效内容：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="批次內容衝突：{0} 批">
+    <value>批次内容冲突：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="批次超過平台大小限制：{0} 批">
+    <value>批次超过平台大小限制：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="平台不支援批次格式：{0} 批">
+    <value>平台不支持批次格式：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="平台拒絕過期批次：{0} 批">
+    <value>平台拒绝过期批次：{0} 批</value>
+  </data>
+  <data xml:space="preserve" name="其他或未知原因：{0} 批">
+    <value>其他或未知原因：{0} 批</value>
+  </data>
+</root>

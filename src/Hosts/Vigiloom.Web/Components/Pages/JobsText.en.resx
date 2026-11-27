@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="背景工作" xml:space="preserve"><value>Background jobs</value></data>
+  <data name="查看排程執行狀態與最近結果。" xml:space="preserve"><value>View scheduled job status and recent results.</value></data>
+  <data name="背景工作操作" xml:space="preserve"><value>Background job actions</value></data>
+  <data name="重新整理" xml:space="preserve"><value>Refresh</value></data>
+  <data name="進階管理" xml:space="preserve"><value>Advanced management</value></data>
+  <data name="平台健康" xml:space="preserve"><value>Platform health</value></data>
+  <data name="目前無法取得平台健康資料，請稍後重新整理。" xml:space="preserve"><value>Platform health is unavailable. Refresh later.</value></data>
+  <data name="觀察時間：{0}；各項狀態彼此獨立。" xml:space="preserve"><value>Observed at: {0}; statuses are independent.</value></data>
+  <data name="資料庫連線" xml:space="preserve"><value>Database connection</value></data>
+  <data name="Operations 資料庫連線" xml:space="preserve"><value>Operations database connection</value></data>
+  <data name="排程服務心跳" xml:space="preserve"><value>Scheduler heartbeat</value></data>
+  <data name="Agent 批次接收" xml:space="preserve"><value>Agent batch ingestion</value></data>
+  <data name="應用遙測接收" xml:space="preserve"><value>Application telemetry ingestion</value></data>
+  <data name="無法取得接收資料。" xml:space="preserve"><value>Ingestion data is unavailable.</value></data>
+  <data name="目前沒有來源，接收狀態未知。" xml:space="preserve"><value>No sources; ingestion status is unknown.</value></data>
+  <data name="顯示最新建立的來源；沒有資料不代表接收故障。" xml:space="preserve"><value>Showing the most recently created sources; missing data does not mean ingestion failed.</value></data>
+  <data name="查看所有來源與接收拒絕摘要" xml:space="preserve"><value>View all sources and ingestion rejections</value></data>
+  <data name="應用遙測接收摘要" xml:space="preserve"><value>Application telemetry ingestion summary</value></data>
+  <data name="{0}：Logs {1}；Metrics {2}；Traces {3}" xml:space="preserve"><value>{0}: Logs {1}; Metrics {2}; Traces {3}</value></data>
+  <data name="接收時間只代表保留範圍內已提交的新批次，沒有紀錄不代表接收故障。" xml:space="preserve"><value>Ingestion times represent new batches submitted within retention; missing records do not mean ingestion failed.</value></data>
+  <data name="Worker 掃描摘要" xml:space="preserve"><value>Worker scan summary</value></data>
+  <data name="排程心跳不代表掃描成功；此處顯示最近狀態，不是完整失敗歷史。" xml:space="preserve"><value>A scheduler heartbeat does not indicate successful scans; this shows recent status, not the complete failure history.</value></data>
+  <data name="目前無法取得 Worker 診斷。" xml:space="preserve"><value>Worker diagnostics are unavailable.</value></data>
+  <data name="目前沒有 Worker 診斷資料。" xml:space="preserve"><value>There are no Worker diagnostics.</value></data>
+  <data name="← 左右滑動查看完整表格 →" xml:space="preserve"><value>← Scroll horizontally to see the full table →</value></data>
+  <data name="Worker 掃描摘要，可左右捲動" xml:space="preserve"><value>Worker scan summary, scroll horizontally</value></data>
+  <data name="程序識別" xml:space="preserve"><value>Process ID</value></data>
+  <data name="診斷租約" xml:space="preserve"><value>Diagnostic lease</value></data>
+  <data name="Ping 掃描" xml:space="preserve"><value>Ping scan</value></data>
+  <data name="測速掃描" xml:space="preserve"><value>Speed test scan</value></data>
+  <data name="診斷槽位已達上限；新 Worker 可能無法登記診斷。" xml:space="preserve"><value>Diagnostic slots are full; new Workers may not register diagnostics.</value></data>
+  <data name="暫時無法取得背景工作狀態" xml:space="preserve"><value>Background job status is temporarily unavailable</value></data>
+  <data name="請確認資料庫與 Worker 連線後重新整理。" xml:space="preserve"><value>Check database and Worker connectivity, then refresh.</value></data>
+  <data name="背景工作檢查頻率已儲存。" xml:space="preserve"><value>Background job check frequency saved.</value></data>
+  <data name="設定已被其他管理員修改，請重新整理後再試。" xml:space="preserve"><value>Settings were modified by another administrator. Refresh and try again.</value></data>
+  <data name="設定已儲存，正在等待背景服務套用。" xml:space="preserve"><value>Settings saved; waiting for the background service to apply them.</value></data>
+  <data name="無法取得最新設定，請重新整理後再操作。" xml:space="preserve"><value>Unable to load the latest settings. Refresh before continuing.</value></data>
+  <data name="無法確認儲存結果，請重新整理並檢查設定。" xml:space="preserve"><value>Unable to confirm the save result. Refresh and check the settings.</value></data>
+  <data name="目前沒有已連線的背景服務。" xml:space="preserve"><value>No background services are connected.</value></data>
+  <data name="工作可能無法執行，請確認 Vigiloom 背景服務狀態。" xml:space="preserve"><value>Jobs may not run; check the Vigiloom background service status.</value></data>
+  <data name="工作狀態" xml:space="preserve"><value>Job status</value></data>
+  <data name="已連線背景服務" xml:space="preserve"><value>Connected background services</value></data>
+  <data name="排程工作等待中" xml:space="preserve"><value>Scheduled jobs waiting</value></data>
+  <data name="執行中" xml:space="preserve"><value>Running</value></data>
+  <data name="排程工作失敗" xml:space="preserve"><value>Scheduled jobs failed</value></data>
+  <data name="待處理內部工作" xml:space="preserve"><value>Pending internal jobs</value></data>
+  <data name="內部工作失敗" xml:space="preserve"><value>Internal jobs failed</value></data>
+  <data name="最近執行結果" xml:space="preserve"><value>Recent results</value></data>
+  <data name="時間以 UTC 顯示；進階管理可查看工作詳細資料。" xml:space="preserve"><value>Times are UTC; use advanced management for job details.</value></data>
+  <data name="目前沒有執行結果。" xml:space="preserve"><value>No job results yet.</value></data>
+  <data name="工作" xml:space="preserve"><value>Job</value></data>
+  <data name="結果" xml:space="preserve"><value>Result</value></data>
+  <data name="時間（UTC）" xml:space="preserve"><value>Time (UTC)</value></data>
+  <data name="說明" xml:space="preserve"><value>Details</value></data>
+  <data name="參考識別" xml:space="preserve"><value>Reference ID</value></data>
+  <data name="背景工作檢查頻率" xml:space="preserve"><value>Background job check frequency</value></data>
+  <data name="設定平台檢查待處理內部工作的頻率；此設定不影響設備 Ping 頻率。" xml:space="preserve"><value>Set how often the platform checks pending internal jobs; this does not affect device Ping frequency.</value></data>
+  <data name="此設定適用於原平台的背景資料處理排程，不影響 Operations 服務的工作檢查或設備 Ping 頻率。" xml:space="preserve"><value>This setting applies to the original platform's background data schedule; it does not affect Operations job checks or device Ping frequency.</value></data>
+  <data name="目前排程尚未套用；背景服務啟動後會自動同步。" xml:space="preserve"><value>The schedule has not been applied; it will sync when the background service starts.</value></data>
+  <data name="檢查間隔" xml:space="preserve"><value>Check interval</value></data>
+  <data name="{0} 分鐘" xml:space="preserve"><value>{0} minutes</value></data>
+  <data name="儲存設定" xml:space="preserve"><value>Save settings</value></data>
+  <data name="正常" xml:space="preserve"><value>Healthy</value></data>
+  <data name="異常或已過期" xml:space="preserve"><value>Unhealthy or expired</value></data>
+  <data name="未知" xml:space="preserve"><value>Unknown</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>No data yet</value></data>
+  <data name="無法取得心跳資料" xml:space="preserve"><value>Heartbeat data unavailable</value></data>
+  <data name="目前沒有心跳資料" xml:space="preserve"><value>No heartbeat data</value></data>
+  <data name="{0}（正常 {1}、過期 {2}、未知 {3}）" xml:space="preserve"><value>{0} (healthy {1}, stale {2}, unknown {3})</value></data>
+  <data name="無法取得資料" xml:space="preserve"><value>Data unavailable</value></data>
+  <data name="最近提交：{0}" xml:space="preserve"><value>Last submitted: {0}</value></data>
+  <data name="保留範圍內沒有成功批次紀錄" xml:space="preserve"><value>No successful batch records within retention</value></data>
+  <data name="有效" xml:space="preserve"><value>Valid</value></data>
+  <data name="已過期" xml:space="preserve"><value>Expired</value></data>
+  <data name="最近失敗：{0}（連續 {1} 次，{2}）" xml:space="preserve"><value>Last failure: {0} ({1} consecutive, {2})</value></data>
+  <data name="時間未知" xml:space="preserve"><value>Time unknown</value></data>
+  <data name="最近成功：{0}" xml:space="preserve"><value>Last success: {0}</value></data>
+  <data name="尚無掃描結果" xml:space="preserve"><value>No scan results yet</value></data>
+  <data name="資料庫連線或操作失敗" xml:space="preserve"><value>Database connection or operation failed</value></data>
+  <data name="掃描逾時" xml:space="preserve"><value>Scan timed out</value></data>
+  <data name="掃描失敗" xml:space="preserve"><value>Scan failed</value></data>
+  <data name="背景資料處理" xml:space="preserve"><value>Background data processing</value></data>
+  <data name="已完成" xml:space="preserve"><value>Completed</value></data>
+  <data name="失敗" xml:space="preserve"><value>Failed</value></data>
+  <data name="已停止重試" xml:space="preserve"><value>Retries stopped</value></data>
+  <data name="等待重試" xml:space="preserve"><value>Waiting to retry</value></data>
+  <data name="資料庫連線或操作失敗。" xml:space="preserve"><value>Database connection or operation failed.</value></data>
+  <data name="工作執行逾時。" xml:space="preserve"><value>Job timed out.</value></data>
+  <data name="工作已取消。" xml:space="preserve"><value>Job cancelled.</value></data>
+  <data name="工作執行失敗；請查看進階管理。" xml:space="preserve"><value>Job failed; see advanced management.</value></data>
+  <data name="無法辨識工作類型" xml:space="preserve"><value>Unrecognized job type</value></data>
+  <data name="已達重試上限" xml:space="preserve"><value>Retry limit reached</value></data>
+  <data name="背景資料處理逾時" xml:space="preserve"><value>Background data processing timed out</value></data>
+  <data name="背景資料處理失敗" xml:space="preserve"><value>Background data processing failed</value></data>
+  <data name="{0}（嘗試 {1} 次）" xml:space="preserve"><value>{0} ({1} attempts)</value></data>
+</root>

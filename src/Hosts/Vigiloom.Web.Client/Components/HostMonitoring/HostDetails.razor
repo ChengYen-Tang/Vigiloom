@@ -6,14 +6,15 @@
 @implements IAsyncDisposable
 @inject IHostMonitoringClient Monitoring
 @inject ILogger<HostDetails> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<HostText> L
 
-<section class="host-details" aria-label="深入監控資料" data-runtime="@RendererInfo.Name">
-    <h2>深入監控資料</h2>
-    <p>各資料來源各自回報；Ping、Agent 與應用服務狀態互不推定。</p>
-    <nav class="host-tabs" aria-label="主機資料分類">
+<section class="host-details" aria-label="@L["深入監控資料"]" data-runtime="@RendererInfo.Name">
+    <h2>@L["深入監控資料"]</h2>
+    <p>@L["各資料來源各自回報；Ping、Agent 與應用服務狀態互不推定。"]</p>
+    <nav class="host-tabs" aria-label="@L["主機資料分類"]">
         @foreach (var item in Tabs)
         {
-            <button type="button" disabled="@(!RendererInfo.IsInteractive)" class="@(tab == item.Key ? "active" : "")" aria-current="@(tab == item.Key ? "page" : null)" @onclick="() => ChangeTabAsync(item.Key)">@item.Label</button>
+            <button type="button" disabled="@(!RendererInfo.IsInteractive)" class="@(tab == item.Key ? "active" : "")" aria-current="@(tab == item.Key ? "page" : null)" @onclick="() => ChangeTabAsync(item.Key)">@L[item.Label]</button>
         }
     </nav>
     @if (tab == "vulnerabilities")
@@ -22,54 +23,54 @@
     }
     @if (tab is "metrics" or "logs" or "detections" or "integrity")
     {
-        <div class="host-field"><label for="host-range">查詢時間</label><select id="host-range" value="@rangeHours" @onchange="ChangeRangeAsync">
-            <option value="24">最近 24 小時</option>
-            @if (tab != "metrics" || metricPage is null || metricPage.RollupRetentionDays >= 7) { <option value="168">最近 7 天</option> }
-            @if (tab != "metrics" || metricPage is null || metricPage.RollupRetentionDays >= 30) { <option value="720">最近 30 天</option> }
-            @if (tab == "metrics" && metricPage?.RollupRetentionDays >= 365) { <option value="8760">最近 1 年</option> }
+        <div class="host-field"><label for="host-range">@L["查詢時間"]</label><select id="host-range" value="@rangeHours" @onchange="ChangeRangeAsync">
+            <option value="24">@L["最近 24 小時"]</option>
+            @if (tab != "metrics" || metricPage is null || metricPage.RollupRetentionDays >= 7) { <option value="168">@L["最近 7 天"]</option> }
+            @if (tab != "metrics" || metricPage is null || metricPage.RollupRetentionDays >= 30) { <option value="720">@L["最近 30 天"]</option> }
+            @if (tab == "metrics" && metricPage?.RollupRetentionDays >= 365) { <option value="8760">@L["最近 1 年"]</option> }
             @if (tab == "metrics" && metricPage is { } retention && retention.RollupRetentionDays is not (1 or 7 or 30 or 365))
-            { <option value="@(retention.RollupRetentionDays * 24)">最近 @retention.RollupRetentionDays 天（保存期限）</option> }
+            { <option value="@(retention.RollupRetentionDays * 24)">@L["最近 {0} 天（保存期限）", retention.RollupRetentionDays]</option> }
         </select></div>
     }
-    @if (loading) { <p role="status">正在載入…</p> }
-    else if (unauthorized) { <p role="alert">登入已失效或權限已變更，請重新登入。</p> }
-    else if (error is not null) { <p role="alert">@error</p><button type="button" @onclick="ReloadAsync">重新載入</button> }
+    @if (loading) { <p role="status">@L["正在載入…"]</p> }
+    else if (unauthorized) { <p role="alert">@L["登入已失效或權限已變更，請重新登入。"]</p> }
+    else if (error is not null) { <p role="alert">@error</p><button type="button" @onclick="ReloadAsync">@L["重新載入"]</button> }
     else if (tab is "inventory" or "process")
     {
-        <p>顯示 Agent 最近一次保留的快照；部分採集或採集失敗不代表其他項目已消失。</p>
-        @if (tab == "inventory") { <p>Windows 軟體的 32／64 位元標示是登錄檢視，並非軟體本身的架構。</p> }
-        @if (tab == "process") { <p>程序、作業系統服務與監聽連線是週期性快照，不是即時建立或終止事件；兩次採集間短暫出現的程序可能不會被記錄。</p> }
-        @if (sources.Count == 0) { <p>目前沒有這類盤點資料。</p> }
+        <p>@L["顯示 Agent 最近一次保留的快照；部分採集或採集失敗不代表其他項目已消失。"]</p>
+        @if (tab == "inventory") { <p>@L["Windows 軟體的 32／64 位元標示是登錄檢視，並非軟體本身的架構。"]</p> }
+        @if (tab == "process") { <p>@L["程序、作業系統服務與監聽連線是週期性快照，不是即時建立或終止事件；兩次採集間短暫出現的程序可能不會被記錄。"]</p> }
+        @if (sources.Count == 0) { <p>@L["目前沒有這類盤點資料。"]</p> }
         else
         {
-            <label for="host-source">資料來源</label>
+            <label for="host-source">@L["資料來源"]</label>
             <select id="host-source" value="@((int)selectedSource)" @onchange="ChangeSourceAsync">
-                @foreach (var availableSource in sources) { <option value="@((int)availableSource.Source)">@SourceName(availableSource.Source)</option> }
+                @foreach (var availableSource in sources) { <option value="@((int)availableSource.Source)">@L[SourceName(availableSource.Source)]</option> }
             </select>
             @if (selected is { } source)
             {
-                <p>最近嘗試：@DisplayTime(source.LastAttemptAt) · Agent 結果：@OutcomeName(source.LastOutcome) · 平台接收：@InventoryStatusName(source.LastStatus)</p>
-                <p>最後成功盤點：@DisplayTime(source.LastCompleteAt) · 保留完整快照觀察時間：@DisplayTime(source.CurrentObservedAt) · 目前顯示快照觀察時間：@DisplayTime(snapshotAt)（UTC）</p>
-                @if (source.LastRejectionReason is { } rejection) { <p role="status">平台拒收原因：@rejection</p> }
+                <p>@L["最近嘗試：{0} · Agent 結果：{1} · 平台接收：{2}", DisplayTime(source.LastAttemptAt), L[OutcomeName(source.LastOutcome)].Value, L[InventoryStatusName(source.LastStatus)].Value]</p>
+                <p>@L["最後成功盤點：{0} · 保留完整快照觀察時間：{1} · 目前顯示快照觀察時間：{2}（UTC）", DisplayTime(source.LastCompleteAt), DisplayTime(source.CurrentObservedAt), DisplayTime(snapshotAt)]</p>
+                @if (source.LastRejectionReason is { } rejection) { <p role="status">@L["平台拒收原因：{0}", rejection]</p> }
                 @if (source.PartialSnapshotId is not null && source.CurrentSnapshotId is not null)
                 {
-                    <label for="snapshot-kind">快照</label><select id="snapshot-kind" value="@(usePartial ? "partial" : "complete")" @onchange="ChangeSnapshotAsync"><option value="partial">最近部分快照</option><option value="complete">保留的完整快照</option></select>
+                    <label for="snapshot-kind">@L["快照"]</label><select id="snapshot-kind" value="@(usePartial ? "partial" : "complete")" @onchange="ChangeSnapshotAsync"><option value="partial">@L["最近部分快照"]</option><option value="complete">@L["保留的完整快照"]</option></select>
                 }
-                @if (snapshotAt is { } observed && observed > DateTimeOffset.UtcNow) { <p role="status">快照時間晚於目前檢視端的時間，請確認時鐘。</p> }
-                else if (snapshotAt is { } old && DateTimeOffset.UtcNow - old > TimeSpan.FromHours(24)) { <p role="status">這份快照已超過 24 小時，可能不是目前狀態。</p> }
-                @if (source.PartialSnapshotId == snapshotId && snapshotId is not null) { <p role="status">這是部分快照，清單可能不完整。原因：@source.PartialReason</p> }
-                @if (snapshotId is null) { <p>尚無可查看的快照。</p> }
+                @if (snapshotAt is { } observed && observed > DateTimeOffset.UtcNow) { <p role="status">@L["快照時間晚於目前檢視端的時間，請確認時鐘。"]</p> }
+                else if (snapshotAt is { } old && DateTimeOffset.UtcNow - old > TimeSpan.FromHours(24)) { <p role="status">@L["這份快照已超過 24 小時，可能不是目前狀態。"]</p> }
+                @if (source.PartialSnapshotId == snapshotId && snapshotId is not null) { <p role="status">@L["這是部分快照，清單可能不完整。原因：{0}", source.PartialReason?.ToString() ?? ""]</p> }
+                @if (snapshotId is null) { <p>@L["尚無可查看的快照。"]</p> }
                 else if (chunk is not null)
                 {
-                    <p>第 @(chunkIndex + 1) / @chunk.ChunkCount 頁，每頁最多 100 筆。</p>
-                    @if (chunk.Items.Count == 0) { <p>快照沒有項目。</p> }
+                    <p>@L["第 {0} / {1} 頁，每頁最多 100 筆。", chunkIndex + 1, chunk.ChunkCount]</p>
+                    @if (chunk.Items.Count == 0) { <p>@L["快照沒有項目。"]</p> }
                     else
                     {
-                        <p class="host-scroll-hint">左右滑動查看完整表格。</p><div class="host-table" tabindex="0" role="region" aria-label="盤點表格，可左右捲動"><table><thead><tr><th>名稱</th><th>識別／詳細資料</th></tr></thead><tbody>
-                            @foreach (var entry in chunk.Items) { <tr @key="(snapshotId, entry.Key)"><td>@entry.Name</td><td>@EntryDetails(entry, selectedSource) @if (entry.Members is { Count: > 0 }) { <InventoryMembers Members="entry.Members" /> }</td></tr> }
+                        <p class="host-scroll-hint">@L["左右滑動查看完整表格。"]</p><div class="host-table" tabindex="0" role="region" aria-label="@L["盤點表格，可左右捲動"]"><table><thead><tr><th>@L["名稱"]</th><th>@L["識別／詳細資料"]</th></tr></thead><tbody>
+                            @foreach (var entry in chunk.Items) { <tr @key="(snapshotId, entry.Key)"><td>@entry.Name</td><td>@EntryDetails(entry, selectedSource, L) @if (entry.Members is { Count: > 0 }) { <InventoryMembers Members="entry.Members" /> }</td></tr> }
                         </tbody></table></div>
                     }
-                    <div class="host-pagination"><button type="button" disabled="@(chunkIndex == 0)" @onclick="() => LoadChunkAsync(chunkIndex - 1)">上一頁</button><button type="button" disabled="@(chunkIndex + 1 >= chunk.ChunkCount)" @onclick="() => LoadChunkAsync(chunkIndex + 1)">下一頁</button></div>
+                    <div class="host-pagination"><button type="button" disabled="@(chunkIndex == 0)" @onclick="() => LoadChunkAsync(chunkIndex - 1)">@L["上一頁"]</button><button type="button" disabled="@(chunkIndex + 1 >= chunk.ChunkCount)" @onclick="() => LoadChunkAsync(chunkIndex + 1)">@L["下一頁"]</button></div>
                 }
             }
         }
@@ -77,133 +78,133 @@
     }
     else if (tab == "metrics")
     {
-        <div class="host-field"><label for="metric-kind">指標</label><select id="metric-kind" value="@((int)metricKind)" @onchange="ChangeMetricAsync">
-            @foreach (var metric in MetricKinds) { <option value="@((int)metric.Kind)">@metric.Label</option> }
+        <div class="host-field"><label for="metric-kind">@L["指標"]</label><select id="metric-kind" value="@((int)metricKind)" @onchange="ChangeMetricAsync">
+            @foreach (var metric in MetricKinds) { <option value="@((int)metric.Kind)">@L[metric.Label]</option> }
         </select></div>
-        <p>依 Agent 註冊與來源分開顯示；未收到的資料不視為零。更新或離線期間可能暫停採集，圖表按時間區間彙整，短暫空窗可能不會顯示。</p>
+        <p>@L["依 Agent 註冊與來源分開顯示；未收到的資料不視為零。更新或離線期間可能暫停採集，圖表按時間區間彙整，短暫空窗可能不會顯示。"]</p>
         @if (metricIssues.Count > 0)
         {
-            <div role="status"><p>近期採集未完成的紀錄（各來源顯示最近一筆，最多 10 筆，非目前狀態）：</p><ul>
-                @foreach (var issue in metricIssues) { <li>@issue.Dimension：@MetricIssueName(issue.Source) · @DisplayTime(issue.OccurredAt)（UTC） · Agent @issue.AgentId</li> }
+            <div role="status"><p>@L["近期採集未完成的紀錄（各來源顯示最近一筆，最多 10 筆，非目前狀態）："]</p><ul>
+                @foreach (var issue in metricIssues) { <li>@issue.Dimension：@L[MetricIssueName(issue.Source)] · @DisplayTime(issue.OccurredAt)（UTC） · Agent @issue.AgentId</li> }
             </ul></div>
         }
-        @if (metricPage is { } retentionPeriod) { <p>原始樣本保存 @retentionPeriod.RawRetentionDays 天，五分鐘彙總保存 @retentionPeriod.RollupRetentionDays 天。</p> }
+        @if (metricPage is { } retentionPeriod) { <p>@L["原始樣本保存 {0} 天，五分鐘彙總保存 {1} 天。", retentionPeriod.RawRetentionDays, retentionPeriod.RollupRetentionDays]</p> }
         @if (metricPage?.Items.Count > 0)
         {
-            <label for="metric-series">來源與 Agent</label><select id="metric-series" value="@seriesIndex" @onchange="ChangeSeriesAsync">
+            <label for="metric-series">@L["來源與 Agent"]</label><select id="metric-series" value="@seriesIndex" @onchange="ChangeSeriesAsync">
                 @for (var i = 0; i < series.Count; i++) { <option value="@i">@SeriesName(series[i])</option> }
             </select>
             @if (metricThreshold is { } threshold)
             {
-                <section class="metric-status" aria-label="閾值評估結果">
-                    <h3>閾值評估結果</h3>
-                    <p role="status"><strong>@ThresholdStateName(threshold)</strong></p>
+                <section class="metric-status" aria-label="@L["閾值評估結果"]">
+                    <h3>@L["閾值評估結果"]</h3>
+                    <p role="status"><strong>@L[ThresholdStateName(threshold)]</strong></p>
                     @if (threshold.Threshold is { Enabled: true } rule)
                     {
-                        <p>閾值：@(rule.Comparison == HostMetricComparison.AtLeast ? "大於等於" : "小於等於") @rule.Value @HostMetricUnits.For(metricKind) · 樣本有效時間：@rule.FreshnessSeconds 秒</p>
+                        <p>@L["閾值：{0} {1} {2} · 樣本有效時間：{3} 秒", rule.Comparison == HostMetricComparison.AtLeast ? L["大於等於"].Value : L["小於等於"].Value, rule.Value, L[HostMetricUnits.For(metricKind)].Value, rule.FreshnessSeconds]</p>
                     }
                     @if (threshold.Sample is { } sample)
                     {
-                        <p>最新樣本：@sample.Value @HostMetricUnits.For(metricKind) · 量測時間：@DisplayTime(sample.OccurredAt)（UTC）</p>
+                        <p>@L["最新樣本：{0} {1} · 量測時間：{2}（UTC）", sample.Value, L[HostMetricUnits.For(metricKind)].Value, DisplayTime(sample.OccurredAt)]</p>
                     }
-                    <p>評估時間：@DisplayTime(threshold.EvaluatedAt)（UTC）。此結果使用當時的設定與最新樣本，與下方歷史趨勢分開。</p>
-                    <button type="button" @onclick="RefreshMetricAsync">更新評估</button>
-                    <AuthorizeView Roles="Administrator"><Authorized><a href="@ThresholdEditUrl(series[seriesIndex])">設定此來源的閾值</a></Authorized></AuthorizeView>
+                    <p>@L["評估時間：{0}（UTC）。此結果使用當時的設定與最新樣本，與下方歷史趨勢分開。", DisplayTime(threshold.EvaluatedAt)]</p>
+                    <button type="button" @onclick="RefreshMetricAsync">@L["更新評估"]</button>
+                    <AuthorizeView Roles="Administrator"><Authorized><a href="@ThresholdEditUrl(series[seriesIndex])">@L["設定此來源的閾值"]</a></Authorized></AuthorizeView>
                 </section>
             }
-            @if (metricIncomplete) { <p role="status">部分時段的原始資料已到期，無法精確計算；圖表略過這些區間。</p> }
-            @if (points.Count > 0) { <TimeSeriesChart Title="效能趨勢" Unit="@HostMetricUnits.For(metricKind)" Points="points" /> }
-            else { <p>此時間範圍沒有可繪製的資料。</p> }
-            @if (metricPage.HasMore) { <p>還有其他資料來源，可切換下一頁查看。</p> }
+            @if (metricIncomplete) { <p role="status">@L["部分時段的原始資料已到期，無法精確計算；圖表略過這些區間。"]</p> }
+            @if (points.Count > 0) { <TimeSeriesChart Title="@L["效能趨勢"].Value" Unit="@L[HostMetricUnits.For(metricKind)].Value" Points="points" /> }
+            else { <p>@L["此時間範圍沒有可繪製的資料。"]</p> }
+            @if (metricPage.HasMore) { <p>@L["還有其他資料來源，可切換下一頁查看。"]</p> }
         }
-        else { <p>這段時間沒有此指標。</p> }
-        @if (metricPage is not null && (metricPageNumber > 0 || metricPage.HasMore)) { <button type="button" disabled="@(metricPageNumber == 0)" @onclick="PreviousMetricsAsync">上一頁來源</button><button type="button" disabled="@(!metricPage.HasMore)" @onclick="NextMetricsAsync">下一頁來源</button> }
+        else { <p>@L["這段時間沒有此指標。"]</p> }
+        @if (metricPage is not null && (metricPageNumber > 0 || metricPage.HasMore)) { <button type="button" disabled="@(metricPageNumber == 0)" @onclick="PreviousMetricsAsync">@L["上一頁來源"]</button><button type="button" disabled="@(!metricPage.HasMore)" @onclick="NextMetricsAsync">@L["下一頁來源"]</button> }
     }
     else if (tab == "logs")
     {
-        <p>依中央接收時間排序；記錄來源時間可能未知。@if (logs is not null) { <text>保存期限 @logs.RetentionDays 天；安全偵測所需資料可能延長保留。</text> }</p>
+        <p>@L["依中央接收時間排序；記錄來源時間可能未知。"] @if (logs is not null) { <text>@L["保存期限 {0} 天；安全偵測所需資料可能延長保留。", logs.RetentionDays]</text> }</p>
         @if (logs?.Items.Count > 0)
         {
-            <p class="host-scroll-hint">左右滑動查看完整表格。</p><div class="host-table" tabindex="0" role="region" aria-label="日誌表格，可左右捲動"><table><thead><tr><th>接收時間（UTC）</th><th>來源</th><th>內容</th></tr></thead><tbody>
-                @foreach (var item in logs.Items) { <tr @key="(item.AgentId, item.MessageId)"><td>@DisplayTime(item.ReceivedAt)</td><td>@item.SourceName</td><td>@if (item.Gap is not null) { <strong>採集缺口：</strong> } @item.Content</td></tr> }
+            <p class="host-scroll-hint">@L["左右滑動查看完整表格。"]</p><div class="host-table" tabindex="0" role="region" aria-label="@L["日誌表格，可左右捲動"]"><table><thead><tr><th>@L["接收時間（UTC）"]</th><th>@L["來源"]</th><th>@L["內容"]</th></tr></thead><tbody>
+                @foreach (var item in logs.Items) { <tr @key="(item.AgentId, item.MessageId)"><td>@DisplayTime(item.ReceivedAt)</td><td>@item.SourceName</td><td>@if (item.Gap is not null) { <strong>@L["採集缺口："]</strong> } @item.Content</td></tr> }
             </tbody></table></div>
         }
-        else { <p>這段時間沒有主機日誌。</p> }
-        @if (logs is not null && (logCursors.Count > 0 || logs.NextCursor is not null)) { <button type="button" disabled="@(logCursors.Count == 0)" @onclick="PreviousLogsAsync">較新紀錄</button><button type="button" disabled="@(logs.NextCursor is null)" @onclick="NextLogsAsync">較早紀錄</button> }
+        else { <p>@L["這段時間沒有主機日誌。"]</p> }
+        @if (logs is not null && (logCursors.Count > 0 || logs.NextCursor is not null)) { <button type="button" disabled="@(logCursors.Count == 0)" @onclick="PreviousLogsAsync">@L["較新紀錄"]</button><button type="button" disabled="@(logs.NextCursor is null)" @onclick="NextLogsAsync">@L["較早紀錄"]</button> }
     }
     else if (tab == "detections")
     {
-        <p>顯示已啟用規則的命中與未評估紀錄；沒有紀錄不代表設備沒有異常。</p>
+        <p>@L["顯示已啟用規則的命中與未評估紀錄；沒有紀錄不代表設備沒有異常。"]</p>
         @if (detectionPage?.Items.Count > 0)
         {
-            <p class="host-scroll-hint">左右滑動查看完整表格。</p><div class="host-table" tabindex="0" role="region" aria-label="行為偵測紀錄，可左右捲動">
-                <table><thead><tr><th>接收時間（UTC）</th><th>規則</th><th>結果與證據</th></tr></thead><tbody>
+            <p class="host-scroll-hint">@L["左右滑動查看完整表格。"]</p><div class="host-table" tabindex="0" role="region" aria-label="@L["行為偵測紀錄，可左右捲動"]">
+                <table><thead><tr><th>@L["接收時間（UTC）"]</th><th>@L["規則"]</th><th>@L["結果與證據"]</th></tr></thead><tbody>
                 @foreach (var item in detectionPage.Items)
                 {
                     <tr @key="(item.AgentId, item.MessageId, item.TestId, item.ActivationVersion)"><td>@DisplayTime(item.ReceivedAt)</td><td>@item.RulePath</td><td>
-                        <span class="detection-status @(item.Outcome == SigmaExpectedOutcome.Match ? "detection-match" : "detection-unknown")">@(item.Outcome == SigmaExpectedOutcome.Match ? "命中" : "未評估")</span>
-                        @if (item.Correlation is { } evidence) { <div>@evidence.Count 筆事件 · @DisplayTime(evidence.FirstEventAt) 至 @DisplayTime(evidence.LastEventAt)（UTC）</div> }
-                        <details><summary>查看來源與事件識別</summary><div>來源版本：@item.RevisionId</div><div>規則摘要：@item.RuleSha256</div><div>Agent：@item.AgentId</div><div>事件：@item.MessageId</div></details>
+                        <span class="detection-status @(item.Outcome == SigmaExpectedOutcome.Match ? "detection-match" : "detection-unknown")">@(item.Outcome == SigmaExpectedOutcome.Match ? L["命中"].Value : L["未評估"].Value)</span>
+                        @if (item.Correlation is { } evidence) { <div>@L["{0} 筆事件 · {1} 至 {2}（UTC）", evidence.Count, DisplayTime(evidence.FirstEventAt), DisplayTime(evidence.LastEventAt)]</div> }
+                        <details><summary>@L["查看來源與事件識別"]</summary><div>@L["來源版本：{0}", item.RevisionId]</div><div>@L["規則摘要：{0}", item.RuleSha256]</div><div>Agent：@item.AgentId</div><div>@L["事件：{0}", item.MessageId]</div></details>
                     </td></tr>
                 }
                 </tbody></table>
             </div>
         }
-        else { <p>這段時間沒有偵測紀錄。</p> }
-        @if (detectionPage is not null && (detectionCursors.Count > 0 || detectionPage.NextCursor is not null)) { <button type="button" disabled="@(detectionCursors.Count == 0)" @onclick="PreviousDetectionsAsync">較新紀錄</button><button type="button" disabled="@(detectionPage.NextCursor is null)" @onclick="NextDetectionsAsync">較早紀錄</button> }
-        <h3>IOC 比對線索</h3>
-        <p><a href="@($"/devices/{DeviceId:D}/yara-scans")">查看 YARA 掃描</a></p>
-        <p>僅顯示已啟用比對後收到的事件；命中需要調查，並不代表已入侵。@if (iocDetections is not null) { <text>線索依 Log 政策保存 @iocDetections.RetentionDays 天。</text> }</p>
+        else { <p>@L["這段時間沒有偵測紀錄。"]</p> }
+        @if (detectionPage is not null && (detectionCursors.Count > 0 || detectionPage.NextCursor is not null)) { <button type="button" disabled="@(detectionCursors.Count == 0)" @onclick="PreviousDetectionsAsync">@L["較新紀錄"]</button><button type="button" disabled="@(detectionPage.NextCursor is null)" @onclick="NextDetectionsAsync">@L["較早紀錄"]</button> }
+        <h3>@L["IOC 比對線索"]</h3>
+        <p><a href="@($"/devices/{DeviceId:D}/yara-scans")">@L["查看 YARA 掃描"]</a></p>
+        <p>@L["僅顯示已啟用比對後收到的事件；命中需要調查，並不代表已入侵。"] @if (iocDetections is not null) { <text>@L["線索依 Log 政策保存 {0} 天。", iocDetections.RetentionDays]</text> }</p>
         @if (iocDetections?.Items.Count > 0)
         {
-            <div class="host-table" tabindex="0" role="region" aria-label="IOC 比對線索，可左右捲動"><table><thead><tr><th>接收時間（UTC）</th><th>指標</th><th>來源與證據</th></tr></thead><tbody>
+            <div class="host-table" tabindex="0" role="region" aria-label="@L["IOC 比對線索，可左右捲動"]"><table><thead><tr><th>@L["接收時間（UTC）"]</th><th>@L["指標"]</th><th>@L["來源與證據"]</th></tr></thead><tbody>
             @foreach (var item in iocDetections.Items)
             {
-                <tr><td>@DisplayTime(item.ReceivedAt)</td><td>@item.Kind：@item.Value</td><td>@item.Field · 事件 @item.MessageId<br /><a href="@item.SourceUrl" target="_blank" rel="noopener noreferrer">查看來源</a> · <a href="@item.LicenseUrl" target="_blank" rel="noopener noreferrer">授權</a></td></tr>
+                <tr><td>@DisplayTime(item.ReceivedAt)</td><td>@item.Kind：@item.Value</td><td>@item.Field · @L["事件 {0}", item.MessageId]<br /><a href="@item.SourceUrl" target="_blank" rel="noopener noreferrer">@L["查看來源"]</a> · <a href="@item.LicenseUrl" target="_blank" rel="noopener noreferrer">@L["授權"]</a></td></tr>
             }
             </tbody></table></div>
         }
-        else { <p>這段時間沒有 IOC 命中紀錄。</p> }
+        else { <p>@L["這段時間沒有 IOC 命中紀錄。"]</p> }
         @if (iocDetections is not null && (iocDetections.Page > 1 || iocDetections.HasMore))
         {
-            <button type="button" disabled="@(iocDetections.Page <= 1)" @onclick="() => NavigateIocAsync(iocDetections.Page - 1)">較新線索</button>
-            <button type="button" disabled="@(!iocDetections.HasMore)" @onclick="() => NavigateIocAsync(iocDetections.Page + 1)">較早線索</button>
+            <button type="button" disabled="@(iocDetections.Page <= 1)" @onclick="() => NavigateIocAsync(iocDetections.Page - 1)">@L["較新線索"]</button>
+            <button type="button" disabled="@(!iocDetections.HasMore)" @onclick="() => NavigateIocAsync(iocDetections.Page + 1)">@L["較早線索"]</button>
         }
-        <h3>資料缺口</h3>
+        <h3>@L["資料缺口"]</h3>
         @if (detectionGaps?.Items.Count > 0)
         {
-            <div class="host-table" tabindex="0" role="region" aria-label="偵測資料缺口，可左右捲動"><table><thead><tr><th>紀錄時間（UTC）</th><th>原因</th><th>事件</th></tr></thead><tbody>
-            @foreach (var gap in detectionGaps.Items) { <tr><td>@DisplayTime(gap.RecordedAt)</td><td>@(gap.Kind == SigmaDetectionGapKind.OriginalEventUnavailable ? "原始日誌無法取得" : "規則無法使用")</td><td>@gap.MessageId</td></tr> }
+            <div class="host-table" tabindex="0" role="region" aria-label="@L["偵測資料缺口，可左右捲動"]"><table><thead><tr><th>@L["紀錄時間（UTC）"]</th><th>@L["原因"]</th><th>@L["事件"]</th></tr></thead><tbody>
+            @foreach (var gap in detectionGaps.Items) { <tr><td>@DisplayTime(gap.RecordedAt)</td><td>@(gap.Kind == SigmaDetectionGapKind.OriginalEventUnavailable ? L["原始日誌無法取得"].Value : L["規則無法使用"].Value)</td><td>@gap.MessageId</td></tr> }
             </tbody></table></div>
         }
-        else { <p>這段時間沒有已記錄的資料缺口。</p> }
-        @if (detectionGaps is not null && (gapCursors.Count > 0 || detectionGaps.NextCursor is not null)) { <button type="button" disabled="@(gapCursors.Count == 0)" @onclick="PreviousGapsAsync">較新缺口</button><button type="button" disabled="@(detectionGaps.NextCursor is null)" @onclick="NextGapsAsync">較早缺口</button> }
+        else { <p>@L["這段時間沒有已記錄的資料缺口。"]</p> }
+        @if (detectionGaps is not null && (gapCursors.Count > 0 || detectionGaps.NextCursor is not null)) { <button type="button" disabled="@(gapCursors.Count == 0)" @onclick="PreviousGapsAsync">@L["較新缺口"]</button><button type="button" disabled="@(detectionGaps.NextCursor is null)" @onclick="NextGapsAsync">@L["較早缺口"]</button> }
     }
     else if (tab == "integrity")
     {
-        <p>顯示最後一次掃描與保留基線；覆蓋缺口不代表檔案完整無異常。</p>
+        <p>@L["顯示最後一次掃描與保留基線；覆蓋缺口不代表檔案完整無異常。"]</p>
         @if (integrity?.Scopes.Count > 0)
         {
-            <p class="host-scroll-hint">左右滑動查看完整表格。</p><div class="host-table" tabindex="0" role="region" aria-label="完整性範圍表格，可左右捲動"><table><thead><tr><th>範圍</th><th>最後掃描</th><th>結果</th><th>基線</th></tr></thead><tbody>
-                @foreach (var scope in integrity.Scopes) { <tr @key="scope.ScopeId"><td>@scope.Root</td><td>@DisplayTime(scope.LastAttemptAt) @AgeNotice(scope.LastAttemptAt)</td><td>@(scope.Enabled ? IntegrityOutcomeName(scope.LastOutcome) : "已停用") · 平台：@IntegrityStatusName(scope.LastStatus) @(scope.CoverageGap == true ? "（有覆蓋缺口）" : "") @(scope.LastPartialReason is not null ? $"（原因：{scope.LastPartialReason}）" : "")</td><td>@DisplayTime(scope.SnapshotAt) @AgeNotice(scope.SnapshotAt) @(scope.BaselineRevision != scope.ConfiguredRevision && scope.BaselineRevision is not null ? "（設定已變更）" : "") @if (scope.SnapshotId is not null) { <button type="button" @onclick="() => OpenBaselineAsync(scope)">查看基線</button> }</td></tr> }
+            <p class="host-scroll-hint">@L["左右滑動查看完整表格。"]</p><div class="host-table" tabindex="0" role="region" aria-label="@L["完整性範圍表格，可左右捲動"]"><table><thead><tr><th>@L["範圍"]</th><th>@L["最後掃描"]</th><th>@L["結果"]</th><th>@L["基線"]</th></tr></thead><tbody>
+                @foreach (var scope in integrity.Scopes) { <tr @key="scope.ScopeId"><td>@scope.Root</td><td>@DisplayTime(scope.LastAttemptAt) @L[AgeNotice(scope.LastAttemptAt)]</td><td>@(scope.Enabled ? L[IntegrityOutcomeName(scope.LastOutcome)].Value : L["已停用"].Value) · @L["平台：{0}", L[IntegrityStatusName(scope.LastStatus)].Value] @(scope.CoverageGap == true ? L["（有覆蓋缺口）"].Value : "") @(scope.LastPartialReason is not null ? L["（原因：{0}）", scope.LastPartialReason].Value : "")</td><td>@DisplayTime(scope.SnapshotAt) @L[AgeNotice(scope.SnapshotAt)] @(scope.BaselineRevision != scope.ConfiguredRevision && scope.BaselineRevision is not null ? L["（設定已變更）"].Value : "") @if (scope.SnapshotId is not null) { <button type="button" @onclick="() => OpenBaselineAsync(scope)">@L["查看基線"]</button> }</td></tr> }
             </tbody></table></div>
             @if (baseline is { } baselinePage)
             {
-                <h3>基線項目</h3><p>範圍 ID：@baselinePage.ScopeId · 基線設定版本：@baselinePage.ScopeRevision · 觀察時間（UTC）：@DisplayTime(baselinePage.ObservedAt) · 第 @(baselinePage.ChunkIndex + 1) / @baselinePage.ChunkCount 頁</p>
-                <p>目前設定的路徑：@(integrity.Scopes.FirstOrDefault(x => x.ScopeId == baselinePage.ScopeId)?.Root ?? "—")。基線版本若與目前設定不同，原始掃描路徑可能不同，歷史路徑未提供。</p>
-                <div class="host-table" tabindex="0" role="region" aria-label="基線表格，可左右捲動"><table><thead><tr><th>項目</th><th>類型</th><th>證據</th></tr></thead><tbody>@foreach (var item in baselinePage.Items) { <tr @key="item.Key"><td>@item.Key</td><td>@item.Kind</td><td><IntegrityEvidence Item="item" /></td></tr> }</tbody></table></div>
-                <button type="button" disabled="@(baselinePage.ChunkIndex == 0)" @onclick="() => LoadBaselineAsync(baselinePage.ChunkIndex - 1)">上一頁</button><button type="button" disabled="@(baselinePage.ChunkIndex + 1 >= baselinePage.ChunkCount)" @onclick="() => LoadBaselineAsync(baselinePage.ChunkIndex + 1)">下一頁</button>
+                <h3>@L["基線項目"]</h3><p>@L["範圍 ID：{0} · 基線設定版本：{1} · 觀察時間（UTC）：{2} · 第 {3} / {4} 頁", baselinePage.ScopeId, baselinePage.ScopeRevision, DisplayTime(baselinePage.ObservedAt), baselinePage.ChunkIndex + 1, baselinePage.ChunkCount]</p>
+                <p>@L["目前設定的路徑：{0}。基線版本若與目前設定不同，原始掃描路徑可能不同，歷史路徑未提供。", integrity.Scopes.FirstOrDefault(x => x.ScopeId == baselinePage.ScopeId)?.Root ?? "—"]</p>
+                <div class="host-table" tabindex="0" role="region" aria-label="@L["基線表格，可左右捲動"]"><table><thead><tr><th>@L["項目"]</th><th>@L["類型"]</th><th>@L["證據"]</th></tr></thead><tbody>@foreach (var item in baselinePage.Items) { <tr @key="item.Key"><td>@item.Key</td><td>@item.Kind</td><td><IntegrityEvidence Item="item" /></td></tr> }</tbody></table></div>
+                <button type="button" disabled="@(baselinePage.ChunkIndex == 0)" @onclick="() => LoadBaselineAsync(baselinePage.ChunkIndex - 1)">@L["上一頁"]</button><button type="button" disabled="@(baselinePage.ChunkIndex + 1 >= baselinePage.ChunkCount)" @onclick="() => LoadBaselineAsync(baselinePage.ChunkIndex + 1)">@L["下一頁"]</button>
             }
         }
-        else { <p>尚未設定完整性監控範圍。</p> }
-        <h3>最近變更</h3>
+        else { <p>@L["尚未設定完整性監控範圍。"]</p> }
+        <h3>@L["最近變更"]</h3>
         @if (changes?.Items.Count > 0)
         {
-            <div class="host-table" tabindex="0" role="region" aria-label="完整性變更表格，可左右捲動"><table><thead><tr><th>觀察時間（UTC）</th><th>類型</th><th>項目</th><th>覆蓋</th><th>變更證據</th></tr></thead><tbody>
-                @foreach (var change in changes.Items) { <tr><td>@DisplayTime(change.ObservedAt)</td><td>@change.Kind</td><td>@(change.After?.Key ?? change.Before?.Key ?? "—")</td><td>@(change.CoverageGap ? "有缺口" : "—")</td><td><IntegrityEvidence Item="change.Before" Label="變更前" /><IntegrityEvidence Item="change.After" Label="變更後" /></td></tr> }
+            <div class="host-table" tabindex="0" role="region" aria-label="@L["完整性變更表格，可左右捲動"]"><table><thead><tr><th>@L["觀察時間（UTC）"]</th><th>@L["類型"]</th><th>@L["項目"]</th><th>@L["覆蓋"]</th><th>@L["變更證據"]</th></tr></thead><tbody>
+                @foreach (var change in changes.Items) { <tr><td>@DisplayTime(change.ObservedAt)</td><td>@change.Kind</td><td>@(change.After?.Key ?? change.Before?.Key ?? "—")</td><td>@(change.CoverageGap ? L["有缺口"].Value : "—")</td><td><IntegrityEvidence Item="change.Before" Label="@L["變更前"].Value" /><IntegrityEvidence Item="change.After" Label="@L["變更後"].Value" /></td></tr> }
             </tbody></table></div>
         }
-        else { <p>這段時間沒有可用的變更紀錄。</p> }
-        @if (changes is not null && (changeCursors.Count > 0 || changes.NextCursor is not null)) { <button type="button" disabled="@(changeCursors.Count == 0)" @onclick="PreviousChangesAsync">較新變更</button><button type="button" disabled="@(changes.NextCursor is null)" @onclick="NextChangesAsync">較早變更</button> }
+        else { <p>@L["這段時間沒有可用的變更紀錄。"]</p> }
+        @if (changes is not null && (changeCursors.Count > 0 || changes.NextCursor is not null)) { <button type="button" disabled="@(changeCursors.Count == 0)" @onclick="PreviousChangesAsync">@L["較新變更"]</button><button type="button" disabled="@(changes.NextCursor is null)" @onclick="NextChangesAsync">@L["較早變更"]</button> }
     }
 </section>

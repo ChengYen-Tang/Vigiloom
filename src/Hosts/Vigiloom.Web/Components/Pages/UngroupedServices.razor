@@ -4,28 +4,29 @@
 @using Vigiloom.Contracts.Groups
 @using Vigiloom.Web.Groups
 @inject IServiceMembership Services
+@inject Microsoft.Extensions.Localization.IStringLocalizer<GroupText> L
 @inject NavigationManager Navigation
 @inject ILogger<UngroupedServices> Logger
 
-<PageTitle>未分組服務 - Vigiloom</PageTitle>
+<PageTitle>@L["未分組服務"] - Vigiloom</PageTitle>
 <main class="device-page">
-    <a href="/groups">← 返回群組</a>
-    <header class="device-heading"><div><h1>未分組服務</h1><p>尚未加入任何群組的應用服務。</p></div></header>
+    <a href="/groups">@L["← 返回群組"]</a>
+    <header class="device-heading"><div><h1>@L["未分組服務"]</h1><p>@L["尚未加入任何群組的應用服務。"]</p></div></header>
     <section class="device-panel">
-        <form method="get" action="/groups/ungrouped-services" class="device-filters"><label>搜尋服務或環境 <input name="search" value="@Search" maxlength="256" /></label><button type="submit">搜尋</button></form>
-        @if (error) { <p class="device-alert" role="alert">無法載入服務，請稍後再試。</p> }
-        else if (result is not null && result.Items.Count == 0) { <p class="device-empty">沒有符合條件的未分組服務。</p> }
+        <form method="get" action="/groups/ungrouped-services" class="device-filters"><label>@L["搜尋服務或環境"] <input name="search" value="@Search" maxlength="256" /></label><button type="submit">@L["搜尋"]</button></form>
+        @if (error) { <p class="device-alert" role="alert">@L["無法載入服務，請稍後再試。"]</p> }
+        else if (result is not null && result.Items.Count == 0) { <p class="device-empty">@L["沒有符合條件的未分組服務。"]</p> }
         else if (result is not null)
         {
-            <p class="device-count">共 @result.Total 個服務</p>
-            <p class="group-scroll-hint">左右滑動查看完整表格。</p>
-            <div class="device-table-wrap"><table><thead><tr><th>名稱</th><th>環境</th></tr></thead><tbody>
+            <p class="device-count">@L["共 {0} 個服務", result.Total]</p>
+            <p class="group-scroll-hint">@L["左右滑動查看完整表格。"]</p>
+            <div class="device-table-wrap"><table><thead><tr><th>@L["名稱"]</th><th>@L["環境"]</th></tr></thead><tbody>
                 @foreach (var service in result.Items) { <tr @key="service.Id"><td>@service.Name</td><td>@service.Environment</td></tr> }
             </tbody></table></div>
-            <nav class="device-pagination" aria-label="服務分頁">
-                @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">上一頁</a> }
-                <span>第 @result.Page 頁</span>
-                @if ((long)result.Page * result.PageSize < result.Total) { <a href="@PageUrl(result.Page + 1)">下一頁</a> }
+            <nav class="device-pagination" aria-label="@L["服務分頁"]">
+                @if (result.Page > 1) { <a href="@PageUrl(result.Page - 1)">@L["上一頁"]</a> }
+                <span>@L["第 {0} 頁", result.Page]</span>
+                @if ((long)result.Page * result.PageSize < result.Total) { <a href="@PageUrl(result.Page + 1)">@L["下一頁"]</a> }
             </nav>
         }
     </section>

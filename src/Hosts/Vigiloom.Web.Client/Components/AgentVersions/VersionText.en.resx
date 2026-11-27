@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="正在讀取 Agent 版本…" xml:space="preserve"><value>Loading Agent version…</value></data>
+  <data name="重新載入" xml:space="preserve"><value>Reload</value></data>
+  <data name="此 Agent 已無法管理，請重新整理設備頁面。" xml:space="preserve"><value>This Agent can no longer be managed. Refresh the device page.</value></data>
+  <data name="Agent 版本資訊" xml:space="preserve"><value>Agent version information</value></data>
+  <data name="指定版本" xml:space="preserve"><value>Assigned version</value></data>
+  <data name="尚未指派" xml:space="preserve"><value>Not assigned</value></data>
+  <data name="指派時間（UTC）：" xml:space="preserve"><value>Assigned at (UTC): </value></data>
+  <data name="心跳回報的 Agent 版本" xml:space="preserve"><value>Agent version reported by heartbeat</value></data>
+  <data name="尚無回報" xml:space="preserve"><value>No report yet</value></data>
+  <data name="回報時間（UTC）：" xml:space="preserve"><value>Reported at (UTC): </value></data>
+  <data name="上次盤點的 Agent 版本" xml:space="preserve"><value>Agent version in latest inventory</value></data>
+  <data name="無法讀取" xml:space="preserve"><value>Unable to read</value></data>
+  <data name="尚無盤點資料" xml:space="preserve"><value>No inventory data</value></data>
+  <data name="盤點時間（UTC）：" xml:space="preserve"><value>Inventory time (UTC): </value></data>
+  <data name="最近回報的更新階段" xml:space="preserve"><value>Latest reported update stage</value></data>
+  <data name="原因：" xml:space="preserve"><value>Reason: </value></data>
+  <data name="發生時間（UTC）：" xml:space="preserve"><value>Occurred at (UTC): </value></data>
+  <data name="接收時間（UTC）：" xml:space="preserve"><value>Received at (UTC): </value></data>
+  <data name="已指定的套件目前不可用，請重新選擇或取消指派。" xml:space="preserve"><value>The assigned package is unavailable. Select another package or cancel the assignment.</value></data>
+  <data name="Agent 目前尚未連線。若 Updater 已完成授權且正常運作，仍可接收版本指派；否則請確認設備及 Updater 狀態。重新整理頁面可查看 Agent 連線狀態。" xml:space="preserve"><value>The Agent is offline. If the Updater is authorized and operating, it can still receive the assignment; otherwise check the device and Updater. Refresh to check the connection.</value></data>
+  <data name="指定代表設定目標版本，並不代表設備已安裝。" xml:space="preserve"><value>An assignment sets the target version; it does not mean the device has installed it.</value></data>
+  <data name="指派 Agent 套件" xml:space="preserve"><value>Assign an Agent package</value></data>
+  <data name="選擇與設備作業系統及架構相符的套件。" xml:space="preserve"><value>Select a package matching the device operating system and architecture.</value></data>
+  <data name="如需回滾，請選擇相容的舊版 Agent 並指派；Updater 不會跟著降級。" xml:space="preserve"><value>To roll back, assign a compatible older Agent version. The Updater will not be downgraded.</value></data>
+  <data name="選擇已下載的套件" xml:space="preserve"><value>Select a downloaded package</value></data>
+  <data name="左右滑動查看套件資訊" xml:space="preserve"><value>Scroll horizontally to view package details</value></data>
+  <data name="選擇" xml:space="preserve"><value>Select</value></data>
+  <data name="版本" xml:space="preserve"><value>Version</value></data>
+  <data name="平台" xml:space="preserve"><value>Platform</value></data>
+  <data name="狀態" xml:space="preserve"><value>Status</value></data>
+  <data name="未下載" xml:space="preserve"><value>Not downloaded</value></data>
+  <data name="可指派" xml:space="preserve"><value>Available</value></data>
+  <data name="目前沒有套件，請先至套件管理下載版本。" xml:space="preserve"><value>No packages are available. Download a version in package management first.</value></data>
+  <data name="上一頁" xml:space="preserve"><value>Previous</value></data>
+  <data name="下一頁" xml:space="preserve"><value>Next</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>Page {0}</value></data>
+  <data name="處理中…" xml:space="preserve"><value>Processing…</value></data>
+  <data name="指派版本" xml:space="preserve"><value>Assign version</value></data>
+  <data name="取消指派" xml:space="preserve"><value>Cancel assignment</value></data>
+  <data name="管理套件" xml:space="preserve"><value>Manage packages</value></data>
+  <data name="只有管理員可以變更版本指派。" xml:space="preserve"><value>Only administrators can change version assignments.</value></data>
+  <data name="已通過本機健康檢查" xml:space="preserve"><value>Local health check passed</value></data>
+  <data name="已回復，可重試" xml:space="preserve"><value>Restored; retry available</value></data>
+  <data name="已回復" xml:space="preserve"><value>Restored</value></data>
+  <data name="回復失敗" xml:space="preserve"><value>Restore failed</value></data>
+  <data name="準備曾失敗，將自動重試；本次未停止 Agent" xml:space="preserve"><value>Preparation failed and will retry; the Agent was not stopped.</value></data>
+  <data name="更新失敗，等待管理員處理" xml:space="preserve"><value>Update failed; awaiting administrator action</value></data>
+  <data name="套件已準備" xml:space="preserve"><value>Package prepared</value></data>
+  <data name="停止 Agent" xml:space="preserve"><value>Stopping Agent</value></data>
+  <data name="切換版本" xml:space="preserve"><value>Switching version</value></data>
+  <data name="啟動 Agent" xml:space="preserve"><value>Starting Agent</value></data>
+  <data name="確認健康狀態" xml:space="preserve"><value>Checking health</value></data>
+  <data name="回復版本" xml:space="preserve"><value>Restoring version</value></data>
+  <data name="狀態未知" xml:space="preserve"><value>Unknown status</value></data>
+  <data name="更新流程中斷" xml:space="preserve"><value>Update interrupted</value></data>
+  <data name="無法確認更新授權" xml:space="preserve"><value>Unable to verify update authorization</value></data>
+  <data name="更新或回復發生錯誤" xml:space="preserve"><value>Update or restore failed</value></data>
+  <data name="未知" xml:space="preserve"><value>Unknown</value></data>
+  <data name="無法讀取 Agent 版本，請重新載入。" xml:space="preserve"><value>Unable to load Agent version. Please reload.</value></data>
+  <data name="無法讀取套件清單，請稍後重試。" xml:space="preserve"><value>Unable to load packages. Try again later.</value></data>
+  <data name="已取消指派。" xml:space="preserve"><value>Assignment cancelled.</value></data>
+  <data name="已儲存版本指派；設備是否安裝仍以實際回報為準。" xml:space="preserve"><value>Version assignment saved. Check the device report to confirm installation.</value></data>
+  <data name="指派已變更或套件不可用，請重新載入。" xml:space="preserve"><value>The assignment changed or the package is unavailable. Please reload.</value></data>
+  <data name="無法儲存指派，請稍後重試。" xml:space="preserve"><value>Unable to save the assignment. Try again later.</value></data>
+  <data name="Agent 版本 - Vigiloom" xml:space="preserve"><value>Agent version - Vigiloom</value></data>
+  <data name="← 返回設備詳情" xml:space="preserve"><value>← Back to device details</value></data>
+  <data name="Agent 版本" xml:space="preserve"><value>Agent version</value></data>
+  <data name="查看並管理此設備的 Agent 版本。" xml:space="preserve"><value>View and manage this device’s Agent version.</value></data>
+  <data name="無法讀取設備，請稍後重新整理。" xml:space="preserve"><value>Unable to load the device. Refresh and try again.</value></data>
+  <data name="找不到設備。" xml:space="preserve"><value>Device not found.</value></data>
+  <data name="此設備目前沒有已註冊的 Agent。" xml:space="preserve"><value>This device has no registered Agent.</value></data>
+</root>

@@ -70,6 +70,23 @@ public sealed class HealthTargetHttpTests(TestContext context)
             Assert.HasCount(1, revisions);
             Assert.Contains("10.0.0.0/8", revisions[0].Networks);
             var pageUrl = $"/settings/service-health?service={service.Id:D}";
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await admin.GetAsync(pageUrl, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("Service health checks", text);
+                Assert.Contains("Allowed health check networks", text);
+                Assert.Contains("Orders", text);
+                Assert.Contains("source", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+            admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await admin.GetAsync(pageUrl, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("服务健康检查", text);
+            }
+            admin.DefaultRequestHeaders.AcceptLanguage.Clear();
             using (var page = await admin.GetAsync(pageUrl, token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, page.StatusCode);

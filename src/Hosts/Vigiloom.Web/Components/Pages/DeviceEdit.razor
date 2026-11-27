@@ -10,60 +10,61 @@
 @inject IGroupManagement GroupsService
 @inject NavigationManager Navigation
 @inject ILogger<DeviceEdit> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<DeviceText> L
 
-<PageTitle>@(isNew ? "新增設備" : "編輯設備") - Vigiloom</PageTitle>
+<PageTitle>@(isNew ? L["新增設備"].Value : L["編輯設備"].Value) - Vigiloom</PageTitle>
 <main class="device-page device-form-page">
-    <a href="@(isNew ? "/devices" : $"/devices/{Id:D}")">← 返回</a>
-    <header class="device-heading"><div><h1>@(isNew ? "新增設備" : "編輯設備")</h1><p>設定設備目標與監控模式；設備預設為私人。</p></div></header>
-    @if (loadError) { <section class="device-panel"><p role="alert">無法載入設備，請確認設備存在且未封存。</p></section> }
+    <a href="@(isNew ? "/devices" : $"/devices/{Id:D}")">@L["← 返回"]</a>
+    <header class="device-heading"><div><h1>@(isNew ? L["新增設備"].Value : L["編輯設備"].Value)</h1><p>@L["設定設備目標與監控模式；設備預設為私人。"]</p></div></header>
+    @if (loadError) { <section class="device-panel"><p role="alert">@L["無法載入設備，請確認設備存在且未封存。"]</p></section> }
     else
     {
         <section class="device-panel">
             @if (message is not null) { <p class="device-alert" role="alert">@message</p> }
             <EditForm Model="Input" FormName="device-edit" method="post" OnSubmit="SaveAsync">
                 <InputHidden @bind-Value="Input.Version" />
-                <label for="device-name">設備名稱</label><InputText id="device-name" @bind-Value="Input.Name" maxlength="256" />
+                <label for="device-name">@L["設備名稱"]</label><InputText id="device-name" @bind-Value="Input.Name" maxlength="256" />
                 @if (errors.TryGetValue("name", out var nameErrors)) { <p class="device-field-error">@string.Join(" ", nameErrors)</p> }
-                <label for="device-address">主要 Ping 目標</label><InputText id="device-address" @bind-Value="Input.Address" maxlength="253" placeholder="IPv4、IPv6 或 DNS 名稱" />
+                <label for="device-address">@L["主要 Ping 目標"]</label><InputText id="device-address" @bind-Value="Input.Address" maxlength="253" placeholder="@L["IPv4、IPv6 或 DNS 名稱"]" />
                 @if (errors.TryGetValue("address", out var addressErrors)) { <p class="device-field-error">@string.Join(" ", addressErrors)</p> }
-                <label for="device-targets">額外 Ping 目標（選填，每行一個）</label><InputTextArea id="device-targets" @bind-Value="Input.AdditionalTargets" rows="4" />
+                <label for="device-targets">@L["額外 Ping 目標（選填，每行一個）"]</label><InputTextArea id="device-targets" @bind-Value="Input.AdditionalTargets" rows="4" />
                 @if (errors.TryGetValue("additionalTargets", out var targetErrors)) { <p class="device-field-error">@string.Join(" ", targetErrors)</p> }
-                <fieldset><legend>監控模式</legend><InputRadioGroup @bind-Value="Input.DeepMonitoring"><label><InputRadio Value="false" /> 僅 Ping</label><label><InputRadio Value="true" /> 深入監控</label></InputRadioGroup><p>兩種模式都會 Ping；深入監控需要另外註冊 Agent。</p></fieldset>
-                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> 啟用監控</label>
-                @if (isNew) { <label class="device-checkbox"><InputCheckbox @bind-Value="Input.ConfigurePublication" /> 儲存後設定公開資訊</label><p>設備先以 Private 建立；下一步可確認公開名稱與範本。</p> }
+                <fieldset><legend>@L["監控模式"]</legend><InputRadioGroup @bind-Value="Input.DeepMonitoring"><label><InputRadio Value="false" /> @L["僅 Ping"]</label><label><InputRadio Value="true" /> @L["深入監控"]</label></InputRadioGroup><p>@L["兩種模式都會 Ping；深入監控需要另外註冊 Agent。"]</p></fieldset>
+                <label class="device-checkbox"><InputCheckbox @bind-Value="Input.Enabled" /> @L["啟用監控"]</label>
+                @if (isNew) { <label class="device-checkbox"><InputCheckbox @bind-Value="Input.ConfigurePublication" /> @L["儲存後設定公開資訊"]</label><p>@L["設備先以 Private 建立；下一步可確認公開名稱與範本。"]</p> }
                 @if (duplicateNames.Count != 0)
                 {
-                    <div class="device-alert"><p>部分目標已被其他設備使用：@string.Join("、", duplicateNames)。設備不會自動合併。</p><label><InputCheckbox @bind-Value="Input.ConfirmDuplicates" /> 仍要使用這些目標</label></div>
+                    <div class="device-alert"><p>@L["部分目標已被其他設備使用：{0}。設備不會自動合併。", string.Join(", ", duplicateNames)]</p><label><InputCheckbox @bind-Value="Input.ConfirmDuplicates" /> @L["仍要使用這些目標"]</label></div>
                 }
                 @if (confirmAddress)
                 {
-                    <div class="device-alert"><p>目標變更會用新目標進行未來量測；設備身分與歷史資料會保留。</p><label><InputCheckbox @bind-Value="Input.ConfirmAddress" /> 我了解目標變更的影響</label></div>
+                    <div class="device-alert"><p>@L["目標變更會用新目標進行未來量測；設備身分與歷史資料會保留。"]</p><label><InputCheckbox @bind-Value="Input.ConfirmAddress" /> @L["我了解目標變更的影響"]</label></div>
                 }
-                <div class="device-actions"><button type="submit">儲存設備</button><a href="@(isNew ? "/devices" : $"/devices/{Id:D}")">取消</a></div>
+                <div class="device-actions"><button type="submit">@L["儲存設備"]</button><a href="@(isNew ? "/devices" : $"/devices/{Id:D}")">@L["取消"]</a></div>
             </EditForm>
         </section>
         @if (!isNew)
         {
             <section class="device-panel" aria-labelledby="device-groups-heading">
-                <h2 id="device-groups-heading">所屬群組</h2>
-                <p>加入或移出設備請到群組頁操作；離開前請先儲存設備的變更。</p>
-                @if (groupsError) { <p class="device-alert" role="alert">無法載入所屬群組，請重新整理後再試。</p> }
-                else if (groups is not null && groups.Total == 0) { <p class="device-empty">此設備尚未加入群組。</p> }
+                <h2 id="device-groups-heading">@L["所屬群組"]</h2>
+                <p>@L["加入或移出設備請到群組頁操作；離開前請先儲存設備的變更。"]</p>
+                @if (groupsError) { <p class="device-alert" role="alert">@L["無法載入所屬群組，請重新整理後再試。"]</p> }
+                else if (groups is not null && groups.Total == 0) { <p class="device-empty">@L["此設備尚未加入群組。"]</p> }
                 else if (groups is not null)
                 {
-                    <p>共 @groups.Total 個群組。</p>
-                    @if (groups.Items.Count == 0) { <p class="device-empty">此頁沒有群組，請回到上一頁。</p> }
+                    <p>@L["共 {0} 個群組。", groups.Total]</p>
+                    @if (groups.Items.Count == 0) { <p class="device-empty">@L["此頁沒有群組，請回到上一頁。"]</p> }
                     else { <ul class="device-group-list">@foreach (var group in groups.Items) { <li @key="group.Id"><a href="@($"/groups/{group.Id:D}")">@group.Name</a></li> }</ul> }
                     @if (groups.Total > groups.PageSize || groups.Page > 1)
                     {
-                        <nav class="device-pagination" aria-label="所屬群組分頁">
-                            @if (groups.Page > 1) { <a href="@GroupsPageUrl(groups.Page - 1)">上一頁</a> }
-                            <span>第 @groups.Page 頁</span>
-                            @if ((long)groups.Page * groups.PageSize < groups.Total) { <a href="@GroupsPageUrl(groups.Page + 1)">下一頁</a> }
+                        <nav class="device-pagination" aria-label="@L["所屬群組分頁"]">
+                            @if (groups.Page > 1) { <a href="@GroupsPageUrl(groups.Page - 1)">@L["上一頁"]</a> }
+                            <span>@L["第 {0} 頁", groups.Page]</span>
+                            @if ((long)groups.Page * groups.PageSize < groups.Total) { <a href="@GroupsPageUrl(groups.Page + 1)">@L["下一頁"]</a> }
                         </nav>
                     }
                 }
-                <a href="/groups">管理群組</a>
+                <a href="/groups">@L["管理群組"]</a>
             </section>
         }
     }
@@ -121,12 +122,12 @@
             if (result.Status == DeviceResultStatus.Success) savedId = result.Device!.Id;
             else if (result.Status == DeviceResultStatus.Invalid)
             {
-                errors = result.Errors!.ToDictionary(x => x.Key, x => x.Value);
+                errors = result.Errors!.ToDictionary(x => x.Key, x => x.Value.Select(text => L[text].Value).ToArray());
                 if (errors.TryGetValue("version", out var versionErrors)) message = string.Join(" ", versionErrors);
             }
-            else message = "設備已變更或不存在，請重新整理後再試。";
+            else message = L["設備已變更或不存在，請重新整理後再試。"].Value;
         }
-        catch (Exception exception) { Logger.LogWarning("Could not save a device: {ExceptionType}", exception.GetType().Name); message = "無法確認儲存結果，請返回清單確認後再試。"; }
+        catch (Exception exception) { Logger.LogWarning("Could not save a device: {ExceptionType}", exception.GetType().Name); message = L["無法確認儲存結果，請返回清單確認後再試。"].Value; }
         if (savedId is { } id) Navigation.NavigateTo(isNew && Input.ConfigurePublication ? $"/settings/publication/devices/{id:D}" : $"/devices/{id:D}", forceLoad: true);
     }
     private sealed class DeviceForm

@@ -1,0 +1,355 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="操作紀錄保存" xml:space="preserve"><value>Audit record retention</value></data>
+  <data name="管理操作紀錄、告警、通知與安全變更歷史的保存期限。" xml:space="preserve"><value>Manage retention for audit records, alerts, notifications and security change history.</value></data>
+  <data name="此期限適用於中央設定、設備、Agent、安全設定、事件查詢與匯出、背景工作、帳號與 API 憑證的操作紀錄，以及告警、通知、已結束的背景工作、YARA 掃描結果（含規則與輸出）、盤點與檔案完整性變更歷史、漏洞評估歷史與安全基準觀測歷史。目前的盤點快照、完整性狀態、漏洞評估及各基準版本最新觀測會保留。GitHub Advisory 不再使用的舊版本及已完成或放棄的匯入暫存也依期限清理；目前及前一可用版本、共享來源與已發布的撤回紀錄會保留。其他安全事件證據不在此期限內。首次管理員初始化紀錄、進行中的告警、尚未排入派送的通知與未結束的工作會保留。到期後定期清理，延長期限無法還原已刪除資料。" xml:space="preserve"><value>This period covers audit records for platform settings, devices, Agent, security settings, event queries and exports, background jobs, accounts and API credentials; alerts, notifications, completed jobs, YARA scan results (including rules and output), inventory and file integrity change history, vulnerability assessment history and security baseline observation history. Current inventory snapshots, integrity states, vulnerability assessments and latest observations per baseline version are retained. Unused older GitHub Advisory versions and completed or abandoned import staging are cleaned under this period; current and previous usable versions, shared sources and published withdrawals are retained. Other security evidence is outside this period. Initial administrator setup records, ongoing alerts, notifications not yet queued for delivery and unfinished jobs are retained. Expired data is cleaned periodically; extending retention cannot restore deleted data.</value></data>
+  <data name="SigmaHQ、Signature-Base、CISA KEV、FIRST EPSS 與 Debian 的舊情報內容也依此期限清理；目前使用、上一個可用、最新候選及仍被事件引用的版本會保留。版本及啟用紀錄仍可查詢；已清理內容的舊版本無法直接回復。" xml:space="preserve"><value>Older SigmaHQ, Signature-Base, CISA KEV, FIRST EPSS and Debian intelligence content is also cleaned under this period. The current, previous usable, latest candidate and event-referenced versions are retained. Version and activation records remain queryable; older versions with deleted content cannot be restored directly.</value></data>
+  <data name="Ubuntu 與 Microsoft 安全情報的舊封存檔與不再使用的內容也依此期限清理；仍被其他版本使用的共用文件，以及已發布的撤回資訊會保留。" xml:space="preserve"><value>Older Ubuntu and Microsoft security intelligence archives and unused content are also cleaned under this period; shared files still used by other versions and published withdrawals are retained.</value></data>
+  <data name="此期限也適用於已停止重試的 Hangfire 失敗工作；執行中及等待重試的工作會保留。" xml:space="preserve"><value>This period also applies to failed Hangfire jobs that have stopped retrying; running jobs and those awaiting retry are retained.</value></data>
+  <data name="無法讀取保存設定，請重新整理後再試。" xml:space="preserve"><value>Unable to load retention settings. Refresh and try again.</value></data>
+  <data name="保存天數（1～3650 天）" xml:space="preserve"><value>Retention (1–3650 days)</value></data>
+  <data name="以 {0} 為準，預計有 {1} 筆操作紀錄、安全歷史與情報資料符合清理條件。清理可能解除其他舊情報的引用，讓它們接續符合清理條件；實際數量可能變動。" xml:space="preserve"><value>As of {0}, an estimated {1} audit, security history and intelligence records qualify for cleanup. Cleanup may remove references to other old intelligence, making it eligible afterward; actual counts may change.</value></data>
+  <data name="預計清理 {0} 筆已恢復告警及 {1} 筆通知。" xml:space="preserve"><value>An estimated {0} resolved alerts and {1} notifications will be cleaned up.</value></data>
+  <data name="預計清理 {0} 筆已結束的背景工作及其派送紀錄。" xml:space="preserve"><value>An estimated {0} completed background jobs and their delivery records will be cleaned up.</value></data>
+  <data name="Hangfire 失敗工作的數量未包含在上述預覽中，符合期限的紀錄也會清理。" xml:space="preserve"><value>Failed Hangfire job counts are not included in the preview; eligible records will also be cleaned up.</value></data>
+  <data name="確認後將依排程清理；預覽在 5 分鐘內有效。" xml:space="preserve"><value>After confirmation, cleanup follows its schedule. The preview is valid for 5 minutes.</value></data>
+  <data name="確認儲存" xml:space="preserve"><value>Confirm save</value></data>
+  <data name="取消" xml:space="preserve"><value>Cancel</value></data>
+  <data name="預覽變更" xml:space="preserve"><value>Preview changes</value></data>
+  <data name="返回操作稽核" xml:space="preserve"><value>Back to audit</value></data>
+  <data name="請輸入有效的保存天數。" xml:space="preserve"><value>Enter a valid retention period.</value></data>
+  <data name="設定已被其他操作變更，請重新整理後再試。" xml:space="preserve"><value>Settings changed elsewhere. Refresh and try again.</value></data>
+  <data name="保存設定已儲存。" xml:space="preserve"><value>Retention settings saved.</value></data>
+  <data name="預覽已過期或天數已變更，請重新預覽。" xml:space="preserve"><value>The preview expired or the period changed. Preview again.</value></data>
+  <data name="無法確認儲存結果，請重新整理後檢查。" xml:space="preserve"><value>Unable to confirm the save result. Refresh and check.</value></data>
+  <data name="操作稽核" xml:space="preserve"><value>Audit log</value></data>
+  <data name="依來源查看操作紀錄。時間以 UTC 顯示。" xml:space="preserve"><value>View audit records by source. Times are UTC.</value></data>
+  <data name="管理操作紀錄的保存期限" xml:space="preserve"><value>Manage audit record retention</value></data>
+  <data name="查詢紀錄" xml:space="preserve"><value>Search records</value></data>
+  <data name="紀錄來源" xml:space="preserve"><value>Record source</value></data>
+  <data name="執行個體容量" xml:space="preserve"><value>Instance capacity</value></data>
+  <data name="服務執行個體" xml:space="preserve"><value>Service instances</value></data>
+  <data name="Log 配額" xml:space="preserve"><value>Log quota</value></data>
+  <data name="Trace 配額" xml:space="preserve"><value>Trace quota</value></data>
+  <data name="服務收集" xml:space="preserve"><value>Service collection</value></data>
+  <data name="服務健康檢查" xml:space="preserve"><value>Service health checks</value></data>
+  <data name="健康檢查網段" xml:space="preserve"><value>Health check networks</value></data>
+  <data name="公開設定" xml:space="preserve"><value>Public settings</value></data>
+  <data name="Collector 管理" xml:space="preserve"><value>Collector management</value></data>
+  <data name="Agent 收據保存" xml:space="preserve"><value>Agent receipt retention</value></data>
+  <data name="主機效能資料保存" xml:space="preserve"><value>Host performance data retention</value></data>
+  <data name="應用服務資料保存" xml:space="preserve"><value>Application data retention</value></data>
+  <data name="Agent 套件管理" xml:space="preserve"><value>Agent package management</value></data>
+  <data name="情報與安全基準" xml:space="preserve"><value>Intelligence and security baselines</value></data>
+  <data name="LINE 通知" xml:space="preserve"><value>LINE notifications</value></data>
+  <data name="事件查詢與匯出" xml:space="preserve"><value>Event search and export</value></data>
+  <data name="網路測速設定" xml:space="preserve"><value>Speed test settings</value></data>
+  <data name="Ping 設定" xml:space="preserve"><value>Ping settings</value></data>
+  <data name="帳號" xml:space="preserve"><value>Accounts</value></data>
+  <data name="API 憑證" xml:space="preserve"><value>API credentials</value></data>
+  <data name="設備" xml:space="preserve"><value>Devices</value></data>
+  <data name="群組" xml:space="preserve"><value>Groups</value></data>
+  <data name="Agent 身分" xml:space="preserve"><value>Agent identity</value></data>
+  <data name="Agent 設定" xml:space="preserve"><value>Agent settings</value></data>
+  <data name="Agent 佇列容量" xml:space="preserve"><value>Agent queue capacity</value></data>
+  <data name="Agent 指標設定" xml:space="preserve"><value>Agent metric settings</value></data>
+  <data name="主機效能閾值" xml:space="preserve"><value>Host performance thresholds</value></data>
+  <data name="主機日誌來源" xml:space="preserve"><value>Host log sources</value></data>
+  <data name="Agent 補送政策" xml:space="preserve"><value>Agent replay policy</value></data>
+  <data name="服務核准" xml:space="preserve"><value>Service approvals</value></data>
+  <data name="服務來源憑證" xml:space="preserve"><value>Service source credentials</value></data>
+  <data name="背景工作" xml:space="preserve"><value>Background jobs</value></data>
+  <data name="主機盤點設定" xml:space="preserve"><value>Host inventory settings</value></data>
+  <data name="開始日期（UTC）" xml:space="preserve"><value>Start date (UTC)</value></data>
+  <data name="結束日期（UTC）" xml:space="preserve"><value>End date (UTC)</value></data>
+  <data name="查詢" xml:space="preserve"><value>Search</value></data>
+  <data name="一次最多查詢 31 天，包含所選結束日期。" xml:space="preserve"><value>Search up to 31 days at a time, including the selected end date.</value></data>
+  <data name="暫時無法讀取稽核紀錄，請稍後重新整理。" xml:space="preserve"><value>Audit records are temporarily unavailable. Refresh later.</value></data>
+  <data name="查詢結果" xml:space="preserve"><value>Results</value></data>
+  <data name="目前無法取得帳號名稱，改以帳號 ID 顯示。" xml:space="preserve"><value>Account names are unavailable; account IDs are shown instead.</value></data>
+  <data name="此頁沒有紀錄，請返回上一頁。" xml:space="preserve"><value>No records on this page. Return to the previous page.</value></data>
+  <data name="此日期範圍沒有稽核紀錄。" xml:space="preserve"><value>No audit records in this date range.</value></data>
+  <data name="← 左右滑動查看完整表格 →" xml:space="preserve"><value>← Scroll horizontally to see the full table →</value></data>
+  <data name="稽核紀錄表，可左右捲動" xml:space="preserve"><value>Audit table, scroll horizontally</value></data>
+  <data name="時間（UTC）" xml:space="preserve"><value>Time (UTC)</value></data>
+  <data name="操作者" xml:space="preserve"><value>Actor</value></data>
+  <data name="操作" xml:space="preserve"><value>Action</value></data>
+  <data name="對象" xml:space="preserve"><value>Subject</value></data>
+  <data name="變更內容" xml:space="preserve"><value>Changes</value></data>
+  <data name="詳細資訊" xml:space="preserve"><value>Details</value></data>
+  <data name="結果" xml:space="preserve"><value>Result</value></data>
+  <data name="已儲存" xml:space="preserve"><value>Saved</value></data>
+  <data name="未知" xml:space="preserve"><value>Unknown</value></data>
+  <data name="稽核紀錄分頁" xml:space="preserve"><value>Audit pagination</value></data>
+  <data name="上一頁" xml:space="preserve"><value>Previous</value></data>
+  <data name="下一頁" xml:space="preserve"><value>Next</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>Page {0}</value></data>
+  <data name="已達查詢頁數上限，請縮小日期範圍。" xml:space="preserve"><value>The query page limit was reached. Narrow the date range.</value></data>
+  <data name="每次只查詢所選來源；紀錄不一定包含變更前的值。背景工作「已接受」不代表工作執行成功。" xml:space="preserve"><value>Each query uses only the selected source; records may not include previous values. An accepted background job does not mean it ran successfully.</value></data>
+  <data name="系統／機器流程" xml:space="preserve"><value>System or machine process</value></data>
+  <data name="平台設定" xml:space="preserve"><value>Platform settings</value></data>
+  <data name="紀錄來源無效，請重新查詢。" xml:space="preserve"><value>Invalid record source. Search again.</value></data>
+  <data name="請選擇有效的日期。" xml:space="preserve"><value>Choose valid dates.</value></data>
+  <data name="開始日期不能晚於結束日期。" xml:space="preserve"><value>Start date cannot be after end date.</value></data>
+  <data name="一次最多查詢 31 天。" xml:space="preserve"><value>Search up to 31 days at a time.</value></data>
+  <data name="頁碼無效，請重新查詢。" xml:space="preserve"><value>Invalid page number. Search again.</value></data>
+  <data name="請選擇有效的日期範圍。" xml:space="preserve"><value>Choose a valid date range.</value></data>
+  <data name="建立群組" xml:space="preserve"><value>Create group</value></data>
+  <data name="更新群組" xml:space="preserve"><value>Update group</value></data>
+  <data name="刪除群組" xml:space="preserve"><value>Delete group</value></data>
+  <data name="變更設備" xml:space="preserve"><value>Change devices</value></data>
+  <data name="變更服務" xml:space="preserve"><value>Change services</value></data>
+  <data name="加入服務" xml:space="preserve"><value>Add service</value></data>
+  <data name="查看事件證據" xml:space="preserve"><value>View event evidence</value></data>
+  <data name="匯出事件" xml:space="preserve"><value>Export events</value></data>
+  <data name="查詢事件" xml:space="preserve"><value>Search events</value></data>
+  <data name="建立來源" xml:space="preserve"><value>Create source</value></data>
+  <data name="撤銷來源" xml:space="preserve"><value>Revoke source</value></data>
+  <data name="更換來源憑證" xml:space="preserve"><value>Rotate source credential</value></data>
+  <data name="退役" xml:space="preserve"><value>Retire</value></data>
+  <data name="恢復" xml:space="preserve"><value>Restore</value></data>
+  <data name="建立部署關聯" xml:space="preserve"><value>Create deployment relationship</value></data>
+  <data name="結束部署關聯" xml:space="preserve"><value>End deployment relationship</value></data>
+  <data name="停止收集" xml:space="preserve"><value>Stop collection</value></data>
+  <data name="恢復收集" xml:space="preserve"><value>Resume collection</value></data>
+  <data name="封存服務" xml:space="preserve"><value>Archive service</value></data>
+  <data name="恢復服務" xml:space="preserve"><value>Restore service</value></data>
+  <data name="變更公開設定" xml:space="preserve"><value>Change public settings</value></data>
+  <data name="建立公開範本" xml:space="preserve"><value>Create public template</value></data>
+  <data name="修改公開範本" xml:space="preserve"><value>Edit public template</value></data>
+  <data name="設定預設範本" xml:space="preserve"><value>Set default template</value></data>
+  <data name="刪除公開範本" xml:space="preserve"><value>Delete public template</value></data>
+  <data name="清除預設範本" xml:space="preserve"><value>Clear default template</value></data>
+  <data name="新增檢查" xml:space="preserve"><value>Add check</value></data>
+  <data name="更新檢查" xml:space="preserve"><value>Update check</value></data>
+  <data name="更新網段" xml:space="preserve"><value>Update networks</value></data>
+  <data name="登記 Collector" xml:space="preserve"><value>Register Collector</value></data>
+  <data name="加入來源對應" xml:space="preserve"><value>Add source mapping</value></data>
+  <data name="移除來源對應" xml:space="preserve"><value>Remove source mapping</value></data>
+  <data name="啟用清理" xml:space="preserve"><value>Enable cleanup</value></data>
+  <data name="刷新清單" xml:space="preserve"><value>Refresh list</value></data>
+  <data name="初始化信任根" xml:space="preserve"><value>Initialize trust root</value></data>
+  <data name="啟用情報版本" xml:space="preserve"><value>Activate intelligence version</value></data>
+  <data name="更新 LINE 通知" xml:space="preserve"><value>Update LINE notifications</value></data>
+  <data name="新增基準例外說明" xml:space="preserve"><value>Add baseline exception</value></data>
+  <data name="撤銷情報版本" xml:space="preserve"><value>Revoke intelligence version</value></data>
+  <data name="離線匯入情報" xml:space="preserve"><value>Import intelligence offline</value></data>
+  <data name="更新情報來源設定" xml:space="preserve"><value>Update intelligence source settings</value></data>
+  <data name="放棄情報匯入" xml:space="preserve"><value>Abandon intelligence import</value></data>
+  <data name="更新來源憑證" xml:space="preserve"><value>Update source credential</value></data>
+  <data name="更新" xml:space="preserve"><value>Update</value></data>
+  <data name="未支援的紀錄" xml:space="preserve"><value>Unsupported record</value></data>
+  <data name="已記錄" xml:space="preserve"><value>Recorded</value></data>
+  <data name="已開始" xml:space="preserve"><value>Started</value></data>
+  <data name="已接受" xml:space="preserve"><value>Accepted</value></data>
+  <data name="待套用" xml:space="preserve"><value>Pending application</value></data>
+  <data name="已拒絕" xml:space="preserve"><value>Rejected</value></data>
+  <data name="建立帳號" xml:space="preserve"><value>Create account</value></data>
+  <data name="變更帳號名稱" xml:space="preserve"><value>Change account name</value></data>
+  <data name="變更角色" xml:space="preserve"><value>Change role</value></data>
+  <data name="刪除帳號" xml:space="preserve"><value>Delete account</value></data>
+  <data name="核發重設密碼" xml:space="preserve"><value>Issue password reset</value></data>
+  <data name="完成密碼重設" xml:space="preserve"><value>Complete password reset</value></data>
+  <data name="變更密碼" xml:space="preserve"><value>Change password</value></data>
+  <data name="開始雙重驗證設定" xml:space="preserve"><value>Start two-factor setup</value></data>
+  <data name="啟用雙重驗證" xml:space="preserve"><value>Enable two-factor authentication</value></data>
+  <data name="停用雙重驗證" xml:space="preserve"><value>Disable two-factor authentication</value></data>
+  <data name="管理員重設雙重驗證" xml:space="preserve"><value>Administrator resets two-factor authentication</value></data>
+  <data name="建立首位管理員" xml:space="preserve"><value>Create initial administrator</value></data>
+  <data name="本機復原管理員" xml:space="preserve"><value>Recover local administrator</value></data>
+  <data name="核發 API 憑證" xml:space="preserve"><value>Issue API credential</value></data>
+  <data name="撤銷 API 憑證" xml:space="preserve"><value>Revoke API credential</value></data>
+  <data name="建立設備" xml:space="preserve"><value>Create device</value></data>
+  <data name="更新設備" xml:space="preserve"><value>Update device</value></data>
+  <data name="封存設備" xml:space="preserve"><value>Archive device</value></data>
+  <data name="還原設備" xml:space="preserve"><value>Restore device</value></data>
+  <data name="核發 Agent 註冊" xml:space="preserve"><value>Issue Agent enrollment</value></data>
+  <data name="撤銷 Agent 註冊" xml:space="preserve"><value>Revoke Agent enrollment</value></data>
+  <data name="Agent 加入" xml:space="preserve"><value>Enroll Agent</value></data>
+  <data name="撤銷 Agent" xml:space="preserve"><value>Revoke Agent</value></data>
+  <data name="開始憑證輪替" xml:space="preserve"><value>Start credential rotation</value></data>
+  <data name="完成憑證輪替" xml:space="preserve"><value>Complete credential rotation</value></data>
+  <data name="指派 Agent 版本" xml:space="preserve"><value>Assign Agent version</value></data>
+  <data name="取消 Agent 版本指派" xml:space="preserve"><value>Cancel Agent version assignment</value></data>
+  <data name="變更主機效能閾值" xml:space="preserve"><value>Change host performance thresholds</value></data>
+  <data name="變更 Agent 設定" xml:space="preserve"><value>Change Agent settings</value></data>
+  <data name="變更 Agent 佇列容量" xml:space="preserve"><value>Change Agent queue capacity</value></data>
+  <data name="變更 Agent 指標設定" xml:space="preserve"><value>Change Agent metric settings</value></data>
+  <data name="變更主機盤點設定" xml:space="preserve"><value>Change host inventory settings</value></data>
+  <data name="新增主機日誌來源" xml:space="preserve"><value>Add host log source</value></data>
+  <data name="更新主機日誌來源" xml:space="preserve"><value>Update host log source</value></data>
+  <data name="移除主機日誌來源" xml:space="preserve"><value>Remove host log source</value></data>
+  <data name="變更排程設定" xml:space="preserve"><value>Change schedule settings</value></data>
+  <data name="刪除工作" xml:space="preserve"><value>Delete job</value></data>
+  <data name="重新排入工作" xml:space="preserve"><value>Requeue job</value></data>
+  <data name="排入工作" xml:space="preserve"><value>Enqueue job</value></data>
+  <data name="移除週期工作" xml:space="preserve"><value>Remove recurring job</value></data>
+  <data name="觸發週期工作" xml:space="preserve"><value>Trigger recurring job</value></data>
+  <data name="此來源收錄成功儲存的 {0} 紀錄。其他來源可由上方選擇。" xml:space="preserve"><value>This source contains successfully saved {0} records. Select other sources above.</value></data>
+  <data name="操作紀錄保存設定" xml:space="preserve"><value>audit retention settings</value></data>
+  <data name="主機效能資料保存設定" xml:space="preserve"><value>host performance retention settings</value></data>
+  <data name="應用服務資料保存設定" xml:space="preserve"><value>application data retention settings</value></data>
+  <data name=" Ping 設定" xml:space="preserve"><value>Ping settings</value></data>
+  <data name=" Agent 補送政策" xml:space="preserve"><value>Agent replay policy</value></data>
+  <data name=" Agent 收據保存及清理啟用" xml:space="preserve"><value>Agent receipt retention and cleanup activation</value></data>
+  <data name=" Agent 套件來源、信任初始化及清單刷新" xml:space="preserve"><value>Agent package sources, trust initialization and catalogue refresh</value></data>
+  <data name="群組操作" xml:space="preserve"><value>group operations</value></data>
+  <data name="執行個體容量設定" xml:space="preserve"><value>instance capacity settings</value></data>
+  <data name="Log 配額設定" xml:space="preserve"><value>log quota settings</value></data>
+  <data name="Trace 配額設定" xml:space="preserve"><value>trace quota settings</value></data>
+  <data name="執行個體操作" xml:space="preserve"><value>instance operations</value></data>
+  <data name="服務收集操作" xml:space="preserve"><value>service collection operations</value></data>
+  <data name="健康檢查設定" xml:space="preserve"><value>health check settings</value></data>
+  <data name=" LINE 通知設定" xml:space="preserve"><value>LINE notification settings</value></data>
+  <data name="事件中心" xml:space="preserve"><value>Event center</value></data>
+  <data name="安全基準" xml:space="preserve"><value>Security baseline</value></data>
+  <data name="情報來源" xml:space="preserve"><value>Intelligence source</value></data>
+  <data name="公開範本" xml:space="preserve"><value>Public template</value></data>
+  <data name="測速保存期限" xml:space="preserve"><value>Speed test retention</value></data>
+  <data name="健康檢查" xml:space="preserve"><value>Health check</value></data>
+  <data name="應用服務" xml:space="preserve"><value>Application service</value></data>
+  <data name="服務來源" xml:space="preserve"><value>Service source</value></data>
+  <data name="部署關聯" xml:space="preserve"><value>Deployment relationship</value></data>
+  <data name="版本資訊" xml:space="preserve"><value>Version information</value></data>
+  <data name="啟用" xml:space="preserve"><value>Enabled</value></data>
+  <data name="停用" xml:space="preserve"><value>Disabled</value></data>
+  <data name="初始設定" xml:space="preserve"><value>Initial settings</value></data>
+  <data name="尚未啟用期限" xml:space="preserve"><value>Deadline not enabled</value></data>
+  <data name="過渡期間" xml:space="preserve"><value>Grace period</value></data>
+  <data name="期限已啟用" xml:space="preserve"><value>Deadline enabled</value></data>
+  <data name="群組識別碼：" xml:space="preserve"><value>Group ID: </value></data>
+  <data name="加入 {0}，移出 {1}" xml:space="preserve"><value>Added {0}, removed {1}</value></data>
+  <data name="應用與主機 Logs 保存：{0} → {1} 天" xml:space="preserve"><value>Application and host log retention: {0} → {1} days</value></data>
+  <data name="應用 Traces 保存：{0} → {1} 天" xml:space="preserve"><value>Application trace retention: {0} → {1} days</value></data>
+  <data name="應用指標原始資料保存：{0} → {1} 天" xml:space="preserve"><value>Raw application metric retention: {0} → {1} days</value></data>
+  <data name="應用指標五分鐘彙總保存：{0} → {1} 天" xml:space="preserve"><value>Five-minute application metric rollup retention: {0} → {1} days</value></data>
+  <data name="服務健康歷史保存：{0} → {1} 天" xml:space="preserve"><value>Service health history retention: {0} → {1} days</value></data>
+  <data name="原始樣本保存：{0} → {1} 天" xml:space="preserve"><value>Raw sample retention: {0} → {1} days</value></data>
+  <data name="五分鐘彙總保存：{0} → {1} 天" xml:space="preserve"><value>Five-minute rollup retention: {0} → {1} days</value></data>
+  <data name="操作紀錄保存：{0} → {1} 天（目前亦適用於告警與通知）" xml:space="preserve"><value>Audit record retention: {0} → {1} days (currently also applies to alerts and notifications)</value></data>
+  <data name="排程：{0} → {1}" xml:space="preserve"><value>Schedule: {0} → {1}</value></data>
+  <data name="間隔：{0} → {1} 小時" xml:space="preserve"><value>Interval: {0} → {1} hours</value></data>
+  <data name="流量：{0} → {1} MiB" xml:space="preserve"><value>Traffic: {0} → {1} MiB</value></data>
+  <data name="逾時：{0} → {1} 秒" xml:space="preserve"><value>Timeout: {0} → {1} seconds</value></data>
+  <data name="保存期限：{0} → {1} 天" xml:space="preserve"><value>Retention: {0} → {1} days</value></data>
+  <data name="間隔：{0} → {1} 秒" xml:space="preserve"><value>Interval: {0} → {1} seconds</value></data>
+  <data name="失敗門檻：{0} → {1}" xml:space="preserve"><value>Failure threshold: {0} → {1}</value></data>
+  <data name="成功門檻：{0} → {1}" xml:space="preserve"><value>Success threshold: {0} → {1}</value></data>
+  <data name="並行上限：{0} → {1}" xml:space="preserve"><value>Concurrency limit: {0} → {1}</value></data>
+  <data name="原始 Ping 保存：{0} → {1} 天" xml:space="preserve"><value>Raw Ping retention: {0} → {1} days</value></data>
+  <data name="Ping 彙總保存：{0} → {1} 天" xml:space="preserve"><value>Ping rollup retention: {0} → {1} days</value></data>
+  <data name="狀態：{0} → {1}" xml:space="preserve"><value>Status: {0} → {1}</value></data>
+  <data name="過渡期截止（UTC）：" xml:space="preserve"><value>Grace period ends (UTC): </value></data>
+  <data name="重送期限：{0} → {1} 秒" xml:space="preserve"><value>Replay period: {0} → {1} seconds</value></data>
+  <data name="收據保存：{0} → {1} 天" xml:space="preserve"><value>Receipt retention: {0} → {1} days</value></data>
+  <data name="收據清理已啟用" xml:space="preserve"><value>Receipt cleanup enabled</value></data>
+  <data name="舊收據保護至（UTC）：" xml:space="preserve"><value>Legacy receipts protected until (UTC): </value></data>
+  <data name="來源網址：" xml:space="preserve"><value>Source URL: </value></data>
+  <data name="來源憑證：" xml:space="preserve"><value>Source credential: </value></data>
+  <data name="已變更" xml:space="preserve"><value>Changed</value></data>
+  <data name="未變更" xml:space="preserve"><value>Unchanged</value></data>
+  <data name="已驗證套件：{0} 個" xml:space="preserve"><value>Verified packages: {0}</value></data>
+  <data name="信任根版本：" xml:space="preserve"><value>Trust root version: </value></data>
+  <data name="服務識別碼：" xml:space="preserve"><value>Service ID: </value></data>
+  <data name="來源識別碼：" xml:space="preserve"><value>Source ID: </value></data>
+  <data name="執行個體識別碼：" xml:space="preserve"><value>Instance ID: </value></data>
+  <data name="設備識別碼：" xml:space="preserve"><value>Device ID: </value></data>
+  <data name="無法顯示此紀錄的內容。" xml:space="preserve"><value>Unable to display this record.</value></data>
+  <data name="主機日誌" xml:space="preserve"><value>Host log</value></data>
+  <data name="主機日誌清單" xml:space="preserve"><value>Host log list</value></data>
+  <data name="行為規則" xml:space="preserve"><value>Behavior rule</value></data>
+  <data name="YARA 掃描" xml:space="preserve"><value>YARA scan</value></data>
+  <data name="YARA 掃描清單" xml:space="preserve"><value>YARA scan list</value></data>
+  <data name="證據類型：{0}；識別碼：{1}" xml:space="preserve"><value>Evidence type: {0}; ID: {1}</value></data>
+  <data name="設備：" xml:space="preserve"><value>Device: </value></data>
+  <data name="；Agent：" xml:space="preserve"><value>; Agent: </value></data>
+  <data name="期間（UTC）：{0} ～ {1}" xml:space="preserve"><value>Period (UTC): {0} to {1}</value></data>
+  <data name="全部" xml:space="preserve"><value>All</value></data>
+  <data name="來源：{0}；群組：{1}；第 {2} 頁，共 {3} 筆" xml:space="preserve"><value>Source: {0}; group: {1}; page {2}, {3} records</value></data>
+  <data name="SHA-256 指紋" xml:space="preserve"><value>SHA-256 fingerprint</value></data>
+  <data name="每個服務：{0} → {1}" xml:space="preserve"><value>Per service: {0} → {1}</value></data>
+  <data name="全平台：{0} → {1}" xml:space="preserve"><value>Platform-wide: {0} → {1}</value></data>
+  <data name="每來源：{0} → {1} 筆／秒，突發 {2} → {3} 筆" xml:space="preserve"><value>Per source: {0} → {1} records/sec, burst {2} → {3} records</value></data>
+  <data name="每服務來源：{0} → {1} 筆／秒，突發 {2} → {3} 筆" xml:space="preserve"><value>Per service source: {0} → {1} records/sec, burst {2} → {3} records</value></data>
+  <data name="全平台：{0} → {1} 筆／秒，突發 {2} → {3} 筆" xml:space="preserve"><value>Platform-wide: {0} → {1} records/sec, burst {2} → {3} records</value></data>
+  <data name="檢查識別碼：" xml:space="preserve"><value>Check ID: </value></data>
+  <data name="間隔：{0} 秒，逾時：{1} 秒" xml:space="preserve"><value>Interval: {0} seconds; timeout: {1} seconds</value></data>
+  <data name="失敗／恢復門檻：{0}／{1}，{2}" xml:space="preserve"><value>Failure/recovery thresholds: {0}/{1}, {2}</value></data>
+  <data name="檢查網址已變更。" xml:space="preserve"><value>Check URL changed.</value></data>
+  <data name="類型：" xml:space="preserve"><value>Type: </value></data>
+  <data name="公開：{0} → {1}" xml:space="preserve"><value>Public: {0} → {1}</value></data>
+  <data name="公開名稱已變更。" xml:space="preserve"><value>Public name changed.</value></data>
+  <data name="公開範本已變更。" xml:space="preserve"><value>Public template changed.</value></data>
+  <data name="公開歷史設定已變更。" xml:space="preserve"><value>Public history settings changed.</value></data>
+  <data name="範本識別碼：" xml:space="preserve"><value>Template ID: </value></data>
+  <data name="受影響設備：" xml:space="preserve"><value>Affected devices: </value></data>
+  <data name="網段政策版本：{0} → {1}" xml:space="preserve"><value>Network policy version: {0} → {1}</value></data>
+  <data name="Collector 識別碼：" xml:space="preserve"><value>Collector ID: </value></data>
+  <data name="監控服務識別碼：" xml:space="preserve"><value>Monitoring service ID: </value></data>
+  <data name="選用版本：" xml:space="preserve"><value>Selected version: </value></data>
+  <data name="先前版本：" xml:space="preserve"><value>Previous version: </value></data>
+  <data name="管理員已確認離線來源與使用條件。" xml:space="preserve"><value>An administrator confirmed the offline source and terms of use.</value></data>
+  <data name="檢查：" xml:space="preserve"><value>Check: </value></data>
+  <data name="版本：" xml:space="preserve"><value>Version: </value></data>
+  <data name="說明：" xml:space="preserve"><value>Description: </value></data>
+  <data name="狀態：" xml:space="preserve"><value>Status: </value></data>
+  <data name="憑證已更新：" xml:space="preserve"><value>Credential updated: </value></data>
+  <data name="是" xml:space="preserve"><value>Yes</value></data>
+  <data name="否" xml:space="preserve"><value>No</value></data>
+  <data name="撤銷版本：" xml:space="preserve"><value>Revoked version: </value></data>
+  <data name="匯入版本：" xml:space="preserve"><value>Imported version: </value></data>
+  <data name="由管理員提供；上游來源未經驗證。" xml:space="preserve"><value>Provided by an administrator; the upstream source was not verified.</value></data>
+  <data name="啟用：{0} → {1}" xml:space="preserve"><value>Enabled: {0} → {1}</value></data>
+  <data name="IOC 比對：{0} → {1}" xml:space="preserve"><value>IOC matching: {0} → {1}</value></data>
+  <data name="更新間隔：{0} → {1} 秒" xml:space="preserve"><value>Update interval: {0} → {1} seconds</value></data>
+  <data name="資料過期：{0} → {1} 秒" xml:space="preserve"><value>Data expiry: {0} → {1} seconds</value></data>
+  <data name="容量上限：{0} → {1} 位元組" xml:space="preserve"><value>Capacity limit: {0} → {1} bytes</value></data>
+  <data name="筆數上限：{0} → {1} 筆" xml:space="preserve"><value>Record limit: {0} → {1}</value></data>
+  <data name="匯入識別碼：" xml:space="preserve"><value>Import ID: </value></data>
+  <data name="已設定" xml:space="preserve"><value>Configured</value></data>
+  <data name="已清除" xml:space="preserve"><value>Cleared</value></data>
+  <data name="Agent：" xml:space="preserve"><value>Agent: </value></data>
+  <data name="原套件：" xml:space="preserve"><value>Previous package: </value></data>
+  <data name="新套件：" xml:space="preserve"><value>New package: </value></data>
+  <data name="無" xml:space="preserve"><value>None</value></data>
+  <data name="工作：" xml:space="preserve"><value>Job: </value></data>
+  <data name="閾值 ID：" xml:space="preserve"><value>Threshold ID: </value></data>
+  <data name="指標：" xml:space="preserve"><value>Metric: </value></data>
+  <data name="來源：" xml:space="preserve"><value>Source: </value></data>
+  <data name="大於等於" xml:space="preserve"><value>Greater than or equal to</value></data>
+  <data name="小於等於" xml:space="preserve"><value>Less than or equal to</value></data>
+  <data name="有效時間 {0} 秒" xml:space="preserve"><value>Freshness: {0} seconds</value></data>
+  <data name="設定版本" xml:space="preserve"><value>Settings version</value></data>
+  <data name="設定：" xml:space="preserve"><value>Settings: </value></data>
+  <data name="來源版本" xml:space="preserve"><value>Source version</value></data>
+  <data name="代次：" xml:space="preserve"><value>Generation: </value></data>
+  <data name="有效心跳：{0} 秒" xml:space="preserve"><value>Effective heartbeat: {0} seconds</value></data>
+  <data name="有效設定同步：{0} 秒" xml:space="preserve"><value>Effective settings sync: {0} seconds</value></data>
+  <data name="有效批次間隔：{0} 秒" xml:space="preserve"><value>Effective batch interval: {0} seconds</value></data>
+  <data name="設定與版本" xml:space="preserve"><value>Settings and versions</value></data>
+  <data name="覆寫：" xml:space="preserve"><value>Overrides: </value></data>
+  <data name="繼承" xml:space="preserve"><value>Inherited</value></data>
+  <data name="有效版本：" xml:space="preserve"><value>Effective version: </value></data>
+  <data name="有效容量：{0} MiB" xml:space="preserve"><value>Effective capacity: {0} MiB</value></data>
+  <data name="有效批次上限：" xml:space="preserve"><value>Effective batch limit: </value></data>
+  <data name="有效主機採樣：{0} 秒" xml:space="preserve"><value>Effective host sampling: {0} seconds</value></data>
+  <data name="有效程序採樣：{0} 秒" xml:space="preserve"><value>Effective process sampling: {0} seconds</value></data>
+  <data name="有效採樣 CPU 預算：{0} 毫秒／分鐘" xml:space="preserve"><value>Effective sampling CPU budget: {0} ms/min</value></data>
+  <data name="有效 Agent 記憶體門檻：{0} MiB" xml:space="preserve"><value>Effective Agent memory threshold: {0} MiB</value></data>
+  <data name="有效程序採集時間預算：{0} 毫秒" xml:space="preserve"><value>Effective process collection time budget: {0} ms</value></data>
+  <data name="有效採樣 I/O 預算：{0} MiB／分鐘" xml:space="preserve"><value>Effective sampling I/O budget: {0} MiB/min</value></data>
+  <data name="CPU 預算覆寫：" xml:space="preserve"><value>CPU budget override: </value></data>
+  <data name="記憶體門檻覆寫：" xml:space="preserve"><value>Memory threshold override: </value></data>
+  <data name="程序時間預算覆寫：" xml:space="preserve"><value>Process time budget override: </value></data>
+  <data name="採樣 I/O 預算覆寫：" xml:space="preserve"><value>Sampling I/O budget override: </value></data>
+  <data name="有效盤點間隔：{0} 秒" xml:space="preserve"><value>Effective inventory interval: {0} seconds</value></data>
+  <data name="程序執行資訊：" xml:space="preserve"><value>Process execution information: </value></data>
+  <data name="收集路徑，參數遮罩" xml:space="preserve"><value>Collect path, mask arguments</value></data>
+  <data name="不收集" xml:space="preserve"><value>Do not collect</value></data>
+  <data name="執行資訊覆寫：" xml:space="preserve"><value>Execution information override: </value></data>
+  <data name="收集路徑" xml:space="preserve"><value>Collect path</value></data>
+</root>

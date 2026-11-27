@@ -261,6 +261,50 @@ public sealed class HostDetailsBrowserTests
         Assert.IsNotNull(response);
         Assert.AreNotEqual($"{url}/devices/{device.Id:D}/integrity-scopes", page.Url);
         Assert.AreEqual(0, await page.GetByLabel("完整路徑").CountAsync());
+        var integrityPath = $"/devices/{device.Id:D}?tab=integrity";
+        await page.GotoAsync($"{url}/culture/set?culture=en&returnUrl={Uri.EscapeDataString(integrityPath)}");
+        await page.Locator(".host-details[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
+        await page.GetByText("No integrity monitoring scopes configured.", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "Recent changes", Exact = true }).WaitForAsync();
+        await page.GetByText(IntegrityKey.Create(IntegrityItemKind.File, ["private-config"]), new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Host logs", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Region, new() { Name = "Logs table, scroll horizontally" }).GetByText("event-25", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Behavior detection", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "IOC matching leads", Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Performance", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Region, new() { Name = "Threshold evaluation" }).GetByText("Unknown: sample expired", new() { Exact = true }).WaitForAsync();
+        await page.Locator("#metric-kind").GetByText("CPU usage", new() { Exact = true }).WaitForAsync(new() { State = WaitForSelectorState.Attached });
+        await page.GetByRole(AriaRole.Button, new() { Name = "Inventory", Exact = true }).ClickAsync();
+        await page.GetByText("No inventory data of this type.", new() { Exact = true }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "View inventory changes", Exact = true }).ClickAsync();
+        var englishChanges = page.GetByRole(AriaRole.Region, new() { Name = "Inventory changes table, scroll horizontally" });
+        await englishChanges.GetByText("Example package", new() { Exact = true }).WaitForAsync();
+        await englishChanges.GetByText("Before", new() { Exact = true }).ClickAsync();
+        await englishChanges.GetByText("Version：1.0", new() { Exact = false }).WaitForAsync();
+        await page.GetByRole(AriaRole.Button, new() { Name = "Vulnerabilities", Exact = true }).ClickAsync();
+        await page.GetByRole(AriaRole.Heading, new() { Name = "No assessment yet", Exact = true }).WaitForAsync();
+        await using var localizedContext = await browser.NewContextAsync();
+        var localizedPage = await localizedContext.NewPageAsync();
+        await localizedPage.GotoAsync($"{url}/account/login");
+        await localizedPage.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
+        await localizedPage.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
+        await localizedPage.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+        await using var localizedGate = await AutoRenderGate.HoldAsync(localizedPage);
+        await localizedPage.GotoAsync($"{url}/culture/set?culture=zh-Hans&returnUrl={Uri.EscapeDataString(integrityPath)}");
+        await localizedPage.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
+        await localizedPage.GetByText("尚未设置完整性监控范围。", new() { Exact = true }).WaitForAsync();
+        await localizedPage.GetByRole(AriaRole.Heading, new() { Name = "最近变更", Exact = true }).WaitForAsync();
+        await localizedPage.GetByRole(AriaRole.Button, new() { Name = "主机日志", Exact = true }).ClickAsync();
+        await localizedPage.GetByRole(AriaRole.Region, new() { Name = "日志表格，可左右滚动" }).GetByText("event-25", new() { Exact = true }).WaitForAsync();
+        await localizedPage.GetByRole(AriaRole.Button, new() { Name = "性能", Exact = true }).ClickAsync();
+        await localizedPage.GetByRole(AriaRole.Region, new() { Name = "阈值评估结果" }).GetByText("未知：样本已过期", new() { Exact = true }).WaitForAsync();
+        await localizedPage.GetByRole(AriaRole.Button, new() { Name = "资产清单", Exact = true }).ClickAsync();
+        await localizedPage.GetByText("目前没有这类清单数据。", new() { Exact = true }).WaitForAsync();
+        await localizedPage.GetByRole(AriaRole.Button, new() { Name = "查看清单变更", Exact = true }).ClickAsync();
+        await localizedPage.GetByRole(AriaRole.Region, new() { Name = "清单变更表格，可左右滚动" }).GetByText("Example package", new() { Exact = true }).WaitForAsync();
+        await localizedPage.GetByRole(AriaRole.Button, new() { Name = "漏洞", Exact = true }).ClickAsync();
+        await localizedPage.GetByRole(AriaRole.Heading, new() { Name = "尚无评估结果", Exact = true }).WaitForAsync();
+        await localizedGate.ReleaseAsync();
     }, TestContext.CancellationToken);
 
     [TestMethod]
@@ -279,6 +323,25 @@ public sealed class HostDetailsBrowserTests
         { db.Agents.Add(agent); await db.SaveChangesAsync(token); }
         using var client = PingTestSite.Client(factory); await PingTestSite.LoginAsync(client, "admin", token);
         var path = $"/devices/{device.Id:D}/metric-threshold?agentId={agent.Id:D}&kind=1&source=test.cpu";
+        if (field == "Input.Value")
+        {
+            client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+            using (var english = await client.GetAsync(path, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await english.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("Configure performance threshold", text);
+                Assert.Contains("CPU usage", text);
+                Assert.Contains("test.cpu", text);
+            }
+            client.DefaultRequestHeaders.AcceptLanguage.Clear();
+            client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+            using (var simplified = await client.GetAsync(path, token))
+            {
+                var text = (await new HtmlParser().ParseDocumentAsync(await simplified.Content.ReadAsStringAsync(token), token)).Body!.TextContent;
+                Assert.Contains("设置性能阈值", text);
+            }
+            client.DefaultRequestHeaders.AcceptLanguage.Clear();
+        }
         using var response = await client.GetAsync(path, token);
         var document = await new HtmlParser().ParseDocumentAsync(await response.Content.ReadAsStringAsync(token), token);
         var form = document.QuerySelectorAll("form").Single(x => x.QuerySelector("input[name='_handler']")?.GetAttribute("value") == "metric-threshold-edit");

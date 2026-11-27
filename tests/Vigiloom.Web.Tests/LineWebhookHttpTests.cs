@@ -49,6 +49,23 @@ public sealed class LineWebhookHttpTests(TestContext context)
         }
         using (var response = await admin.PutAsJsonAsync($"{route}groups/{groupId:D}", new { Name = "Ops", Approved = true }, token)) Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
         using (var response = await admin.PutAsJsonAsync($"{route}groups/{groupId:D}", new { Name = "Renamed" }, token)) Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        using (var deniedPage = await reader.GetAsync("/settings/line", token))
+            Assert.AreEqual(HttpStatusCode.Redirect, deniedPage.StatusCode);
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
+        using (var english = await admin.GetAsync("/settings/line", token))
+        {
+            var html = WebUtility.HtmlDecode(await english.Content.ReadAsStringAsync(token));
+            Assert.Contains("LINE notification settings", html);
+            Assert.Contains("Ops", html);
+            Assert.Contains("does not mean the message was delivered", html);
+            Assert.DoesNotContain("sensitive-token", html);
+            Assert.DoesNotContain("sensitive-secret", html);
+        }
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
+        admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("zh-Hans");
+        using (var simplified = await admin.GetAsync("/settings/line", token))
+            Assert.Contains("LINE 通知设置", WebUtility.HtmlDecode(await simplified.Content.ReadAsStringAsync(token)));
+        admin.DefaultRequestHeaders.AcceptLanguage.Clear();
         using var settings = await admin.GetAsync(route, token);
         var body = await settings.Content.ReadAsStringAsync(token);
         Assert.AreEqual(HttpStatusCode.OK, settings.StatusCode);

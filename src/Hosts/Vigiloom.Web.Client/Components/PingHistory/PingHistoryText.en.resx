@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="開始日期（UTC）" xml:space="preserve"><value>Start date (UTC)</value></data>
+  <data name="結束日期（UTC）" xml:space="preserve"><value>End date (UTC)</value></data>
+  <data name="搜尋目標或監測位置" xml:space="preserve"><value>Search target or monitoring location</value></data>
+  <data name="目標與監測位置" xml:space="preserve"><value>Target and monitoring location</value></data>
+  <data name="時間排序" xml:space="preserve"><value>Time order</value></data>
+  <data name="最新優先" xml:space="preserve"><value>Newest first</value></data>
+  <data name="最舊優先" xml:space="preserve"><value>Oldest first</value></data>
+  <data name="查詢" xml:space="preserve"><value>Search</value></data>
+  <data name="日期以 UTC 計算，最多查詢七天；資料只代表選定目標與監測位置。" xml:space="preserve"><value>Dates use UTC and can span at most seven days. Data represents only the selected target and monitoring location.</value></data>
+  <data name="請選擇有效日期；開始日期不可晚於結束日期，範圍最多七天。" xml:space="preserve"><value>Choose valid dates. The start cannot be after the end, and the range is at most seven days.</value></data>
+  <data name="正在載入 Ping 歷史…" xml:space="preserve"><value>Loading Ping history…</value></data>
+  <data name="重新載入" xml:space="preserve"><value>Reload</value></data>
+  <data name="目前設定保留原始樣本 {0} 天、五分鐘彙總 {1} 天。到期後依排程清理；尚未彙總的樣本可能保留較久。" xml:space="preserve"><value>Raw samples are retained for {0} days and five-minute rollups for {1} days. Expired data is cleaned on schedule; samples awaiting aggregation may be kept longer.</value></data>
+  <data name="目前結果：{0} 至 {1}（UTC，不含結束時間）；{2}。此範圍最後量測（UTC）：{3}。" xml:space="preserve"><value>Current results: {0} to {1} (UTC, end exclusive); {2}. Last measurement in this range (UTC): {3}.</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>No data yet</value></data>
+  <data name="此範圍的目標與位置超過 100 組，請縮小日期範圍。" xml:space="preserve"><value>This range has over 100 target and location pairs. Narrow the date range.</value></data>
+  <data name="舊資料仍在補算，趨勢可能尚不完整；原始紀錄仍可查看。" xml:space="preserve"><value>Historical data is still being aggregated; trends may be incomplete. Raw records remain available.</value></data>
+  <data name="部分歷史延遲無法安全加總，該時段平均值顯示為無資料。" xml:space="preserve"><value>Some historical latency cannot be safely aggregated; averages for those periods are unavailable.</value></data>
+  <data name="五分鐘平均延遲趨勢" xml:space="preserve"><value>Five-minute average latency trend</value></data>
+  <data name="此範圍沒有已彙總的 Ping 資料。" xml:space="preserve"><value>No aggregated Ping data in this range.</value></data>
+  <data name="Ping 延遲" xml:space="preserve"><value>Ping latency</value></data>
+  <data name="成功量測平均延遲" xml:space="preserve"><value>Average latency of successful measurements</value></data>
+  <data name="成功量測最低延遲" xml:space="preserve"><value>Minimum latency of successful measurements</value></data>
+  <data name="成功量測最高延遲" xml:space="preserve"><value>Maximum latency of successful measurements</value></data>
+  <data name="明細為每次實際量測，趨勢以 UTC 每五分鐘彙總。只平均成功的量測；失敗或無資料不視為 0 ms。空白代表沒有可計算的延遲，請查看下方紀錄。" xml:space="preserve"><value>Details show individual measurements; trends aggregate five-minute UTC intervals. Only successful measurements are averaged. Failures and missing data are not treated as 0 ms. A blank means no latency can be calculated; see records below.</value></data>
+  <data name="Ping 歷史明細" xml:space="preserve"><value>Ping history details</value></data>
+  <data name="此頁沒有原始量測紀錄；資料可能尚未產生或已超過原始資料保存範圍。" xml:space="preserve"><value>No raw measurements on this page. Data may not exist yet or may have passed the raw retention period.</value></data>
+  <data name="左右滑動查看完整表格。" xml:space="preserve"><value>Scroll horizontally to see the full table.</value></data>
+  <data name="Ping 歷史明細，可左右滑動" xml:space="preserve"><value>Ping history details, scroll horizontally</value></data>
+  <data name="時間（UTC）" xml:space="preserve"><value>Time (UTC)</value></data>
+  <data name="結果" xml:space="preserve"><value>Result</value></data>
+  <data name="延遲" xml:space="preserve"><value>Latency</value></data>
+  <data name="解析位址" xml:space="preserve"><value>Resolved address</value></data>
+  <data name="上一頁" xml:space="preserve"><value>Previous</value></data>
+  <data name="下一頁" xml:space="preserve"><value>Next</value></data>
+  <data name="第 {0} 頁，共 {1} 筆" xml:space="preserve"><value>Page {0}, {1} records</value></data>
+  <data name="找不到設備或無法讀取 Ping 歷史。" xml:space="preserve"><value>Device not found or Ping history unavailable.</value></data>
+  <data name="登入已過期或權限已變更，請重新登入。" xml:space="preserve"><value>Your session expired or permissions changed. Please sign in again.</value></data>
+  <data name="無法載入 Ping 歷史，請稍後再試。" xml:space="preserve"><value>Unable to load Ping history. Try again later.</value></data>
+  <data name="無資料" xml:space="preserve"><value>No data</value></data>
+  <data name="補算中" xml:space="preserve"><value>Aggregation pending</value></data>
+  <data name="無法計算" xml:space="preserve"><value>Unable to calculate</value></data>
+  <data name="無有效延遲" xml:space="preserve"><value>No valid latency</value></data>
+  <data name="舊紀錄（目標未記錄）" xml:space="preserve"><value>Old record (target not recorded)</value></data>
+  <data name="成功" xml:space="preserve"><value>Succeeded</value></data>
+  <data name="逾時" xml:space="preserve"><value>Timed out</value></data>
+  <data name="無法抵達" xml:space="preserve"><value>Unreachable</value></data>
+  <data name="名稱解析失敗" xml:space="preserve"><value>Name resolution failed</value></data>
+  <data name="量測權限不足" xml:space="preserve"><value>Insufficient measurement permissions</value></data>
+  <data name="監測程序錯誤" xml:space="preserve"><value>Monitoring process error</value></data>
+  <data name="失敗（原因未記錄）" xml:space="preserve"><value>Failed (reason not recorded)</value></data>
+</root>

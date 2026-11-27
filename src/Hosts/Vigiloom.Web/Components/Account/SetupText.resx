@@ -1,0 +1,81 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms</value>
+  </resheader>
+  <data xml:space="preserve" name="Title">
+    <value>建立管理員</value>
+  </data>
+  <data xml:space="preserve" name="Description">
+    <value>完成首次設定，開始使用 Vigiloom。</value>
+  </data>
+  <data xml:space="preserve" name="SetupToken">
+    <value>設定密鑰</value>
+  </data>
+  <data xml:space="preserve" name="TokenHint">
+    <value>請輸入安裝時設定的密鑰。</value>
+  </data>
+  <data xml:space="preserve" name="Administrator">
+    <value>管理員帳號</value>
+  </data>
+  <data xml:space="preserve" name="Password">
+    <value>密碼</value>
+  </data>
+  <data xml:space="preserve" name="PasswordHint">
+    <value>至少 12 個字元，包含大小寫英文字母、數字及符號。</value>
+  </data>
+  <data xml:space="preserve" name="ConfirmPassword">
+    <value>確認密碼</value>
+  </data>
+  <data xml:space="preserve" name="AlreadyHaveAccount">
+    <value>已有帳號？登入</value>
+  </data>
+  <data xml:space="preserve" name="SetupFailed">
+    <value>無法完成首次設定，請確認設定密鑰與系統狀態。</value>
+  </data>
+  <data xml:space="preserve" name="RequiredToken">
+    <value>請輸入設定密鑰。</value>
+  </data>
+  <data xml:space="preserve" name="TokenLength">
+    <value>設定密鑰不能超過 {1} 個字元。</value>
+  </data>
+  <data xml:space="preserve" name="RequiredConfirmation">
+    <value>請再次輸入密碼。</value>
+  </data>
+  <data xml:space="preserve" name="PasswordMismatch">
+    <value>兩次密碼不一致。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordTooShort">
+    <value>密碼長度不足，請參考密碼規則。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresNonAlphanumeric">
+    <value>密碼必須包含符號。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresDigit">
+    <value>密碼必須包含數字。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresLower">
+    <value>密碼必須包含小寫英文字母。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresUpper">
+    <value>密碼必須包含大寫英文字母。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.PasswordRequiresUniqueChars">
+    <value>密碼的不同字元數不足。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.InvalidUserName">
+    <value>帳號包含不允許的字元。</value>
+  </data>
+  <data xml:space="preserve" name="Identity.DuplicateUserName">
+    <value>帳號已存在。</value>
+  </data>
+</root>
