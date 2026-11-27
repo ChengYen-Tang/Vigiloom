@@ -20,7 +20,8 @@ internal static class HostThresholdEndpoints
                 return result is null ? Results.NotFound() : Results.Ok(result);
             }
             catch (ArgumentException) { return Results.Problem(statusCode: 400, title: "Invalid metric series"); }
-        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .Produces<HostMetricThresholdStatus>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
         app.MapPut(route, async (Guid deviceId, Guid agentId, AgentMetricKind kind, string source, string? dimension,
             HostMetricThresholdInput input, HttpContext context, HostMonitoringThresholds thresholds, IHttpClientFactory clients, CancellationToken token) =>
         {
@@ -34,7 +35,8 @@ internal static class HostThresholdEndpoints
                         ? Results.Ok(saved) : Results.Problem(statusCode: 409, title: "Threshold changed; reload and try again."), allowApiCredential: false);
             }
             catch (ArgumentException) { return Results.Problem(statusCode: 400, title: "Invalid metric threshold or series"); }
-        }).RequireAuthorization("Administrator").RequireRateLimiting("api-client");
+        }).RequireAuthorization("Administrator").RequireRateLimiting("api-client")
+            .Produces<HostMetricThresholdView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429);
         app.MapPost("/internal/v1/host-threshold/query", async (HostMetricThresholdQuery query, HostMonitoringThresholds thresholds, IHttpClientFactory clients, CancellationToken token) =>
         {
             if (!await ResourceDevices.ExistsAsync(clients, query.DeviceId, token)) return Results.NotFound();
