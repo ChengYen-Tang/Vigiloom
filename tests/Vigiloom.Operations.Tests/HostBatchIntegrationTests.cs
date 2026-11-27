@@ -38,6 +38,7 @@ using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Resources;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
+using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Infrastructure.Persistence;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
@@ -721,17 +722,35 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 savedLogSource = (await created.Content.ReadFromJsonAsync<HostLogConfigurationResult>(cancellationToken: token))!.Source!;
             }
             string logRevision;
+            EntityTagHeaderValue logEtag;
             using (var settings = await client.GetAsync("/api/v1/agent/log-settings", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, settings.StatusCode);
                 var snapshot = await settings.Content.ReadFromJsonAsync<AgentLogSettingsSnapshot>(cancellationToken: token);
                 Assert.AreEqual(savedLogSource.Settings.SourceId, Assert.ContainsSingle(snapshot!.Sources).SourceId);
                 logRevision = snapshot.Revision;
+                logEtag = settings.Headers.ETag!;
                 using var unchangedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/log-settings");
                 unchangedRequest.Headers.IfNoneMatch.Add(settings.Headers.ETag!);
                 using var unchanged = await client.SendAsync(unchangedRequest, token);
                 Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
             }
+            var logPolicy = new PolicyAdministration(provider.GetRequiredService<IDbContextFactory<LogAdmissionDbContext>>());
+            var originalQuota = await logPolicy.GetAsync(token);
+            var limitedQuota = await logPolicy.UpdateAsync(originalQuota.Values with { SourceBurst = 1 }, originalQuota.Version,
+                Guid.CreateVersion7(), (_, _, _, _) => Task.CompletedTask, token);
+            Assert.IsNotNull(limitedQuota);
+            using (var changedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/log-settings"))
+            {
+                changedRequest.Headers.IfNoneMatch.Add(logEtag);
+                using var changed = await client.SendAsync(changedRequest, token);
+                Assert.AreEqual(HttpStatusCode.OK, changed.StatusCode);
+                var smaller = await changed.Content.ReadFromJsonAsync<AgentLogSettingsSnapshot>(cancellationToken: token);
+                Assert.AreEqual(1, smaller!.MaxBatchRecords);
+                Assert.AreNotEqual(logRevision, smaller.Revision);
+            }
+            Assert.IsNotNull(await logPolicy.UpdateAsync(originalQuota.Values, limitedQuota.Version,
+                Guid.CreateVersion7(), (_, _, _, _) => Task.CompletedTask, token));
             var queue = new AgentQueueSnapshot(0, 0, 0, capacity.Capacity.PayloadBytes, capacity.Capacity.BatchCount);
             var capacityReport = new AgentQueueCapacityReport(capacity, DateTimeOffset.UtcNow, null);
             using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, queue, CapacityConfiguration: capacityReport, LogStatus: new(logRevision, false, []), InventoryConfiguration: new(null, null, null), IntegrityConfiguration: new(null, null, null, null), BaselineConfiguration: new(null, null, DateTimeOffset.UtcNow, null), Runtime: new("1.2.3", "win-x64")), token))

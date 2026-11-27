@@ -1200,7 +1200,12 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Redirect, post.StatusCode);
                 Assert.AreEqual(logPagePath, post.Headers.Location!.AbsolutePath);
             }
-            var source = (await (await admin.GetAsync($"/api/v1/agent-management/devices/{device.Id:D}/log-sources/", token)).Content.ReadFromJsonAsync<HostLogSourceView[]>(cancellationToken: token))!.Single();
+            async Task<IReadOnlyList<HostLogSourceView>> LogSourcesAsync()
+            {
+                await using var scope = factory.Services.CreateAsyncScope();
+                return (await scope.ServiceProvider.GetRequiredService<IHostLogConfiguration>().ListAsync(device.Id, token))!;
+            }
+            var source = (await LogSourcesAsync()).Single();
             Assert.AreEqual("Application", source.Settings.Name);
             var editLogPath = $"{logPagePath}/{source.Settings.SourceId:D}";
             using (var page = await admin.GetAsync(editLogPath, token))
@@ -1219,7 +1224,7 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Redirect, post.StatusCode);
                 Assert.AreEqual(logPagePath, post.Headers.Location!.AbsolutePath);
             }
-            var updatedSource = (await (await admin.GetAsync($"/api/v1/agent-management/devices/{device.Id:D}/log-sources/", token)).Content.ReadFromJsonAsync<HostLogSourceView[]>(cancellationToken: token))!.Single();
+            var updatedSource = (await LogSourcesAsync()).Single();
             Assert.AreEqual("Renamed", updatedSource.Settings.Name);
             using (var page = await admin.GetAsync(editLogPath, token))
             {
@@ -1245,7 +1250,7 @@ public sealed class AgentIdentityHttpTests
                 var repeatedDoc = await new HtmlParser().ParseDocumentAsync(await repeated.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("找不到來源", repeatedDoc.Body!.TextContent);
             }
-            var retiredSources = await (await admin.GetAsync($"/api/v1/agent-management/devices/{device.Id:D}/log-sources/", token)).Content.ReadFromJsonAsync<HostLogSourceView[]>(cancellationToken: token);
+            var retiredSources = await LogSourcesAsync();
             Assert.IsEmpty(retiredSources!);
             using (var forged = await admin.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);

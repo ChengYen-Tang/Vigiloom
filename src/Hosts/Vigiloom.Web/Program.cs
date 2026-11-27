@@ -832,7 +832,6 @@ app.MapIntelligenceEndpoints();
 app.MapEventTimelineEndpoints();
 app.MapIntelligenceOfflineUiEndpoints();
 app.MapIntegrityScopeEndpoints();
-app.MapHostLogSettingsEndpoints();
 app.MapAgentBatchEndpoints();
 app.MapServiceDiscoveryEndpoints();
 app.MapLineSettingsEndpoints();
