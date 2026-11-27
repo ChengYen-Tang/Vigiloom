@@ -884,6 +884,10 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             proxiedHost.UseKestrel(0);
             using var proxyClient = proxiedHost.CreateClient();
             proxyClient.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
+            using (var anonymous = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-metrics?from={from}&until={until}", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+            using (var anonymous = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-metrics/series?from={from}&until={until}&kind=CpuTotalPercent", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             proxyClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
             using (var response = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/agent-settings", token))
                 Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
@@ -913,6 +917,24 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             }
             var publicMetrics = await proxyClient.GetFromJsonAsync<HostMetricPage>($"/api/v1/devices/{identity.DeviceId:D}/host-metrics?from={from}&until={until}", token);
             Assert.IsNotNull(publicMetrics);
+            Assert.AreEqual(25d, Assert.ContainsSingle(publicMetrics.Items).Value);
+            var metricsPath = $"/api/v1/devices/{identity.DeviceId:D}/host-metrics";
+            using (var response = await proxyClient.GetAsync($"{metricsPath}/series?from={from}&until={until}&kind=CpuTotalPercent", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+                var metricSeries = await response.Content.ReadFromJsonAsync<HostMetricSeriesPage>(cancellationToken: token);
+                Assert.AreEqual(new HostMetricSeries(identity.AgentId, "cpu", null), Assert.ContainsSingle(metricSeries!.Items));
+            }
+            using (var response = await proxyClient.GetAsync($"{metricsPath}/aggregate?agentId={identity.AgentId:D}&from={from}&until={until}&kind=CpuTotalPercent&source=cpu&bucketSeconds=60", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+            }
+            using (var invalid = await proxyClient.GetAsync($"{metricsPath}/series?from={from}&until={until}&kind=CpuTotalPercent&page=-1", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using (var invalid = await proxyClient.GetAsync($"{metricsPath}?from={from}&until={until}&cursor=bad", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
             var publicThreshold = await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>($"/api/v1/devices/{identity.DeviceId:D}/host-metric-threshold?agentId={identity.AgentId:D}&kind=CpuTotalPercent&source=cpu", token);
             Assert.AreEqual(HostMetricThresholdState.Exceeded, publicThreshold!.State);
             var thresholdUrl = $"/api/v1/devices/{identity.DeviceId:D}/host-metric-threshold?agentId={identity.AgentId:D}&kind=CpuTotalPercent&source=cpu";
@@ -963,6 +985,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             await using (var audit = new HostMonitoringDbContext(hostOptions))
                 Assert.AreEqual(2, await audit.Set<HostMetricThresholdAudit>().CountAsync(token));
             thresholdSession.Role = "Read only";
+            using (var readerMetrics = await proxyClient.GetAsync($"{metricsPath}?from={from}&until={until}", token))
+                Assert.AreEqual(HttpStatusCode.OK, readerMetrics.StatusCode);
             using (var deniedInbox = await proxyClient.GetAsync(inboxPath, token))
                 Assert.AreEqual(HttpStatusCode.Forbidden, deniedInbox.StatusCode);
             using (var readerUpdate = await proxyClient.PutAsJsonAsync(thresholdUrl, thresholdInput, token))

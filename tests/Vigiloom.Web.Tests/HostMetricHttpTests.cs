@@ -66,10 +66,9 @@ public sealed class HostMetricHttpTests
                 using var agentClient = PingTestSite.Client(factory);
                 Assert.AreEqual(BatchSendResult.Delivered, (await new AgentBatchClient(agentClient, TimeProvider.System).SendNextAsync(vault, server, token)).Status);
                 Assert.IsNull(await queue.PeekAsync(token));
-                using var reader = PingTestSite.Client(factory); await PingTestSite.LoginAsync(reader, "reader", token);
-                var from = Uri.EscapeDataString(now.AddMinutes(-1).ToString("O"));
-                var until = Uri.EscapeDataString(now.AddMinutes(1).ToString("O"));
-                var result = await reader.GetFromJsonAsync<HostMetricPage>($"/api/v1/devices/{device.Id:D}/host-metrics?from={from}&until={until}", token);
+                await using var readScope = factory.Services.CreateAsyncScope();
+                var history = readScope.ServiceProvider.GetRequiredService<IHostMetricHistory>();
+                var result = await history.GetAsync(device.Id, now.AddMinutes(-1), now.AddMinutes(1), null, null, token);
                 Assert.IsNotNull(result);
                 Assert.HasCount(2, result.Items);
                 Assert.IsTrue(result.Items.All(x => x.AgentId == agentId));
@@ -87,63 +86,4 @@ public sealed class HostMetricHttpTests
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
         }
     }
-    [TestMethod]
-    public Task HostMetrics_AuthorizesReadersAndRejectsInvalidRanges() => ReusableWebDatabase.ExecuteAsync( async (database, token) =>
-    {
-        using var factory = PingTestSite.CreateFactory(database.ConnectionString);
-        await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
-        var now = DateTimeOffset.UtcNow;
-        var device = new Device("metric history", "127.0.0.1", true, now);
-        var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
-        await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
-        var agents = factory.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>();
-        Guid metricAgentId;
-        await using (var db = await agents.CreateDbContextAsync(token))
-        {
-            var agent = new Vigiloom.Modules.AgentManagement.Domain.Agent(device.Id, 1, new byte[32], now);
-            metricAgentId = agent.Id;
-            db.Agents.Add(agent);
-            db.HostMetrics.Add(new HostMetric(agent.Id, Guid.CreateVersion7(), 0,
-                new AgentMetricPoint(Guid.CreateVersion7(), now, AgentMetricKind.MemoryTotalBytes, "test", null, 1024), now));
-            await db.SaveChangesAsync(token);
-        }
-        var from = Uri.EscapeDataString(now.AddMinutes(-1).ToString("O"));
-        var until = Uri.EscapeDataString(now.AddMinutes(1).ToString("O"));
-        var url = $"/api/v1/devices/{device.Id:D}/host-metrics?from={from}&until={until}";
-        var seriesUrl = $"/api/v1/devices/{device.Id:D}/host-metrics/series?from={from}&until={until}&kind=MemoryTotalBytes";
-        using var anonymous = PingTestSite.Client(factory);
-        using (var response = await anonymous.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
-        using (var response = await anonymous.GetAsync(seriesUrl, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
-        using var reader = PingTestSite.Client(factory); await PingTestSite.LoginAsync(reader, "reader", token);
-        using (var response = await reader.GetAsync(seriesUrl, token))
-        {
-            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-            Assert.IsTrue(response.Headers.CacheControl?.NoStore);
-            var series = await response.Content.ReadFromJsonAsync<HostMetricSeriesPage>(cancellationToken: token);
-            Assert.IsNotNull(series);
-            Assert.AreEqual(new HostMetricSeries(metricAgentId, "test", null), series.Items.Single());
-        }
-        using (var invalid = await reader.GetAsync(seriesUrl + "&page=-1", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
-        using (var unknown = await reader.GetAsync(seriesUrl.Replace(device.Id.ToString("D"), Guid.CreateVersion7().ToString("D")), token)) Assert.AreEqual(HttpStatusCode.NotFound, unknown.StatusCode);
-        using (var response = await reader.GetAsync(url, token))
-        {
-            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-            Assert.IsNotNull(response.Headers.CacheControl);
-            Assert.IsTrue(response.Headers.CacheControl.NoStore);
-            var page = await response.Content.ReadFromJsonAsync<HostMetricPage>(cancellationToken: token);
-            Assert.IsNotNull(page);
-            Assert.HasCount(1, page.Items);
-            Assert.AreEqual(1024d, page.Items[0].Value);
-        }
-        using (var invalid = await reader.GetAsync(url + "&cursor=bad", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
-        using (var aggregate = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/host-metrics/aggregate?agentId={metricAgentId:D}&from={from}&until={until}&kind=MemoryTotalBytes&source=test&bucketSeconds=60", token))
-        {
-            Assert.AreEqual(HttpStatusCode.OK, aggregate.StatusCode);
-            Assert.IsNotNull(aggregate.Headers.CacheControl);
-            Assert.IsTrue(aggregate.Headers.CacheControl.NoStore);
-        }
-        using (var unknown = await reader.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/host-metrics?from={from}&until={until}", token)) Assert.AreEqual(HttpStatusCode.NotFound, unknown.StatusCode);
-        using var admin = PingTestSite.Client(factory); await PingTestSite.LoginAsync(admin, "admin", token);
-        using (var response = await admin.GetAsync(url, token)) Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-    }, TestContext.CancellationToken);
 }

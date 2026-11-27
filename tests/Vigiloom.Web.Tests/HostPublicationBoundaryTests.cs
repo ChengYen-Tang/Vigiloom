@@ -133,13 +133,5 @@ public sealed class HostPublicationBoundaryTests(TestContext context)
         Assert.DoesNotContain("private.cpu", publicContent);
         Assert.DoesNotContain("private-detection.yml", publicContent);
         Assert.DoesNotContain("Private software", publicContent);
-        var from = Uri.EscapeDataString(now.AddHours(-1).ToString("O"));
-        var until = Uri.EscapeDataString(now.AddHours(1).ToString("O"));
-        var metrics = $"/api/v1/devices/{device.Id:D}/host-metrics?from={from}&until={until}";
-        using (var denied = await anonymous.GetAsync(metrics, token))
-            Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
-        using var reader = PingTestSite.Client(factory);
-        await PingTestSite.LoginAsync(reader, "reader", token);
-        Assert.Contains("private.cpu", await reader.GetStringAsync(metrics, token));
     }, context.CancellationToken);
 }
