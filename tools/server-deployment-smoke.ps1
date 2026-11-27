@@ -54,7 +54,7 @@ try {
     }
     Push-Location $scratch
     try {
-        foreach ($component in @('Web', 'Worker', 'Migrator')) {
+        foreach ($component in @('Web', 'Worker', 'Migrator', 'Gateway', 'Identity', 'Resources', 'Network', 'HostMonitoring', 'Observability', 'Operations', 'Security')) {
             $project = Join-Path $root "src/Hosts/Vigiloom.$component/Vigiloom.$component.csproj"
             dotnet publish $project -c Release -r linux-x64 --self-contained true -o (Join-Path $scratch ($component.ToLowerInvariant())) --disable-build-servers -p:UseSharedCompilation=false -v:q
             if ($LASTEXITCODE -ne 0) { throw "Publish failed: $component" }

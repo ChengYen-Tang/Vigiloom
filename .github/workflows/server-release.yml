@@ -53,7 +53,7 @@ jobs:
         run: |
           $package = Join-Path $env:RUNNER_TEMP "vigiloom-server-$env:RELEASE_RID"
           New-Item -ItemType Directory -Force $package | Out-Null
-          foreach ($name in @('Web', 'Worker', 'Migrator')) {
+          foreach ($name in @('Web', 'Worker', 'Migrator', 'Gateway', 'Identity', 'Resources', 'Network', 'HostMonitoring', 'Observability', 'Operations', 'Security')) {
             $project = "src/Hosts/Vigiloom.$name/Vigiloom.$name.csproj"
             $output = Join-Path $package ($name.ToLowerInvariant())
             dotnet publish $project -c Release -r $env:RELEASE_RID --self-contained true -o $output "-p:Version=$env:RELEASE_VERSION"
