@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Modules.AlertingOperations.Application.Retention;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Worker.Hosting;
 

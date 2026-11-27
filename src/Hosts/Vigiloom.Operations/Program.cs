@@ -161,6 +161,7 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", true))
             ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."),
             SchedulingRegistration.StorageOptions(prepareSchema: false)));
     builder.Services.AddScoped<OperationsRetentionJob>();
+    builder.Services.AddScoped<FailedJobRetention>();
     builder.Services.AddHostedService<OperationsRetentionSchedule>();
     builder.Services.AddHangfireServer(options =>
     {

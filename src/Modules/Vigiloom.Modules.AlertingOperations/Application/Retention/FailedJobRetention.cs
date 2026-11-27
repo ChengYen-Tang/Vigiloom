@@ -4,11 +4,10 @@ using Hangfire.States;
 using Hangfire.Storage;
 using Microsoft.EntityFrameworkCore;
 using Vigiloom.Infrastructure.Scheduling;
-using Vigiloom.Modules.AlertingOperations.Application.Retention;
 using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 
-namespace Vigiloom.Worker.Hosting;
+namespace Vigiloom.Modules.AlertingOperations.Application.Retention;
 
 /// <summary>Removes expired failed Hangfire jobs without touching jobs awaiting retry.</summary>
 public sealed class FailedJobRetention(

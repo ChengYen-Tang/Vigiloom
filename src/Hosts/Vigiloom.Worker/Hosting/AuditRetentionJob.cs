@@ -4,7 +4,7 @@ using Vigiloom.Modules.AlertingOperations.Application.Retention;
 
 namespace Vigiloom.Worker.Hosting;
 
-public sealed class AuditRetentionJob(AuditRetentionCleanup cleanup, FailedJobRetention failedJobs, ILogger<AuditRetentionJob> logger)
+public sealed class AuditRetentionJob(AuditRetentionCleanup cleanup, FailedJobRetention failedJobs, IConfiguration configuration, ILogger<AuditRetentionJob> logger)
 {
     [AutomaticRetry(Attempts = 3)]
     [DisableConcurrentExecution(10)]
@@ -12,8 +12,11 @@ public sealed class AuditRetentionJob(AuditRetentionCleanup cleanup, FailedJobRe
     {
         var removed = await cleanup.RunAsync(token);
         logger.LogInformation("Audit, alert and background history retention removed {Count} records", removed);
-        var failedRemoved = await failedJobs.RunAsync(token);
-        logger.LogInformation("Failed job retention removed {Count} jobs", failedRemoved);
+        if (string.IsNullOrWhiteSpace(configuration["Services:Operations:Url"]))
+        {
+            var failedRemoved = await failedJobs.RunAsync(token);
+            logger.LogInformation("Failed job retention removed {Count} jobs", failedRemoved);
+        }
     }
 }
 
