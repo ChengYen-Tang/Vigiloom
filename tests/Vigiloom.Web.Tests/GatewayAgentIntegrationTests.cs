@@ -53,6 +53,7 @@ public sealed class GatewayAgentIntegrationTests(TestContext context)
                 host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ReverseProxy:Clusters:agent:Destinations:agent:Address"] = address,
+                    ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = address,
                     ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = address,
                     ["Vigiloom:Gateway:AgentIdentityAddress"] = address
                 })));

@@ -192,6 +192,7 @@ internalApi.MapPost("/application-candidates/{id:guid}/approve", async (Guid id,
     Results.Ok(await approval.ApproveAsync(id, request.ActorId, token)));
 app.MapDeviceManagement();
 app.MapGroupManagement();
+app.MapAgentEnrollment();
 app.MapAgentManagement();
 app.MapPublicTemplateManagement();
 app.Run();

@@ -22,6 +22,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Groups;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Infrastructure.Authentication;
+using Vigiloom.Modules.Resources.Application.AgentIdentity;
 using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
@@ -144,6 +147,37 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
                 Assert.AreEqual(HttpStatusCode.NotFound, missingAgent.StatusCode);
             using (var created = await adminClient.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("gateway device", "example.org", [], false), token)) Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
             using (var created = await adminClient.PostAsJsonAsync("/api/v1/groups/", new GroupInput("gateway group", null), token)) Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
+            using var createdHost = await adminClient.PostAsJsonAsync("/api/v1/devices/", new DeviceInput("gateway host", "host.example", [], true), token);
+            Assert.AreEqual(HttpStatusCode.Created, createdHost.StatusCode);
+            var hostDevice = await createdHost.Content.ReadFromJsonAsync<DeviceDetails>(cancellationToken: token);
+            Assert.IsNotNull(hostDevice);
+            await using var resourcesScope = resources.Services.CreateAsyncScope();
+            var registrations = resourcesScope.ServiceProvider.GetRequiredService<AgentRegistration>();
+            var issued = await registrations.IssueAsync(hostDevice.Id, admin.Id, token);
+            Assert.AreEqual(AgentRegistrationStatus.Success, issued.Status);
+            var machineSecret = RandomNumberGenerator.GetBytes(32);
+            using var enrolled = await anonymous.PostAsJsonAsync("/api/v1/agent/enroll", new { EnrollmentSecret = issued.Secret, MachineVerifier = SHA256.HashData(machineSecret) }, token);
+            Assert.AreEqual(HttpStatusCode.OK, enrolled.StatusCode);
+            using var enrollmentJson = JsonDocument.Parse(await enrolled.Content.ReadAsStringAsync(token));
+            var agentId = enrollmentJson.RootElement.GetProperty("agentId").GetGuid();
+            Assert.IsTrue(AgentCredentials.TryDecode(issued.Secret, "vle", out var enrollmentId, out var enrollmentSecret));
+            CryptographicOperations.ZeroMemory(enrollmentSecret);
+            anonymous.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AgentCredentials.Encode("vlr", enrollmentId, machineSecret));
+            using (var recovered = await anonymous.PostAsJsonAsync("/api/v1/agent/recover", new { EnrollmentSecret = issued.Secret }, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, recovered.StatusCode);
+                using var recoveredJson = JsonDocument.Parse(await recovered.Content.ReadAsStringAsync(token));
+                Assert.AreEqual(agentId, recoveredJson.RootElement.GetProperty("agentId").GetGuid());
+            }
+            var oldCredential = AgentCredentials.Encode("vla", agentId, machineSecret);
+            var replacementSecret = RandomNumberGenerator.GetBytes(32);
+            anonymous.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", oldCredential);
+            using (var rotated = await anonymous.PostAsJsonAsync("/api/v1/agent/rotation/start", new { MachineVerifier = SHA256.HashData(replacementSecret) }, token)) Assert.AreEqual(HttpStatusCode.NoContent, rotated.StatusCode);
+            var replacementCredential = AgentCredentials.Encode("vla", agentId, replacementSecret);
+            anonymous.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", replacementCredential);
+            using (var confirmed = await anonymous.PostAsync("/api/v1/agent/rotation/finish", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, confirmed.StatusCode);
+            Assert.IsNull(await registrations.AuthenticateAsync(oldCredential, token));
+            Assert.IsNotNull(await registrations.AuthenticateAsync(replacementCredential, token));
             await using (var db = await resources.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
                 Assert.IsTrue(await db.Devices.AnyAsync(device => device.Name == "gateway device", token));
             var webResourcesOptions = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(webDb.ConnectionString).Options;

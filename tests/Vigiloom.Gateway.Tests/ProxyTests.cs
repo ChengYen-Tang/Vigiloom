@@ -229,6 +229,7 @@ public sealed class ProxyTests
     {
         await using var web = await StartUpstreamAsync("web", TestContext.CancellationToken);
         await using var agent = await StartUpstreamAsync("agent", TestContext.CancellationToken);
+        await using var resources = await StartUpstreamAsync("resources", TestContext.CancellationToken);
         await using var otlp = await StartUpstreamAsync("otlp", TestContext.CancellationToken);
         static string Address(WebApplication app) => app.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
@@ -237,6 +238,7 @@ public sealed class ProxyTests
             {
                 ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web),
                 ["ReverseProxy:Clusters:agent:Destinations:agent:Address"] = Address(agent),
+                ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = Address(resources),
                 ["ReverseProxy:Clusters:observability:Destinations:observability:Address"] = Address(otlp),
                 ["Vigiloom:Gateway:SourceIdentityAddress"] = Address(otlp)
             })));
@@ -245,7 +247,7 @@ public sealed class ProxyTests
         using var agentDenied = await client.GetAsync("/api/v1/agent/identity", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, agentDenied.StatusCode);
         using var enrollment = await client.PostAsync("/api/v1/agent/enroll", null, TestContext.CancellationToken);
-        Assert.AreEqual("agent", await enrollment.Content.ReadAsStringAsync(TestContext.CancellationToken));
+        Assert.AreEqual("resources", await enrollment.Content.ReadAsStringAsync(TestContext.CancellationToken));
         using var otlpDenied = await client.GetAsync("/api/v1/otlp/v1/metrics", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Unauthorized, otlpDenied.StatusCode);
         using var denied = await client.GetAsync("/api/v1/agent-management/devices", TestContext.CancellationToken);
@@ -416,6 +418,7 @@ public sealed class ProxyTests
             host.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ReverseProxy:Clusters:agent:Destinations:agent:Address"] = address,
+                ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = address,
                 ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = address,
                 ["Vigiloom:Gateway:AgentIdentityAddress"] = address
             })));
