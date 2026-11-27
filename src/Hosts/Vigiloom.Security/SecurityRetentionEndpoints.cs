@@ -12,13 +12,13 @@ internal static class SecurityRetentionEndpoints
     public static void MapSecurityRetentionEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/internal/v1/retention");
-        group.MapPost("/audit/count", async (SecurityAuditRetentionRequest request, IDbContextFactory<SecurityAnalysisDbContext> factory, CancellationToken token) =>
+        group.MapPost("/audit/count", async (AuditRetentionRequest request, IDbContextFactory<SecurityAnalysisDbContext> factory, CancellationToken token) =>
         {
             await using var db = await factory.CreateDbContextAsync(token);
             await using var tx = await db.Database.BeginTransactionAsync(token);
             return Results.Ok(await new SecurityAuditRetention().CountAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), request.Cutoff, token));
         });
-        group.MapPost("/audit/delete", async (SecurityAuditRetentionRequest request, IDbContextFactory<SecurityAnalysisDbContext> factory, CancellationToken token) =>
+        group.MapPost("/audit/delete", async (AuditRetentionRequest request, IDbContextFactory<SecurityAnalysisDbContext> factory, CancellationToken token) =>
         {
             if (request.BatchSize is < 1 or > 500) return Results.BadRequest();
             await using var db = await factory.CreateDbContextAsync(token);

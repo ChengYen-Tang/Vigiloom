@@ -170,12 +170,12 @@ public sealed class YaraRoutingTests(TestContext context)
             await using (var db = new SecurityAnalysisDbContext(options))
                 await db.InventorySettingAudits.ExecuteUpdateAsync(update => update.SetProperty(x => x.OccurredAt, DateTimeOffset.UtcNow.AddDays(-40)), token);
             var cutoff = DateTimeOffset.UtcNow.AddDays(-30);
-            using (var countAudit = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/count", new SecurityAuditRetentionRequest(cutoff), token))
+            using (var countAudit = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/count", new AuditRetentionRequest(cutoff), token))
             {
                 countAudit.EnsureSuccessStatusCode();
                 Assert.AreEqual(1L, await countAudit.Content.ReadFromJsonAsync<long>(cancellationToken: token));
             }
-            using (var deleteAudit = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/delete", new SecurityAuditRetentionRequest(cutoff, 500), token))
+            using (var deleteAudit = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/delete", new AuditRetentionRequest(cutoff, 500), token))
             {
                 deleteAudit.EnsureSuccessStatusCode();
                 Assert.AreEqual(1, await deleteAudit.Content.ReadFromJsonAsync<int>(cancellationToken: token));
@@ -191,9 +191,9 @@ public sealed class YaraRoutingTests(TestContext context)
                 db.YaraScans.AddRange(old, pending);
                 await db.SaveChangesAsync(token);
             }
-            using (var countYara = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/count", new SecurityAuditRetentionRequest(cutoff), token))
+            using (var countYara = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/count", new AuditRetentionRequest(cutoff), token))
                 Assert.AreEqual(1L, await countYara.Content.ReadFromJsonAsync<long>(cancellationToken: token));
-            using (var deleteYara = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/delete", new SecurityAuditRetentionRequest(cutoff, 500), token))
+            using (var deleteYara = await securityClient.PostAsJsonAsync("/internal/v1/retention/audit/delete", new AuditRetentionRequest(cutoff, 500), token))
                 Assert.AreEqual(1, await deleteYara.Content.ReadFromJsonAsync<int>(cancellationToken: token));
             await using (var db = new SecurityAnalysisDbContext(options))
             {

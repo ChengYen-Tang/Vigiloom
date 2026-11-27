@@ -8,7 +8,7 @@ namespace Vigiloom.Resources;
 
 internal sealed class ResourcesAuditRetention(IDbContextFactory<ResourcesDbContext> contexts, DeviceAuditRetention retention)
 {
-    internal async Task<long> CountAsync(ResourcesAuditRetentionRequest request, CancellationToken token)
+    internal async Task<long> CountAsync(AuditRetentionRequest request, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);
@@ -17,7 +17,7 @@ internal sealed class ResourcesAuditRetention(IDbContextFactory<ResourcesDbConte
         return count;
     }
 
-    internal async Task<int> DeleteAsync(ResourcesAuditRetentionRequest request, CancellationToken token)
+    internal async Task<int> DeleteAsync(AuditRetentionRequest request, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);

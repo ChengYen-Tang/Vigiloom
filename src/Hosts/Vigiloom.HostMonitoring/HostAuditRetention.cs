@@ -8,7 +8,7 @@ namespace Vigiloom.HostMonitoring;
 
 internal sealed class HostAuditRetention(IDbContextFactory<HostMonitoringDbContext> contexts)
 {
-    internal async Task<long> CountAsync(HostAuditRetentionRequest request, CancellationToken token)
+    internal async Task<long> CountAsync(AuditRetentionRequest request, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         return await AuditRetentionQueries.CountAsync(db.Set<HostLogSourceAudit>(), request.Cutoff, token) +
@@ -18,7 +18,7 @@ internal sealed class HostAuditRetention(IDbContextFactory<HostMonitoringDbConte
             await AuditRetentionQueries.CountAsync(db.Set<HostMetricThresholdAudit>(), request.Cutoff, token);
     }
 
-    internal async Task<int> DeleteAsync(HostAuditRetentionRequest request, CancellationToken token)
+    internal async Task<int> DeleteAsync(AuditRetentionRequest request, CancellationToken token)
     {
         await using var db = await contexts.CreateDbContextAsync(token);
         await using var transaction = await db.Database.BeginTransactionAsync(token);

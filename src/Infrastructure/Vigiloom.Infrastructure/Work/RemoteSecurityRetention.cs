@@ -10,9 +10,9 @@ namespace Vigiloom.Infrastructure.Work;
 public sealed class RemoteSecurityRetention(HttpClient client) : IAuditRetentionSource, ISecurityDetectionRetention
 {
     public Task<long> CountAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, CancellationToken token) =>
-        PostAsync<long>("internal/v1/retention/audit/count", new SecurityAuditRetentionRequest(cutoff), token);
+        PostAsync<long>("internal/v1/retention/audit/count", new AuditRetentionRequest(cutoff), token);
     public Task<int> DeleteBatchAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, int batchSize, CancellationToken token) =>
-        PostAsync<int>("internal/v1/retention/audit/delete", new SecurityAuditRetentionRequest(cutoff, batchSize), token);
+        PostAsync<int>("internal/v1/retention/audit/delete", new AuditRetentionRequest(cutoff, batchSize), token);
     public Task<long> CountAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset now, int days, CancellationToken token) =>
         PostAsync<long>("internal/v1/retention/detections/count", new SecurityDetectionRetentionRequest(now, days), token);
     public Task<int> DeleteBatchAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset now, int days, int batchSize, CancellationToken token) =>

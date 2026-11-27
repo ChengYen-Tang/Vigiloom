@@ -117,9 +117,9 @@ builder.Services.AddHttpClient<ObservationSourceVerifier>((services, client) =>
 builder.Services.AddScoped<IApplicationSourceVerifier>(services => services.GetRequiredService<ObservationSourceVerifier>());
 
 var app = builder.Build();
-app.MapPost("/internal/v1/audit/retention/count", async (ResourcesAuditRetentionRequest request, ResourcesAuditRetention retention, CancellationToken token) =>
+app.MapPost("/internal/v1/audit/retention/count", async (AuditRetentionRequest request, ResourcesAuditRetention retention, CancellationToken token) =>
     request.Cutoff.Offset != TimeSpan.Zero ? Results.BadRequest() : Results.Ok(await retention.CountAsync(request, token)));
-app.MapPost("/internal/v1/audit/retention/delete", async (ResourcesAuditRetentionRequest request, ResourcesAuditRetention retention, CancellationToken token) =>
+app.MapPost("/internal/v1/audit/retention/delete", async (AuditRetentionRequest request, ResourcesAuditRetention retention, CancellationToken token) =>
     request.Cutoff.Offset != TimeSpan.Zero || request.BatchSize is < 1 or > 500 ? Results.BadRequest() : Results.Ok(await retention.DeleteAsync(request, token)));
 if (app.Environment.IsDevelopment()) app.MapOpenApi();
 var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
