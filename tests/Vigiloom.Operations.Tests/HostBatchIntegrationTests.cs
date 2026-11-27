@@ -106,6 +106,19 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     .ConfigurePrimaryHttpMessageHandler(() => new DeferredHostHandler(() => hostClientForWorker!)));
             });
             using var securityClient = security.CreateClient();
+            using (var apiDocument = await securityClient.GetFromJsonAsync<JsonDocument>("/openapi/v1.json", token))
+            {
+                var paths = apiDocument!.RootElement.GetProperty("paths");
+                Assert.IsFalse(paths.EnumerateObject().Any(path => path.Name.StartsWith("/internal/", StringComparison.Ordinal)));
+                var read = paths.GetProperty("/api/v1/devices/{deviceId}/baseline").GetProperty("get").GetProperty("security");
+                Assert.AreEqual(2, read.GetArrayLength());
+                var inventoryResponse = paths.GetProperty("/api/v1/devices/{deviceId}/inventory").GetProperty("get").GetProperty("responses").GetProperty("200");
+                Assert.IsTrue(inventoryResponse.GetProperty("content").GetProperty("application/json").TryGetProperty("schema", out _));
+                var write = paths.GetProperty("/api/v1/agent-management/inventory-settings/platform").GetProperty("put").GetProperty("security");
+                Assert.AreEqual(1, write.GetArrayLength());
+                Assert.IsTrue(write[0].TryGetProperty("BrowserSession", out _));
+                Assert.IsTrue(write[0].TryGetProperty("Antiforgery", out _));
+            }
             var writer = new SecurityWriter();
             using var host = new WebApplicationFactory<HostMonitoring::Program>().WithWebHostBuilder(web =>
             {

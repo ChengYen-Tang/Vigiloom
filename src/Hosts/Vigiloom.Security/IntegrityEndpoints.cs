@@ -14,7 +14,7 @@ internal static class IntegrityEndpoints
             context.Response.Headers.CacheControl = "private, no-store";
             var owner = await resources.GetOwnershipAsync(deviceId, token);
             return owner is null ? Results.NotFound() : Results.Ok(await query.GetAsync(deviceId, owner.Registration?.Id, token));
-        });
+        }).Produces<DeviceIntegrityView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
         group.MapGet("/changes", async (Guid deviceId, DateTimeOffset from, DateTimeOffset until, Guid? scopeId, string? cursor,
             HttpContext context, ResourceDevices resources, IntegrityChangeQuery query, CancellationToken token) =>
         {
@@ -22,7 +22,7 @@ internal static class IntegrityEndpoints
             if (await resources.GetOwnershipAsync(deviceId, token) is null) return Results.NotFound();
             try { return Results.Ok(await query.GetAsync(deviceId, from, until, scopeId, cursor, token)); }
             catch (ArgumentException) { return Results.BadRequest(); }
-        });
+        }).Produces<IntegrityChangePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
         group.MapGet("/scopes/{scopeId:guid}/snapshots/{snapshotId:guid}/chunks/{chunkIndex:int}",
             async (Guid deviceId, Guid scopeId, Guid snapshotId, int chunkIndex, HttpContext context,
                 ResourceDevices resources, IntegrityQuery query, CancellationToken token) =>
@@ -34,6 +34,6 @@ internal static class IntegrityEndpoints
                 if (owner?.Registration?.Id is not { } agentId) return Results.NotFound();
                 var chunk = await query.GetChunkAsync(deviceId, agentId, scopeId, snapshotId, chunkIndex, token);
                 return chunk is null ? Results.NotFound() : Results.Ok(chunk);
-            });
+            }).Produces<IntegritySnapshotChunkView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
     }
 }

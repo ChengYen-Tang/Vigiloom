@@ -154,6 +154,7 @@ public sealed class ProxyTests
             })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false });
         var id = Guid.CreateVersion7();
+        Assert.AreEqual("security-doc", await client.GetStringAsync("/openapi/security.json", TestContext.CancellationToken));
         Assert.AreEqual("network", await client.GetStringAsync($"/api/v1/public/devices/{id:D}/ping", TestContext.CancellationToken));
         using (var response = await client.GetAsync($"/api/v1/devices/{id:D}/ping", TestContext.CancellationToken))
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
@@ -609,6 +610,7 @@ public sealed class ProxyTests
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         var app = builder.Build();
         app.MapGet("/internal/telemetry/source/identity", () => Results.Unauthorized());
+        app.MapGet("/openapi/v1.json", () => name + "-doc");
         app.MapMethods("/{**path}", ["GET", "POST", "PUT", "PATCH", "DELETE"], () => name);
         await app.StartAsync(token);
         return app;

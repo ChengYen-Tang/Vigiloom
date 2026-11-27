@@ -10,10 +10,14 @@ internal static class InventorySettingsEndpoints
     {
         var admin = app.MapGroup("/api/v1/agent-management/inventory-settings")
             .RequireAuthorization("Administrator").RequireRateLimiting("api-client");
-        admin.MapGet("/platform", (InventoryConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token));
-        admin.MapPut("/platform", (InventorySettingsUpdate input, InventoryConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token));
-        admin.MapGet("/devices/{deviceId:guid}", (Guid deviceId, InventoryConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, deviceId, context, token));
-        admin.MapPut("/devices/{deviceId:guid}", (Guid deviceId, InventorySettingsUpdate input, InventoryConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, deviceId, input, context, token));
+        admin.MapGet("/platform", (InventoryConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token))
+            .Produces<InventorySettingsView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429);
+        admin.MapPut("/platform", (InventorySettingsUpdate input, InventoryConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token))
+            .Produces<InventorySettingsView>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(429);
+        admin.MapGet("/devices/{deviceId:guid}", (Guid deviceId, InventoryConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, deviceId, context, token))
+            .Produces<InventorySettingsView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
+        admin.MapPut("/devices/{deviceId:guid}", (Guid deviceId, InventorySettingsUpdate input, InventoryConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, deviceId, input, context, token))
+            .Produces<InventorySettingsView>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429);
     }
 
     private static async Task<IResult> ReadAsync(InventoryConfiguration settings, Guid? deviceId, HttpContext context, CancellationToken token)

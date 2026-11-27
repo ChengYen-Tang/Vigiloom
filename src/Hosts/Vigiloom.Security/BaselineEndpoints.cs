@@ -12,7 +12,8 @@ internal static class BaselineEndpoints
         {
             context.Response.Headers.CacheControl = "no-store";
             return await query.GetAsync(deviceId, token) is { } result ? Results.Ok(result) : Results.NotFound();
-        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .Produces<DeviceBaselineView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404);
 
         app.MapPost("/api/v1/admin/devices/{deviceId:guid}/baseline-exceptions", async (Guid deviceId, BaselineExceptionInput input,
             IServiceProvider services, HttpContext context, CancellationToken token) =>
@@ -30,6 +31,7 @@ internal static class BaselineEndpoints
                     _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["reason"] = ["Invalid baseline exception explanation."] })
                 };
             }, allowApiCredential: false);
-        }).RequireAuthorization("Administrator").RequireRateLimiting("api-client");
+        }).RequireAuthorization("Administrator").RequireRateLimiting("api-client")
+            .Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(503);
     }
 }

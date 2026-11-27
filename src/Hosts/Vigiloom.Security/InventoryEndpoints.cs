@@ -14,7 +14,7 @@ internal static class InventoryEndpoints
             context.Response.Headers.CacheControl = "private, no-store";
             var owner = await resources.GetOwnershipAsync(deviceId, token);
             return owner is null ? Results.NotFound() : Results.Ok(await query.GetAsync(deviceId, owner.Registration?.Id, token));
-        });
+        }).Produces<DeviceInventoryView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
         group.MapGet("/changes", async (Guid deviceId, DateTimeOffset from, DateTimeOffset until, int? source, string? cursor,
             HttpContext context, ResourceDevices resources, InventoryChangeQuery query, CancellationToken token) =>
         {
@@ -23,7 +23,7 @@ internal static class InventoryEndpoints
             if (await resources.GetOwnershipAsync(deviceId, token) is null) return Results.NotFound();
             try { return Results.Ok(await query.GetAsync(deviceId, from, until, (InventorySource?)source, cursor, token)); }
             catch (ArgumentException) { return Results.BadRequest(); }
-        });
+        }).Produces<InventoryChangePage>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
         group.MapGet("/{source:int}/snapshots/{snapshotId:guid}/chunks/{chunkIndex:int}", async (Guid deviceId, int source, Guid snapshotId, int chunkIndex,
             HttpContext context, ResourceDevices resources, InventoryQuery query, CancellationToken token) =>
         {
@@ -33,6 +33,6 @@ internal static class InventoryEndpoints
             if (owner?.Registration?.Id is not { } agentId) return Results.NotFound();
             var chunk = await query.GetChunkAsync(deviceId, agentId, (InventorySource)source, snapshotId, chunkIndex, token);
             return chunk is null ? Results.NotFound() : Results.Ok(chunk);
-        });
+        }).Produces<InventorySnapshotChunkView>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
     }
 }

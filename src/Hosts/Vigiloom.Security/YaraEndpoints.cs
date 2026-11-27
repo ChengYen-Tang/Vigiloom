@@ -26,7 +26,8 @@ internal static class YaraEndpoints
                 return Results.Ok(jobs);
             }
             catch (ArgumentException) { return Results.BadRequest(); }
-        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .Produces<IReadOnlyList<YaraScanJob>>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403);
         app.MapPost(root, async (Guid deviceId, YaraScanRequest input, ResourceDevices resources, YaraScans scans, HttpContext context, CancellationToken token) =>
         {
             try
@@ -40,11 +41,13 @@ internal static class YaraEndpoints
                 }, allowApiCredential: false);
             }
             catch (ArgumentException) { return Results.BadRequest(); }
-        }).RequireAuthorization("Administrator").RequireRateLimiting("api-client");
+        }).RequireAuthorization("Administrator").RequireRateLimiting("api-client")
+            .Produces<YaraScanJob>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404);
         app.MapPost(root + "/{scanId:guid}/cancel", async (Guid deviceId, Guid scanId, YaraScans scans, HttpContext context, CancellationToken token) =>
         {
             try { return await ApiMutation.ExecuteAsync(context, async _ => await scans.CancelAsync(deviceId, scanId, token) ? Results.NoContent() : Results.NotFound(), allowApiCredential: false); }
             catch (ArgumentException) { return Results.BadRequest(); }
-        }).RequireAuthorization("Administrator").RequireRateLimiting("api-client");
+        }).RequireAuthorization("Administrator").RequireRateLimiting("api-client")
+            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(404);
     }
 }

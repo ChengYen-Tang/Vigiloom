@@ -35,6 +35,12 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.SecurityAnalysis.Application.ScheduledJobs;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddOpenApi(options =>
+{
+    options.ShouldInclude = description => description.RelativePath?.StartsWith("api/v1/", StringComparison.OrdinalIgnoreCase) == true;
+    options.AddDocumentTransformer<SecurityOpenApi>();
+    options.AddOperationTransformer<SecurityOpenApiOperation>();
+});
 builder.AddVigiloomSelfTelemetry("Vigiloom.Security");
 builder.Services.AddModuleSqlServer<SecurityAnalysisDbContext>(services =>
     services.GetRequiredService<IConfiguration>().GetConnectionString("Security")
@@ -185,6 +191,7 @@ if (builder.Configuration.GetValue("Temporal:Enabled", true))
 builder.Services.AddScoped(_ => new WorkHistoryRetention(builder.Configuration.GetConnectionString("Security")
     ?? throw new InvalidOperationException("ConnectionStrings:Security is required.")));
 var app = builder.Build();
+if (app.Environment.IsDevelopment()) app.MapOpenApi();
 var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
 app.UseAuthentication();
