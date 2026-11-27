@@ -16,7 +16,7 @@ internal static class HostMetricSettingsEndpoints
             UpdateInternalAsync(settings, null, command, token));
         app.MapPost("/internal/v1/agent-metric-settings/devices/{deviceId:guid}", async (Guid deviceId, AgentMetricSettingsCommand command, HostMetricConfiguration settings, IHttpClientFactory clients, CancellationToken token) =>
             await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateInternalAsync(settings, deviceId, command, token) : Results.NotFound());
-        var admin = app.MapGroup("/api/v1/agent-management/metric-settings").RequireAuthorization("Administrator");
+        var admin = app.MapGroup("/api/v1/agent-management/metric-settings").RequireAuthorization("Administrator").RequireRateLimiting("api-client");
         admin.MapGet("/platform", (HostMetricConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token));
         admin.MapPut("/platform", (AgentMetricSettingsUpdate input, HostMetricConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token));
         admin.MapGet("/devices/{deviceId:guid}", async (Guid deviceId, HostMetricConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>

@@ -169,6 +169,8 @@ public sealed class ProxyTests
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using (var response = await client.GetAsync("/api/v1/agent-management/queue-capacity/platform", TestContext.CancellationToken))
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        using (var response = await client.GetAsync("/api/v1/agent-management/metric-settings/platform", TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using (var response = await client.GetAsync("/api/v1/settings/ping", TestContext.CancellationToken))
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using (var response = await client.PostAsync($"/api/v1/speed-tests/{id:D}/cancel", null, TestContext.CancellationToken))
@@ -343,6 +345,7 @@ public sealed class ProxyTests
                 ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web),
                 ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = Address(web),
                 ["ReverseProxy:Clusters:network:Destinations:network:Address"] = Address(web),
+                ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = Address(web),
                 ["Services:Identity:Url"] = Address(identity)
             })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false, HandleCookies = false });
@@ -366,6 +369,7 @@ public sealed class ProxyTests
         using var denied = await client.PostAsync(path, null, TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
         role = "Administrator";
+        Assert.AreEqual("web", await client.GetStringAsync("/api/v1/agent-management/metric-settings/platform", TestContext.CancellationToken));
         foreach (var adminPath in new[] { "/api/v1/accounts", "/api/v1/agent-management/devices", "/api/v1/settings/ping" })
         {
             using var adminRead = await client.GetAsync(adminPath, TestContext.CancellationToken);
