@@ -47,7 +47,7 @@ public sealed class RemoteNetworkPublicTests(TestContext context)
         })) { BaseAddress = new Uri("http://network/") };
         using var provider = new ServiceCollection().AddSingleton(new RemoteNetworkPublicClient(network)).BuildServiceProvider();
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Services:Network:Url"] = "http://network" }).Build();
-        var reader = new RemotePublicReader(resource, null!, null!, null!, config, provider);
+        var reader = new RemotePublicReader(resource, config, provider);
         var listed = await reader.DevicesAsync(null, 1, null, context.CancellationToken);
         Assert.AreEqual("Operational", Assert.ContainsSingle(listed.Items).State);
         Assert.AreEqual("Operational", (await reader.DeviceAsync(id, context.CancellationToken))!.State);

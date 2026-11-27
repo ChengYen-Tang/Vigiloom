@@ -14,8 +14,7 @@ using Vigiloom.Modules.ServiceObservability.Persistence;
 namespace Vigiloom.Web.Publishing;
 
 /// <summary>Combines resource-owned public policies with the current monitoring state.</summary>
-internal sealed class RemotePublicReader(HttpClient client, PingStore ping, HealthStatusReader health,
-    IDbContextFactory<ServiceObservabilityDbContext> observations, IConfiguration configuration, IServiceProvider provider)
+internal sealed class RemotePublicReader(HttpClient client, IConfiguration configuration, IServiceProvider provider)
 {
     private RemoteNetworkPublicClient? Network => string.IsNullOrWhiteSpace(configuration["Services:Network:Url"]) ? null : provider.GetRequiredService<RemoteNetworkPublicClient>();
     private const string Root = "internal/v1/publications/";
@@ -109,7 +108,7 @@ internal sealed class RemotePublicReader(HttpClient client, PingStore ping, Heal
 
     private Task<IReadOnlyDictionary<Guid, HealthStatusReader.OverviewStatus>> ServiceStatusesAsync(Guid[] ids, CancellationToken token) =>
         string.IsNullOrWhiteSpace(configuration["Services:Observability:Url"])
-            ? health.ReadManyAsync(ids, token) : provider.GetRequiredService<PublicObservationClient>().StatusesAsync(ids, token);
+            ? provider.GetRequiredService<HealthStatusReader>().ReadManyAsync(ids, token) : provider.GetRequiredService<PublicObservationClient>().StatusesAsync(ids, token);
 
     private async Task<Dictionary<Guid, SourceVersions>> SourceVersionsAsync(Guid[] ids, CancellationToken token)
     {
@@ -118,7 +117,7 @@ internal sealed class RemotePublicReader(HttpClient client, PingStore ping, Heal
             var remote = await provider.GetRequiredService<PublicObservationClient>().VersionsAsync(ids, token);
             return remote.ToDictionary(row => row.Key, row => new SourceVersions(row.Key, row.Value.Service, row.Value.Source));
         }
-        await using var db = await observations.CreateDbContextAsync(token);
+        await using var db = await provider.GetRequiredService<IDbContextFactory<ServiceObservabilityDbContext>>().CreateDbContextAsync(token);
         return await (from service in db.Services.AsNoTracking()
             join source in db.Sources.AsNoTracking() on service.SourceId equals source.Id
             where ids.Contains(service.Id)
@@ -130,7 +129,7 @@ internal sealed class RemotePublicReader(HttpClient client, PingStore ping, Heal
     private sealed record SourceVersions(Guid Id, byte[] Service, byte[] Source);
 
     private Task<IReadOnlyDictionary<Guid, DevicePingStatus>> ReadDevicesAsync(IReadOnlyList<PublishedDevicePolicy> devices, CancellationToken token) =>
-        ping.GetStatusesAsync(devices.Where(x => x.Enabled)
+        provider.GetRequiredService<PingStore>().GetStatusesAsync(devices.Where(x => x.Enabled)
             .Select(x => new PingDeviceSnapshot(x.Id, Convert.FromBase64String(x.Version), [x.Target])).ToArray(), token);
 
     private static PublicDevice Map(PublishedDevicePolicy row, IReadOnlyDictionary<Guid, DevicePingStatus> states)

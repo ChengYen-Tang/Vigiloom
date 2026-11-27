@@ -50,7 +50,7 @@ public sealed class RemoteObservationPublicTests(TestContext context)
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         { ["Services:Resources:Url"] = "http://resources", ["Services:Observability:Url"] = "http://observability" }).Build();
         using var provider = new ServiceCollection().AddSingleton(new PublicObservationClient(observations))
-            .AddSingleton<RemotePublicReader>(services => new RemotePublicReader(resources, null!, null!, null!, config, services))
+            .AddSingleton<RemotePublicReader>(services => new RemotePublicReader(resources, config, services))
             .BuildServiceProvider();
         var reader = provider.GetRequiredService<RemotePublicReader>();
         Assert.AreEqual("Healthy", (await reader.ServiceAsync(id, context.CancellationToken))!.State);
