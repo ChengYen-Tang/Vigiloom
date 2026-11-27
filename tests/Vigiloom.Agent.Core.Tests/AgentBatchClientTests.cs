@@ -63,6 +63,61 @@ public sealed class AgentBatchClientTests
         }
     }
 
+    [TestMethod]
+    public async Task Sender_DefersUnsupportedYaraStartWithoutBlockingResult()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "VigiloomYaraStartTests");
+        var root = Path.Combine(parent, Path.GetRandomFileName());
+        try
+        {
+            var token = TestContext.CancellationToken;
+            var id = Guid.CreateVersion7();
+            var server = new Uri("https://example.test/");
+            var vault = new IdentityVault(root);
+            await using (var session = vault.Acquire())
+                await session.WriteAsync(new IdentityState { Server = server.AbsoluteUri, AgentId = id,
+                    MachineSecret = Convert.ToBase64String(new byte[32]).TrimEnd('=') }, token);
+            var clock = new FakeTimeProvider();
+            var now = clock.GetUtcNow();
+            var start = new YaraStartBatch(YaraStartBatchCodec.SchemaVersion, Guid.CreateVersion7(), now, Guid.CreateVersion7());
+            var result = new YaraResultBatch(YaraResultBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
+                new(YaraScanOutcome.Completed, "matched", "", false, now));
+            var queue = new DurableBatchQueue(vault, id);
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(start.BatchId, now, 1, YaraStartBatchCodec.Serialize(start), token));
+            Assert.IsTrue(await queue.QuarantineAsync(start.BatchId, QueueRejection.InvalidLocalBatch, token));
+            Assert.AreEqual(EnqueueResult.Queued, await queue.EnqueueAsync(result.BatchId, now, 1, YaraResultBatchCodec.Serialize(result), token));
+            var handler = new YaraStartCompatibilityHandler();
+            using var http = new HttpClient(handler);
+            var sender = new AgentBatchClient(http, clock);
+            Assert.AreEqual(BatchSendResult.Retry, (await sender.SendNextAsync(vault, server, token)).Status);
+            Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+            Assert.AreEqual(BatchSendResult.Deferred, (await sender.SendNextAsync(vault, server, token)).Status);
+            handler.Supported = true;
+            clock.Advance(TimeSpan.FromMinutes(6));
+            Assert.AreEqual(BatchSendResult.Delivered, (await sender.SendNextAsync(vault, server, token)).Status);
+            Assert.IsNull(await queue.PeekAsync(token));
+        }
+        finally
+        {
+            var prefix = Path.GetFullPath(parent) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class YaraStartCompatibilityHandler : HttpMessageHandler
+    {
+        public bool Supported { get; set; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var bytes = await request.Content!.ReadAsByteArrayAsync(cancellationToken);
+            using var json = JsonDocument.Parse(bytes);
+            return new(json.RootElement.GetProperty("schemaVersion").GetInt32() == YaraStartBatchCodec.SchemaVersion && !Supported
+                ? HttpStatusCode.BadRequest : HttpStatusCode.NoContent);
+        }
+    }
+
     private sealed class YaraCompatibilityHandler : HttpMessageHandler
     {
         public bool Supported { get; set; }

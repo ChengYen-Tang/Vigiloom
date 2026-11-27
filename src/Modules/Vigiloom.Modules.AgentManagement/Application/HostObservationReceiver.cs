@@ -26,6 +26,7 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
         IReadOnlyList<AgentRuntimeMessage>? runtimeItems = null;
         IReadOnlyList<AgentMetricPoint>? metricItems = null;
         AgentLogBatch? logBatch = null;
+        YaraStartBatch? yaraStart = null;
         string? securityKind = null;
         var securityItems = 0;
         Guid batchId;
@@ -71,6 +72,13 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
             enqueuedAt = baseline.EnqueuedAt;
             securityItems = baseline.Items.Count;
             securityKind = "baseline";
+        }
+        else if (YaraStartBatchCodec.TryRead(payload.Span, out yaraStart))
+        {
+            if (security is null) return BatchReceiptStatus.CapacityExceeded;
+            batchId = yaraStart!.BatchId;
+            enqueuedAt = yaraStart.EnqueuedAt;
+            securityItems = 1;
         }
         else if (YaraResultBatchCodec.TryRead(payload.Span, out var yara))
         {
@@ -175,7 +183,7 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
         state.ReplayClockFloor = policyTime;
         state.LastReplayIssue = null;
         state.LastReplayIssueAt = null;
-        var receipt = new ReceivedBatch(agentId, batchId, digest, enqueuedAt, now, securityKind is null ? ids.Length : securityItems, payload.Length,
+        var receipt = new ReceivedBatch(agentId, batchId, digest, enqueuedAt, now, securityKind is null && yaraStart is null ? ids.Length : securityItems, payload.Length,
             policyTime, policyTime.AddDays(policy.ReceiptRetentionDays));
         db.ReceivedBatches.Add(receipt);
         if (logBatch is not null) db.Entry(receipt).Property("PendingDelivery").CurrentValue = true;
@@ -194,7 +202,7 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
             foreach (var item in logBatch.Items)
                 if (!logIds.Contains(item.MessageId)) db.HostLogMessageIds.Add(new HostLogMessageId { AgentId = agentId, MessageId = item.MessageId, ReceivedAt = now });
         }
-        else
+        else if (yaraStart is null)
         {
             db.HostSecurityBatches.Add(new HostSecurityBatch { AgentId = agentId, BatchId = batchId, DeviceId = identity.DeviceId,
                 DeviceGeneration = identity.DeviceGeneration, Kind = securityKind!, Payload = payload.ToArray(), ReceivedAt = now });
@@ -209,6 +217,8 @@ public sealed class HostObservationReceiver(IDbContextFactory<HostMonitoringDbCo
         await db.SaveChangesAsync(token);
         if (securityKind is not null)
             await security!.WriteAsync(db, new HostSecurityBatchReady(agentId, batchId, identity.DeviceId, identity.DeviceGeneration, securityKind), token);
+        if (yaraStart is not null)
+            await security!.WriteStartAsync(db, new YaraScanStarted(yaraStart.ScanId, agentId, identity.DeviceId, yaraStart.EnqueuedAt), token);
         await transaction.CommitAsync(token);
         return logBatch is null ? BatchReceiptStatus.Accepted : await DeliverLogAsync(identity, logBatch, digest, token);
     }

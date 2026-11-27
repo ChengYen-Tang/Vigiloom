@@ -96,11 +96,14 @@ public sealed class YaraScanWorkerTests(TestContext context)
                 await worker.StartAsync(token);
                 try
                 {
-                    while (await queue.PeekAsync(token) is null) await Task.Delay(50, token);
+                    while (await queue.PeekAsync(token, YaraStartBatchCodec.SchemaVersion) is null) await Task.Delay(50, token);
                 }
                 finally { await worker.StopAsync(token); }
             }
-            var original = (await queue.PeekAsync(token))!;
+            var started = (await queue.PeekAsync(token))!;
+            Assert.IsTrue(YaraStartBatchCodec.TryRead(started.Payload, out var start));
+            Assert.AreEqual(job.Id, start!.ScanId);
+            var original = (await queue.PeekAsync(token, YaraStartBatchCodec.SchemaVersion))!;
             Assert.IsTrue(YaraResultBatchCodec.TryRead(original.Payload, out var result));
             Assert.AreEqual(YaraScanOutcome.Unavailable, result!.Result.Outcome);
             using (var restarted = new YaraScanWorker(new AgentYaraClient(http), new AgentSettingsRuntime(), metrics,
@@ -110,7 +113,8 @@ public sealed class YaraScanWorkerTests(TestContext context)
                 try { await handler.SecondRequest.Task.WaitAsync(token); }
                 finally { await restarted.StopAsync(token); }
             }
-            CollectionAssert.AreEqual(original.Payload, (await queue.PeekAsync(token))!.Payload);
+            CollectionAssert.AreEqual(started.Payload, (await queue.PeekAsync(token))!.Payload);
+            CollectionAssert.AreEqual(original.Payload, (await queue.PeekAsync(token, YaraStartBatchCodec.SchemaVersion))!.Payload);
         }
         finally
         {
