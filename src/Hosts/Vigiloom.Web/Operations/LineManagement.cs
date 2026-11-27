@@ -5,17 +5,16 @@ using Vigiloom.Modules.AlertingOperations.Application.Line;
 
 namespace Vigiloom.Web.Operations;
 
-internal sealed class LineManagement(LineChannel local, LineDeliveryStatus deliveries, LineDeliveryQueue queue,
-    IConfiguration configuration, IServiceProvider services)
+internal sealed class LineManagement(IConfiguration configuration, IServiceProvider services)
 {
     private RemoteLine? Remote => string.IsNullOrWhiteSpace(configuration["Services:Operations:Url"]) ? null : services.GetRequiredService<RemoteLine>();
-    public Task<LineChannelView> GetAsync(CancellationToken token) => Remote is { } remote ? remote.GetAsync(token) : local.GetAsync(token);
-    public Task<bool> SaveAsync(LineChannelUpdate input, Guid actor, CancellationToken token) => Remote is { } remote ? remote.SaveAsync(input, actor, token) : local.SaveAsync(input, actor, token);
+    public Task<LineChannelView> GetAsync(CancellationToken token) => Remote is { } remote ? remote.GetAsync(token) : services.GetRequiredService<LineChannel>().GetAsync(token);
+    public Task<bool> SaveAsync(LineChannelUpdate input, Guid actor, CancellationToken token) => Remote is { } remote ? remote.SaveAsync(input, actor, token) : services.GetRequiredService<LineChannel>().SaveAsync(input, actor, token);
     public Task<bool> SetGroupAsync(Guid id, string? name, bool approved, Guid actor, CancellationToken token) =>
-        Remote is { } remote ? remote.SetGroupAsync(id, name, approved, actor, token) : local.SetGroupAsync(id, name, approved, actor, token);
-    public Task<Guid?> EnqueueTestAsync(Guid id, CancellationToken token) => Remote is { } remote ? remote.EnqueueTestAsync(id, token) : queue.EnqueueTestAsync(id, token);
-    public Task<IReadOnlyList<LineDeliverySummary>> GetRecentAsync(CancellationToken token) => Remote is { } remote ? remote.GetRecentAsync(token) : deliveries.GetRecentAsync(token);
-    public Task<LineDeliveryView?> GetDeliveryAsync(Guid id, CancellationToken token) => Remote is { } remote ? remote.GetDeliveryAsync(id, token) : deliveries.GetAsync(id, token);
+        Remote is { } remote ? remote.SetGroupAsync(id, name, approved, actor, token) : services.GetRequiredService<LineChannel>().SetGroupAsync(id, name, approved, actor, token);
+    public Task<Guid?> EnqueueTestAsync(Guid id, CancellationToken token) => Remote is { } remote ? remote.EnqueueTestAsync(id, token) : services.GetRequiredService<LineDeliveryQueue>().EnqueueTestAsync(id, token);
+    public Task<IReadOnlyList<LineDeliverySummary>> GetRecentAsync(CancellationToken token) => Remote is { } remote ? remote.GetRecentAsync(token) : services.GetRequiredService<LineDeliveryStatus>().GetRecentAsync(token);
+    public Task<LineDeliveryView?> GetDeliveryAsync(Guid id, CancellationToken token) => Remote is { } remote ? remote.GetDeliveryAsync(id, token) : services.GetRequiredService<LineDeliveryStatus>().GetAsync(id, token);
 }
 
 internal sealed class RemoteLine(HttpClient client)

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Modules.AlertingOperations.Application.Line;
 using Vigiloom.Web.Operations;
@@ -19,6 +21,22 @@ public sealed class RemoteLineTests(TestContext context)
         Assert.IsTrue(view.Enabled);
         Assert.AreEqual(10, view.AggregationSeconds);
         Assert.IsTrue(await remote.SaveAsync(new(true, "token", "secret", 15), actor, context.CancellationToken));
+    }
+
+    [TestMethod]
+    public async Task RemoteSettingsDoNotRequireLocalOperationsServices()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        { ["Services:Operations:Url"] = "http://operations" }).Build();
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(config);
+        services.AddHttpClient<RemoteLine>(client => client.BaseAddress = new Uri("http://operations/"))
+            .ConfigurePrimaryHttpMessageHandler(() => new Handler(Guid.Empty));
+        services.AddScoped<LineManagement>();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var view = await scope.ServiceProvider.GetRequiredService<LineManagement>().GetAsync(context.CancellationToken);
+        Assert.IsTrue(view.Enabled);
     }
 
     private sealed class Handler(Guid actor) : HttpMessageHandler
