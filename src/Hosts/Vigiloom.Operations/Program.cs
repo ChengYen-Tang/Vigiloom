@@ -10,6 +10,7 @@ using Vigiloom.Contracts.Operations;
 using Vigiloom.Infrastructure.LogAdmission;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Infrastructure.Persistence;
+using Vigiloom.Infrastructure.Operations;
 using Vigiloom.Infrastructure.Security;
 using Vigiloom.Infrastructure.Authentication;
 using Vigiloom.Infrastructure.Scheduling.Outbox;
@@ -74,6 +75,13 @@ builder.Services.AddScoped<TimelineWriter>();
 builder.Services.AddScoped<TimelineReader>();
 builder.Services.AddScoped<TimelineLogCleanup>();
 builder.Services.AddServiceDiscovery();
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Identity:Url"]))
+{
+    builder.Services.AddHttpClient<RemoteIdentityAuditRetention>((services, client) =>
+        client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+    builder.Services.AddScoped<IAuditRetentionSource>(services => services.GetRequiredService<RemoteIdentityAuditRetention>());
+}
 if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Security:Url"]))
 {
     builder.Services.AddHttpClient<RemoteSecurityRetention>((services, client) =>

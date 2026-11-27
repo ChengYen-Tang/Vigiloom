@@ -69,10 +69,12 @@ public static class WorkerHost
         builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
         builder.Services.AddScoped<IdentityAuditRetention>();
         builder.Services.AddServiceDiscovery();
-        builder.Services.AddScoped<IAuditRetentionSource>(provider =>
-            string.IsNullOrWhiteSpace(provider.GetRequiredService<IConfiguration>()["Services:Identity:Url"])
-                ? provider.GetRequiredService<IdentityAuditRetention>()
-                : provider.GetRequiredService<RemoteIdentityAuditRetention>());
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Operations:Url"]) ||
+            string.IsNullOrWhiteSpace(builder.Configuration["Services:Identity:Url"]))
+            builder.Services.AddScoped<IAuditRetentionSource>(provider =>
+                string.IsNullOrWhiteSpace(provider.GetRequiredService<IConfiguration>()["Services:Identity:Url"])
+                    ? provider.GetRequiredService<IdentityAuditRetention>()
+                    : provider.GetRequiredService<RemoteIdentityAuditRetention>());
         builder.Services.AddHttpClient<RemoteIdentityAuditRetention>((services, client) =>
             client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Identity:Url"]!.TrimEnd('/') + "/"))
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();

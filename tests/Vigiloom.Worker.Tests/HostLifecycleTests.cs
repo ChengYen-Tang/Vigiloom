@@ -37,6 +37,7 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Intelligence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Inventory;
 using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
+using Vigiloom.BuildingBlocks.Operations;
 
 namespace Vigiloom.Worker.Tests;
 
@@ -102,6 +103,17 @@ public sealed class HostLifecycleTests(TestContext testContext)
             .Select(service => service.ImplementationType?.Name).ToArray();
         Assert.DoesNotContain("LineDeliverySchedule", hosted);
         Assert.Contains("RetiredLineDeliverySchedule", hosted);
+    }
+
+    [TestMethod]
+    public void IdentityRetentionMovesOnlyWhenBothServicesAreConfigured()
+    {
+        static int CountSources(params string[] args) => WorkerHost.CreateBuilder(args).Services.Count(item => item.ServiceType == typeof(IAuditRetentionSource));
+        var local = CountSources("--Services:Operations:Url=", "--Services:Identity:Url=");
+        var mixed = CountSources("--Services:Operations:Url=http://operations", "--Services:Identity:Url=");
+        var split = CountSources("--Services:Operations:Url=http://operations", "--Services:Identity:Url=http://identity");
+        Assert.AreEqual(local, mixed);
+        Assert.AreEqual(local - 1, split);
     }
 
     [TestMethod]
