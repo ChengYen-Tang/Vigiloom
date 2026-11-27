@@ -14,20 +14,21 @@
 @inject Vigiloom.Web.HostMonitoring.IntelligenceSettingsAccess Recovery
 @inject Vigiloom.Web.HostMonitoring.CustomBaselineAccess CustomBaselines
 @inject ILogger<Intelligence> Logger
+@inject Microsoft.Extensions.Localization.IStringLocalizer<IntelligenceText> L
 
-<PageTitle>情報來源 - Vigiloom</PageTitle>
+<PageTitle>@L["情報來源 - Vigiloom"]</PageTitle>
 <main class="device-page intelligence-page">
-    <header class="device-heading"><div><h1>情報來源</h1><p>管理來源更新、查看涵蓋範圍與版本。情報資料不代表設備已受影響或安全。</p></div></header>
-    <p><a href="/settings/baseline-checks">建立自訂安全基準</a></p>
+    <header class="device-heading"><div><h1>@L["情報來源"]</h1><p>@L["管理來源更新、查看涵蓋範圍與版本。情報資料不代表設備已受影響或安全。"]</p></div></header>
+    <p><a href="/settings/baseline-checks">@L["建立自訂安全基準"]</a></p>
     <section class="device-panel" aria-labelledby="intelligence-coverage-title">
-        <h2 id="intelligence-coverage-title">情報類型與目前範圍</h2>
+        <h2 id="intelligence-coverage-title">@L["情報類型與目前範圍"]</h2>
         <ul>
-            <li>漏洞與套件公告：提供 CISA KEV 與 GitHub 已審核公告來源；不涵蓋所有漏洞。</li>
-            <li>行為規則：保存 Sigma 原始規則；支援的規則可在<a href="/settings/sigma">行為規則</a>試跑及啟用。</li>
-            <li>IOC／YARA：保存來源檔案與 IOC 分類；IOC 偵測需由管理員啟用。</li>
-            <li>安全設定基準（SCA）：提供兩個已審查的唯讀來源檢查；啟用來源後，可在支援的主機查看檢查結果。</li>
+            <li>@L["漏洞與套件公告：提供 CISA KEV 與 GitHub 已審核公告來源；不涵蓋所有漏洞。"]</li>
+            <li>@L["行為規則：保存 Sigma 原始規則；支援的規則可在"]<a href="/settings/sigma">@L["行為規則"]</a>@L["試跑及啟用。"]</li>
+            <li>@L["IOC／YARA：保存來源檔案與 IOC 分類；IOC 偵測需由管理員啟用。"]</li>
+            <li>@L["安全設定基準（SCA）：提供兩個已審查的唯讀來源檢查；啟用來源後，可在支援的主機查看檢查結果。"]</li>
         </ul>
-        <p>各來源是否啟用、資料是否過期，請查看下方狀態。</p>
+        <p>@L["各來源是否啟用、資料是否過期，請查看下方狀態。"]</p>
     </section>
     @if (error is not null) { <p class="device-alert" role="alert">@error</p> }
     @if (message is not null) { <p class="intelligence-message" role="status">@message</p> }
@@ -35,15 +36,15 @@
     {
         <div class="intelligence-layout">
             <section class="device-panel intelligence-list" aria-labelledby="sources-title">
-                <h2 id="sources-title">情報來源</h2>
-                @if (sources.Items.Count == 0) { <p>尚無來源資料。背景工作啟動後會建立已支援的來源。</p> }
+                <h2 id="sources-title">@L["情報來源"]</h2>
+                @if (sources.Items.Count == 0) { <p>@L["尚無來源資料。背景工作啟動後會建立已支援的來源。"]</p> }
                 @foreach (var item in sources.Items)
                 {
                     <a class="intelligence-source @(selected?.Id == item.Id ? "selected" : "")" href="@SourceUrl(item.Id)" aria-current="@(selected?.Id == item.Id ? "page" : null)">
                         <strong>@(item.Description?.Name ?? item.Key)</strong><span>@SourceState(item)</span>
                     </a>
                 }
-                <nav aria-label="情報來源分頁">@if (sources.Page > 1) { <a href="@($"/settings/intelligence?sourcePage={sources.Page - 1}")">上一頁</a> } @if (sources.HasMore) { <a href="@($"/settings/intelligence?sourcePage={sources.Page + 1}")">下一頁</a> }</nav>
+                <nav aria-label="@L["情報來源分頁"]">@if (sources.Page > 1) { <a href="@($"/settings/intelligence?sourcePage={sources.Page - 1}")">@L["上一頁"]</a> } @if (sources.HasMore) { <a href="@($"/settings/intelligence?sourcePage={sources.Page + 1}")">@L["下一頁"]</a> }</nav>
             </section>
             @if (selected is not null)
             {
@@ -52,58 +53,58 @@
                         <h2>@(selected.Description?.Name ?? selected.Key)</h2>
                         @if (selected.Description is { } description)
                         {
-                            <p>@Coverage(selected)</p><p>類別：@Category(selected)</p>
-                            <p>適用平台與範圍：@PlatformCoverage(selected)</p>
-                            <p>來源：<a href="@description.SourceUrl" target="_blank" rel="noopener noreferrer">@(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? "Vigiloom 自訂檢查" : "官方資料來源")</a></p>
-                            <details><summary>查看來源授權依據</summary><p>@description.LicenseEvidence</p></details>
+                            <p>@Coverage(selected)</p><p>@L["類別："]@Category(selected)</p>
+                            <p>@L["適用平台與範圍："]@PlatformCoverage(selected)</p>
+                            <p>@L["來源："]<a href="@description.SourceUrl" target="_blank" rel="noopener noreferrer">@(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? L["Vigiloom 自訂檢查"].Value : L["官方資料來源"].Value)</a></p>
+                            <details><summary>@L["查看來源授權依據"]</summary><p>@description.LicenseEvidence</p></details>
                         }
-                        else { <p>無法辨識此來源，無法確認資料範圍或授權。</p> }
-                        <p class="intelligence-state @(selected.IsStale || selected.ActiveUnavailable || selected.ActiveVersionOutdated || selected.LastError is not null ? "attention" : "")"><strong>狀態：</strong>@SourceState(selected)</p>
-                        @if (selected.Key is "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss") { <p>啟用來源後，符合條件的新版本會自動選用；手動回復的版本會保留到上游發布新版本。</p> }
-                        @if (selected.ActiveVersionOutdated) { <p>目前選用的版本不是最近確認的上游資料；設備漏洞結果將標示為過期。需要時可選用最近取得的版本。</p> }
-                        <p>@(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? "最近儲存草稿（UTC）" : "最後成功更新（UTC）")：@DisplayTime(selected.LastSuccessfulCheckAt)</p>
-                        @if (!string.IsNullOrEmpty(selected.LastError)) { <p role="alert">最近更新失敗：@ErrorText(selected.LastError)</p> }
+                        else { <p>@L["無法辨識此來源，無法確認資料範圍或授權。"]</p> }
+                        <p class="intelligence-state @(selected.IsStale || selected.ActiveUnavailable || selected.ActiveVersionOutdated || selected.LastError is not null ? "attention" : "")"><strong>@L["狀態："]</strong>@SourceState(selected)</p>
+                        @if (selected.Key is "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss") { <p>@L["啟用來源後，符合條件的新版本會自動選用；手動回復的版本會保留到上游發布新版本。"]</p> }
+                        @if (selected.ActiveVersionOutdated) { <p>@L["目前選用的版本不是最近確認的上游資料；設備漏洞結果將標示為過期。需要時可選用最近取得的版本。"]</p> }
+                        <p>@(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? L["最近儲存草稿（UTC）"].Value : L["最後成功更新（UTC）"].Value)：@DisplayTime(selected.LastSuccessfulCheckAt)</p>
+                        @if (!string.IsNullOrEmpty(selected.LastError)) { <p role="alert">@L["最近更新失敗："]@ErrorText(selected.LastError)</p> }
                         @if (progress is not null)
                         {
-                            <p>公告匯入：@ProgressState(progress.State)；已讀取 @progress.RecordCount 筆、@progress.PageCount 頁。</p>
-                            @if (progress.FailureCode is not null) { <p role="alert">匯入未完成：@FailureText(progress.FailureCode)</p> }
-                            @if (progress.RetryAt is not null) { <p>下次可重試時間（UTC）：@DisplayTime(progress.RetryAt)</p> }
+                            <p>@L["公告匯入：{0}；已讀取 {1} 筆、{2} 頁。", ProgressState(progress.State), progress.RecordCount, progress.PageCount]</p>
+                            @if (progress.FailureCode is not null) { <p role="alert">@L["匯入未完成："]@FailureText(progress.FailureCode)</p> }
+                            @if (progress.RetryAt is not null) { <p>@L["下次可重試時間（UTC）："]@DisplayTime(progress.RetryAt)</p> }
                             @if ((progress.FailureCode is not null || progress.State == "inconsistent") && progress.ImportId is not null && progress.Version is not null)
                             {
                                 <EditForm Model="RecoveryInput" FormName="intelligence-recovery" method="post" OnValidSubmit="RecoverAsync"><DataAnnotationsValidator /><ValidationSummary />
                                     <input type="hidden" name="RecoveryInput.SourceId" value="@RecoveryInput.SourceId" /><input type="hidden" name="RecoveryInput.ImportId" value="@RecoveryInput.ImportId" /><InputHidden @bind-Value="RecoveryInput.Version" />
-                                    <button type="submit">放棄失敗的匯入並重新排程</button>
+                                    <button type="submit">@L["放棄失敗的匯入並重新排程"]</button>
                                 </EditForm>
                             }
                         }
                     </section>
                     <section class="device-panel">
-                        <details open="@policyOpen"><summary><h2>更新設定</h2></summary>
+                        <details open="@policyOpen"><summary><h2>@L["更新設定"]</h2></summary>
                         <EditForm Model="PolicyInput" FormName="intelligence-policy" method="post" OnValidSubmit="SavePolicyAsync" OnInvalidSubmit="InvalidPolicy" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                             <input type="hidden" name="PolicyInput.SourceId" value="@PolicyInput.SourceId" /><InputHidden @bind-Value="PolicyInput.Version" />
-                            <label><InputCheckbox @bind-Value="PolicyInput.Enabled" /> @(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? "啟用此檢查" : "啟用自動更新")</label>
+                            <label><InputCheckbox @bind-Value="PolicyInput.Enabled" /> @(selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal) ? L["啟用此檢查"].Value : L["啟用自動更新"].Value)</label>
                             @if (selected.Key == "signature-base")
                             {
-                                <label><InputCheckbox @bind-Value="PolicyInput.IocDetectionEnabled" /> 比對主機事件中的 IOC</label>
-                                <small>命中僅供調查，不會自動隔離主機。</small>
+                                <label><InputCheckbox @bind-Value="PolicyInput.IocDetectionEnabled" /> @L["比對主機事件中的 IOC"]</label>
+                                <small>@L["命中僅供調查，不會自動隔離主機。"]</small>
                             }
                             <div hidden="@selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal)">
-                            <label for="interval">更新間隔（秒）</label><InputNumber id="interval" @bind-Value="PolicyInput.Interval" /><small>例如：3,600 秒是 1 小時。</small>
-                            <label for="stale">資料過期期限（秒）</label><InputNumber id="stale" @bind-Value="PolicyInput.Stale" /><small>例如：86,400 秒是 1 天。</small>
-                            <label for="mib">匯入容量上限（MiB）</label><InputNumber id="mib" step="any" @bind-Value="PolicyInput.MiB" />
-                            <label for="records">紀錄數上限</label><InputNumber id="records" @bind-Value="PolicyInput.Records" />
+                            <label for="interval">@L["更新間隔（秒）"]</label><InputNumber id="interval" @bind-Value="PolicyInput.Interval" /><small>@L["例如：3,600 秒是 1 小時。"]</small>
+                            <label for="stale">@L["資料過期期限（秒）"]</label><InputNumber id="stale" @bind-Value="PolicyInput.Stale" /><small>@L["例如：86,400 秒是 1 天。"]</small>
+                            <label for="mib">@L["匯入容量上限（MiB）"]</label><InputNumber id="mib" step="any" @bind-Value="PolicyInput.MiB" />
+                            <label for="records">@L["紀錄數上限"]</label><InputNumber id="records" @bind-Value="PolicyInput.Records" />
                             </div>
-                            <div><button type="submit">儲存設定</button></div>
+                            <div><button type="submit">@L["儲存設定"]</button></div>
                         </EditForm>
                         @if (selected.Key == "github-reviewed")
                         {
-                            <details><summary>GitHub 來源憑證</summary>
-                                <p>@(selected.HasCredential ? "已設定憑證；內容不會顯示。" : "尚未設定憑證，可使用未登入的來源額度。")</p>
+                            <details><summary>@L["GitHub 來源憑證"]</summary>
+                                <p>@(selected.HasCredential ? L["已設定憑證；內容不會顯示。"].Value : L["尚未設定憑證，可使用未登入的來源額度。"].Value)</p>
                                 <EditForm Model="CredentialInput" FormName="intelligence-credential" method="post" OnValidSubmit="SaveCredentialAsync" OnInvalidSubmit="InvalidCredential" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                                     <input type="hidden" name="CredentialInput.SourceId" value="@CredentialInput.SourceId" /><InputHidden @bind-Value="CredentialInput.Version" />
-                                    <label for="credential">新憑證</label><InputText id="credential" type="password" autocomplete="new-password" @bind-Value="CredentialInput.Value" />
-                                    <label><InputCheckbox @bind-Value="CredentialInput.Clear" /> 清除現有憑證</label>
-                                    <div><button type="submit">儲存憑證設定</button></div>
+                                    <label for="credential">@L["新憑證"]</label><InputText id="credential" type="password" autocomplete="new-password" @bind-Value="CredentialInput.Value" />
+                                    <label><InputCheckbox @bind-Value="CredentialInput.Clear" /> @L["清除現有憑證"]</label>
+                                    <div><button type="submit">@L["儲存憑證設定"]</button></div>
                                 </EditForm>
                             </details>
                         }

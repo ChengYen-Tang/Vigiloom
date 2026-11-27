@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="情報來源 - Vigiloom" xml:space="preserve"><value>Intelligence sources - Vigiloom</value></data>
+  <data name="情報來源" xml:space="preserve"><value>Intelligence sources</value></data>
+  <data name="管理來源更新、查看涵蓋範圍與版本。情報資料不代表設備已受影響或安全。" xml:space="preserve"><value>Manage source updates, coverage and versions. Intelligence alone does not establish whether a device is affected or safe.</value></data>
+  <data name="建立自訂安全基準" xml:space="preserve"><value>Create a custom security baseline</value></data>
+  <data name="情報類型與目前範圍" xml:space="preserve"><value>Intelligence types and current coverage</value></data>
+  <data name="漏洞與套件公告：提供 CISA KEV 與 GitHub 已審核公告來源；不涵蓋所有漏洞。" xml:space="preserve"><value>Vulnerabilities and package advisories: CISA KEV and GitHub reviewed advisories; not all vulnerabilities are covered.</value></data>
+  <data name="行為規則：保存 Sigma 原始規則；支援的規則可在" xml:space="preserve"><value>Behavior rules: stores original Sigma rules. Supported rules can be tested and enabled in </value></data>
+  <data name="行為規則" xml:space="preserve"><value>Behavior rules</value></data>
+  <data name="試跑及啟用。" xml:space="preserve"><value>.</value></data>
+  <data name="IOC／YARA：保存來源檔案與 IOC 分類；IOC 偵測需由管理員啟用。" xml:space="preserve"><value>IOC/YARA: stores source files and IOC classifications. An administrator must enable IOC detection.</value></data>
+  <data name="安全設定基準（SCA）：提供兩個已審查的唯讀來源檢查；啟用來源後，可在支援的主機查看檢查結果。" xml:space="preserve"><value>Security configuration assessment (SCA): provides two reviewed read-only source checks. After enabling a source, results can be viewed on supported hosts.</value></data>
+  <data name="各來源是否啟用、資料是否過期，請查看下方狀態。" xml:space="preserve"><value>See the status below for enabled sources and stale data.</value></data>
+  <data name="尚無來源資料。背景工作啟動後會建立已支援的來源。" xml:space="preserve"><value>No sources yet. Supported sources are created when background work starts.</value></data>
+  <data name="情報來源分頁" xml:space="preserve"><value>Intelligence source pages</value></data>
+  <data name="上一頁" xml:space="preserve"><value>Previous</value></data>
+  <data name="下一頁" xml:space="preserve"><value>Next</value></data>
+  <data name="類別：" xml:space="preserve"><value>Category: </value></data>
+  <data name="適用平台與範圍：" xml:space="preserve"><value>Platforms and coverage: </value></data>
+  <data name="來源：" xml:space="preserve"><value>Source: </value></data>
+  <data name="Vigiloom 自訂檢查" xml:space="preserve"><value>Vigiloom custom check</value></data>
+  <data name="官方資料來源" xml:space="preserve"><value>Official source</value></data>
+  <data name="查看來源授權依據" xml:space="preserve"><value>View source license evidence</value></data>
+  <data name="無法辨識此來源，無法確認資料範圍或授權。" xml:space="preserve"><value>Unrecognized source; coverage and licensing cannot be verified.</value></data>
+  <data name="狀態：" xml:space="preserve"><value>Status: </value></data>
+  <data name="啟用來源後，符合條件的新版本會自動選用；手動回復的版本會保留到上游發布新版本。" xml:space="preserve"><value>After enabling the source, eligible new versions are selected automatically. A manually restored version remains selected until the upstream publishes a new version.</value></data>
+  <data name="目前選用的版本不是最近確認的上游資料；設備漏洞結果將標示為過期。需要時可選用最近取得的版本。" xml:space="preserve"><value>The selected version is not the latest confirmed upstream data; device vulnerability results will be marked stale. Select the latest retrieved version if needed.</value></data>
+  <data name="最近儲存草稿（UTC）" xml:space="preserve"><value>Last saved draft (UTC)</value></data>
+  <data name="最後成功更新（UTC）" xml:space="preserve"><value>Last successful update (UTC)</value></data>
+  <data name="最近更新失敗：" xml:space="preserve"><value>Latest update failed: </value></data>
+  <data name="公告匯入：{0}；已讀取 {1} 筆、{2} 頁。" xml:space="preserve"><value>Advisory import: {0}; read {1} records across {2} pages.</value></data>
+  <data name="匯入未完成：" xml:space="preserve"><value>Import incomplete: </value></data>
+  <data name="下次可重試時間（UTC）：" xml:space="preserve"><value>Next retry time (UTC): </value></data>
+  <data name="放棄失敗的匯入並重新排程" xml:space="preserve"><value>Abandon failed import and reschedule</value></data>
+  <data name="更新設定" xml:space="preserve"><value>Update settings</value></data>
+  <data name="啟用此檢查" xml:space="preserve"><value>Enable this check</value></data>
+  <data name="啟用自動更新" xml:space="preserve"><value>Enable automatic updates</value></data>
+  <data name="比對主機事件中的 IOC" xml:space="preserve"><value>Match IOCs in host events</value></data>
+  <data name="命中僅供調查，不會自動隔離主機。" xml:space="preserve"><value>Matches are for investigation only and do not automatically isolate hosts.</value></data>
+  <data name="更新間隔（秒）" xml:space="preserve"><value>Update interval (seconds)</value></data>
+  <data name="例如：3,600 秒是 1 小時。" xml:space="preserve"><value>For example, 3,600 seconds is one hour.</value></data>
+  <data name="資料過期期限（秒）" xml:space="preserve"><value>Data stale interval (seconds)</value></data>
+  <data name="例如：86,400 秒是 1 天。" xml:space="preserve"><value>For example, 86,400 seconds is one day.</value></data>
+  <data name="匯入容量上限（MiB）" xml:space="preserve"><value>Import size limit (MiB)</value></data>
+  <data name="紀錄數上限" xml:space="preserve"><value>Record limit</value></data>
+  <data name="儲存設定" xml:space="preserve"><value>Save settings</value></data>
+  <data name="GitHub 來源憑證" xml:space="preserve"><value>GitHub source credential</value></data>
+  <data name="已設定憑證；內容不會顯示。" xml:space="preserve"><value>Credential is configured; its value is hidden.</value></data>
+  <data name="尚未設定憑證，可使用未登入的來源額度。" xml:space="preserve"><value>No credential configured; unauthenticated source limits apply.</value></data>
+  <data name="新憑證" xml:space="preserve"><value>New credential</value></data>
+  <data name="清除現有憑證" xml:space="preserve"><value>Clear existing credential</value></data>
+  <data name="儲存憑證設定" xml:space="preserve"><value>Save credential settings</value></data>
+  <data name="已停用" xml:space="preserve"><value>Disabled</value></data>
+  <data name="目前版本不可使用" xml:space="preserve"><value>Current version unavailable</value></data>
+  <data name="選用的版本不是最新確認資料" xml:space="preserve"><value>Selected version is not the latest confirmed data</value></data>
+  <data name="資料已過期或尚未更新" xml:space="preserve"><value>Data is stale or not yet updated</value></data>
+  <data name="更新失敗" xml:space="preserve"><value>Update failed</value></data>
+  <data name="已匯入供檢視" xml:space="preserve"><value>Imported for viewing</value></data>
+  <data name="尚未啟用版本" xml:space="preserve"><value>No version enabled</value></data>
+  <data name="已選用來源版本" xml:space="preserve"><value>Source version selected</value></data>
+  <data name="尚未開始" xml:space="preserve"><value>Not started</value></data>
+  <data name="匯入中" xml:space="preserve"><value>Importing</value></data>
+  <data name="驗證中" xml:space="preserve"><value>Validating</value></data>
+  <data name="資料不一致" xml:space="preserve"><value>Data inconsistent</value></data>
+  <data name="失敗" xml:space="preserve"><value>Failed</value></data>
+  <data name="等待來源額度" xml:space="preserve"><value>Waiting for source quota</value></data>
+  <data name="等待啟用" xml:space="preserve"><value>Awaiting activation</value></data>
+  <data name="已啟用" xml:space="preserve"><value>Enabled</value></data>
+  <data name="版本不可使用" xml:space="preserve"><value>Version unavailable</value></data>
+  <data name="候選版本已過期" xml:space="preserve"><value>Candidate version is stale</value></data>
+  <data name="已停止" xml:space="preserve"><value>Stopped</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>No data</value></data>
+</root>
