@@ -75,4 +75,76 @@
   <data name="候選版本已過期" xml:space="preserve"><value>候选版本已过期</value></data>
   <data name="已停止" xml:space="preserve"><value>已停止</value></data>
   <data name="尚無資料" xml:space="preserve"><value>尚无数据</value></data>
+  <data name="找不到此頁的情報來源，請重新選擇。" xml:space="preserve"><value>找不到此页的情报来源，请重新选择。</value></data>
+  <data name="找不到所選的規則版本，請重新選擇。" xml:space="preserve"><value>找不到所选规则版本，请重新选择。</value></data>
+  <data name="找不到所選的來源版本，請重新選擇。" xml:space="preserve"><value>找不到所选来源版本，请重新选择。</value></data>
+  <data name="找不到所選的 IOC 來源檔案，請重新選擇。" xml:space="preserve"><value>找不到所选 IOC 来源文件，请重新选择。</value></data>
+  <data name="找不到所選的授權來源檔案，請重新選擇。" xml:space="preserve"><value>找不到所选授权来源文件，请重新选择。</value></data>
+  <data name="無法讀取情報來源，請稍後重新整理。" xml:space="preserve"><value>无法读取情报来源，请稍后刷新。</value></data>
+  <data name="設定格式無效，請確認輸入後再試。" xml:space="preserve"><value>设置格式无效，请确认输入后重试。</value></data>
+  <data name="憑證設定格式無效，請重新輸入。" xml:space="preserve"><value>凭证设置格式无效，请重新输入。</value></data>
+  <data name="設定超出允許範圍，請檢查數值。" xml:space="preserve"><value>设置超出允许范围，请检查数值。</value></data>
+  <data name="設定已儲存。" xml:space="preserve"><value>设置已保存。</value></data>
+  <data name="容量或筆數超出此來源允許的上限。" xml:space="preserve"><value>容量或条数超出此来源允许的上限。</value></data>
+  <data name="來源已變更或不存在，請重新整理。" xml:space="preserve"><value>来源已更改或不存在，请刷新页面。</value></data>
+  <data name="版本資料格式無效，請重新選擇。" xml:space="preserve"><value>版本数据格式无效，请重新选择。</value></data>
+  <data name="請選擇要啟用的版本。" xml:space="preserve"><value>请选择要启用的版本。</value></data>
+  <data name="已選用來源版本。" xml:space="preserve"><value>已选用来源版本。</value></data>
+  <data name="版本已啟用。" xml:space="preserve"><value>版本已启用。</value></data>
+  <data name="此版本的紀錄數大幅減少；請確認後再選用。" xml:space="preserve"><value>此版本的记录数大幅减少；请确认后再选用。</value></data>
+  <data name="請確認離線檔案來源及使用條件後再啟用。" xml:space="preserve"><value>请确认离线文件来源及使用条件后再启用。</value></data>
+  <data name="版本或來源目前無法使用，請檢查授權、資料狀態與撤回紀錄。" xml:space="preserve"><value>版本或来源目前无法使用，请检查授权、数据状态与撤销记录。</value></data>
+  <data name="版本已變更或不存在，請重新整理。" xml:space="preserve"><value>版本已更改或不存在，请刷新页面。</value></data>
+  <data name="請輸入有效憑證，或勾選清除憑證。" xml:space="preserve"><value>请输入有效凭证，或勾选清除凭证。</value></data>
+  <data name="憑證設定已儲存。" xml:space="preserve"><value>凭证设置已保存。</value></data>
+  <data name="請選擇版本並確認撤銷。" xml:space="preserve"><value>请选择版本并确认撤销。</value></data>
+  <data name="版本已撤銷。" xml:space="preserve"><value>版本已撤销。</value></data>
+  <data name="找不到所選版本。" xml:space="preserve"><value>找不到所选版本。</value></data>
+  <data name="匯入資料格式無效，請重新整理。" xml:space="preserve"><value>导入数据格式无效，请刷新页面。</value></data>
+  <data name="已放棄失敗匯入，背景工作將依排程重試。" xml:space="preserve"><value>已放弃失败导入，后台工作将按计划重试。</value></data>
+  <data name="匯入狀態已變更，請重新整理。" xml:space="preserve"><value>导入状态已更改，请刷新页面。</value></data>
+  <data name="無法確認操作結果，請重新整理後檢查。" xml:space="preserve"><value>无法确认操作结果，请刷新后检查。</value></data>
+  <data name="雜湊格式無效" xml:space="preserve"><value>哈希格式无效</value></data>
+  <data name="網域或 IP 格式無效" xml:space="preserve"><value>域名或 IP 格式无效</value></data>
+  <data name="IP 格式不明確" xml:space="preserve"><value>IP 格式不明确</value></data>
+  <data name="尚不支援檔名規則" xml:space="preserve"><value>尚不支持文件名规则</value></data>
+  <data name="尚不支援此來源格式" xml:space="preserve"><value>尚不支持此来源格式</value></data>
+  <data name="內容超過長度限制" xml:space="preserve"><value>内容超过长度限制</value></data>
+  <data name="原因未明" xml:space="preserve"><value>原因不明</value></data>
+  <data name="CISA 已知遭利用的漏洞；不包含所有漏洞，也無法單獨判定設備是否受影響。" xml:space="preserve"><value>CISA 已知遭利用的漏洞；不包含所有漏洞，也无法单独判定设备是否受影响。</value></data>
+  <data name="GitHub 已審核的套件安全公告；不包含未審核或惡意軟體公告，不能單獨判定設備是否受影響。" xml:space="preserve"><value>GitHub 已审核的软件包安全公告；不包含未审核或恶意软件公告，不能单独判定设备是否受影响。</value></data>
+  <data name="Debian 各發行版本的來源套件漏洞狀態；實際設備是否受影響需結合盤點資料判斷。" xml:space="preserve"><value>Debian 各发行版本的来源软件包漏洞状态；实际设备是否受影响需结合盘点数据判断。</value></data>
+  <data name="Canonical Ubuntu 漏洞資料；設備是否受影響需結合發行版本與套件盤點判斷。" xml:space="preserve"><value>Canonical Ubuntu 漏洞数据；设备是否受影响需结合发行版本与软件包盘点判断。</value></data>
+  <data name="保存 SigmaHQ 行為規則；支援的規則可試跑後啟用，不代表所有規則或設備均已涵蓋。" xml:space="preserve"><value>保存 SigmaHQ 行为规则；支持的规则可试跑后启用，不代表所有规则或设备均已涵盖。</value></data>
+  <data name="保存 IOC 與 YARA 原始檔案；IOC 來源可依條件選用，YARA 規則授權與相容性仍待核對。" xml:space="preserve"><value>保存 IOC 与 YARA 原始文件；IOC 来源可依条件选用，YARA 规则授权与兼容性仍待核对。</value></data>
+  <data name="無法確認來源涵蓋範圍。" xml:space="preserve"><value>无法确认来源覆盖范围。</value></data>
+  <data name="已知遭利用的漏洞" xml:space="preserve"><value>已知遭利用的漏洞</value></data>
+  <data name="開源套件安全公告" xml:space="preserve"><value>开源软件包安全公告</value></data>
+  <data name="發行版安全公告" xml:space="preserve"><value>发行版安全公告</value></data>
+  <data name="安全組態檢查" xml:space="preserve"><value>安全配置检查</value></data>
+  <data name="未知" xml:space="preserve"><value>未知</value></data>
+  <data name="涵蓋多種平台與產品；是否受影響需依產品及版本另行判斷。" xml:space="preserve"><value>涵盖多种平台与产品；是否受影响需依产品及版本另行判断。</value></data>
+  <data name="各公告所列的開源套件生態系；是否影響設備尚未在此判斷。" xml:space="preserve"><value>各公告所列的开源软件包生态系；是否影响设备尚未在此判断。</value></data>
+  <data name="所選情報版本涵蓋的 Debian 發行版本。" xml:space="preserve"><value>所选情报版本涵盖的 Debian 发行版本。</value></data>
+  <data name="所選情報版本涵蓋的 Ubuntu 發行版本。" xml:space="preserve"><value>所选情报版本涵盖的 Ubuntu 发行版本。</value></data>
+  <data name="依各規則的平台與事件來源而異；實際可用性取決於規則支援與設備已收集的資料。" xml:space="preserve"><value>依各规则的平台与事件来源而异；实际可用性取决于规则支持与设备已收集的数据。</value></data>
+  <data name="依各檔案與規則的平台和相依條件而異；消費端相容性尚未驗證。" xml:space="preserve"><value>依各文件与规则的平台和依赖条件而异；消费端兼容性尚未验证。</value></data>
+  <data name="匯入完成，請確認來源及版本資訊後再選擇使用。" xml:space="preserve"><value>导入完成，请确认来源及版本信息后再选择使用。</value></data>
+  <data name="檔案格式不正確、超出限制或內容已被撤銷。" xml:space="preserve"><value>文件格式不正确、超出限制或内容已被撤销。</value></data>
+  <data name="來源已停用或不存在，無法匯入。" xml:space="preserve"><value>来源已停用或不存在，无法导入。</value></data>
+  <data name="來源正在更新或設定已變更，請稍後再試。" xml:space="preserve"><value>来源正在更新或设置已更改，请稍后重试。</value></data>
+  <data name="匯入失敗，請稍後再試。" xml:space="preserve"><value>导入失败，请稍后重试。</value></data>
+  <data name="自動啟用尚未完成；若下載也失敗，系統會一併重試。" xml:space="preserve"><value>自动启用尚未完成；若下载也失败，系统会一并重试。</value></data>
+  <data name="無法取得來源資料。" xml:space="preserve"><value>无法取得来源数据。</value></data>
+  <data name="取得來源資料逾時。" xml:space="preserve"><value>取得来源数据超时。</value></data>
+  <data name="來源資料未通過驗證。" xml:space="preserve"><value>来源数据未通过验证。</value></data>
+  <data name="來源授權檔遺失或已變更，必須重新確認授權。" xml:space="preserve"><value>来源授权文件遗失或已更改，必须重新确认授权。</value></data>
+  <data name="取得的版本已撤銷或不完整。" xml:space="preserve"><value>取得的版本已撤销或不完整。</value></data>
+  <data name="更新未完成，請檢查來源狀態。" xml:space="preserve"><value>更新未完成，请检查来源状态。</value></data>
+  <data name="來源資料不一致或未通過驗證。" xml:space="preserve"><value>来源数据不一致或未通过验证。</value></data>
+  <data name="來源分頁失效。" xml:space="preserve"><value>来源分页失效。</value></data>
+  <data name="資料超過設定的容量或筆數上限。" xml:space="preserve"><value>数据超过设置的容量或条数上限。</value></data>
+  <data name="目前基礎版本不可使用。" xml:space="preserve"><value>当前基础版本不可使用。</value></data>
+  <data name="無法讀取來源憑證，請重新設定。" xml:space="preserve"><value>无法读取来源凭证，请重新设置。</value></data>
+  <data name="無法完成匯入。" xml:space="preserve"><value>无法完成导入。</value></data>
 </root>
