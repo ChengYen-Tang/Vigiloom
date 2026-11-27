@@ -23,4 +23,20 @@
   <data name="目前的帳號沒有執行此操作的權限。" xml:space="preserve"><value>当前账号没有执行此操作的权限。</value></data>
   <data name="沒有權限或登入已過期。" xml:space="preserve"><value>没有权限或登录已过期。</value></data>
   <data name="前往登入" xml:space="preserve"><value>前往登录</value></data>
+  <data name="雙重驗證設定 - Vigiloom" xml:space="preserve"><value>双重验证设置 - Vigiloom</value></data>
+  <data name="雙重驗證" xml:space="preserve"><value>双重验证</value></data>
+  <data name="使用驗證器 App 為帳號增加一層保護。" xml:space="preserve"><value>使用验证器 App 为账号增加一层保护。</value></data>
+  <data name="保存復原碼" xml:space="preserve"><value>保存恢复码</value></data>
+  <data name="每個復原碼僅能使用一次。請妥善保存；離開後無法再次查看。" xml:space="preserve"><value>每个恢复码只能使用一次。请妥善保存；离开后无法再次查看。</value></data>
+  <data name="雙重驗證復原碼" xml:space="preserve"><value>双重验证恢复码</value></data>
+  <data name="設定驗證器" xml:space="preserve"><value>设置验证器</value></data>
+  <data name="使用驗證器 App 掃描 QR code，或手動輸入下方密鑰。" xml:space="preserve"><value>使用验证器 App 扫描 QR code，或手动输入下方密钥。</value></data>
+  <data name="驗證器設定 QR code" xml:space="preserve"><value>验证器设置 QR code</value></data>
+  <data name="驗證器代碼" xml:space="preserve"><value>验证器代码</value></data>
+  <data name="啟用雙重驗證" xml:space="preserve"><value>启用双重验证</value></data>
+  <data name="雙重驗證已啟用。" xml:space="preserve"><value>双重验证已启用。</value></data>
+  <data name="驗證器代碼或復原碼" xml:space="preserve"><value>验证器代码或恢复码</value></data>
+  <data name="停用雙重驗證" xml:space="preserve"><value>停用双重验证</value></data>
+  <data name="雙重驗證已停用。" xml:space="preserve"><value>双重验证已停用。</value></data>
+  <data name="無法完成操作，請確認密碼或驗證碼。" xml:space="preserve"><value>无法完成操作，请确认密码或验证码。</value></data>
 </root>

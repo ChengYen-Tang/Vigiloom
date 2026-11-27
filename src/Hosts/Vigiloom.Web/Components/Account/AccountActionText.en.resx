@@ -23,4 +23,20 @@
   <data name="目前的帳號沒有執行此操作的權限。" xml:space="preserve"><value>The current account does not have permission to perform this action.</value></data>
   <data name="沒有權限或登入已過期。" xml:space="preserve"><value>Access denied or your session has expired. </value></data>
   <data name="前往登入" xml:space="preserve"><value>Sign in</value></data>
+  <data name="雙重驗證設定 - Vigiloom" xml:space="preserve"><value>Two-factor authentication settings - Vigiloom</value></data>
+  <data name="雙重驗證" xml:space="preserve"><value>Two-factor authentication</value></data>
+  <data name="使用驗證器 App 為帳號增加一層保護。" xml:space="preserve"><value>Add a layer of protection to your account using an authenticator app.</value></data>
+  <data name="保存復原碼" xml:space="preserve"><value>Save recovery codes</value></data>
+  <data name="每個復原碼僅能使用一次。請妥善保存；離開後無法再次查看。" xml:space="preserve"><value>Each recovery code can be used once. Store them safely; they cannot be viewed again after leaving.</value></data>
+  <data name="雙重驗證復原碼" xml:space="preserve"><value>Two-factor recovery codes</value></data>
+  <data name="設定驗證器" xml:space="preserve"><value>Set up authenticator</value></data>
+  <data name="使用驗證器 App 掃描 QR code，或手動輸入下方密鑰。" xml:space="preserve"><value>Scan the QR code with an authenticator app or enter the key below manually.</value></data>
+  <data name="驗證器設定 QR code" xml:space="preserve"><value>Authenticator setup QR code</value></data>
+  <data name="驗證器代碼" xml:space="preserve"><value>Authenticator code</value></data>
+  <data name="啟用雙重驗證" xml:space="preserve"><value>Enable two-factor authentication</value></data>
+  <data name="雙重驗證已啟用。" xml:space="preserve"><value>Two-factor authentication is enabled.</value></data>
+  <data name="驗證器代碼或復原碼" xml:space="preserve"><value>Authenticator code or recovery code</value></data>
+  <data name="停用雙重驗證" xml:space="preserve"><value>Disable two-factor authentication</value></data>
+  <data name="雙重驗證已停用。" xml:space="preserve"><value>Two-factor authentication is disabled.</value></data>
+  <data name="無法完成操作，請確認密碼或驗證碼。" xml:space="preserve"><value>Unable to complete the operation. Check the password or verification code.</value></data>
 </root>
