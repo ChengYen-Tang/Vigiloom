@@ -124,7 +124,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             using var gateway = new WebApplicationFactory<GatewayHost::Program>().WithWebHostBuilder(web => web.ConfigureAppConfiguration((_, config) =>
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["Vigiloom:Gateway:SecurityCutover"] = "true", ["Vigiloom:Gateway:AgentIdentityAddress"] = identityService.Urls.Single(),
+                    ["Vigiloom:Gateway:AgentIdentityAddress"] = identityService.Urls.Single(),
                     ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = hostClient.BaseAddress!.ToString()
                 })));
             using var client = gateway.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });

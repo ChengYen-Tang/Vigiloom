@@ -60,7 +60,6 @@ builder.Services.AddSingleton<AgentTransportLimits>();
 builder.Services.ConfigureHttpClientDefaults(client => client.AddServiceDiscovery());
 builder.Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
-    .AddConfigFilter<AgentSecurityRoutes>()
     .AddServiceDiscoveryDestinationResolver();
 
 var app = builder.Build();
@@ -97,13 +96,12 @@ app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/he
     context.Request.Path.StartsWithSegments("/api/v1/agent/queue-capacity") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/metric-settings") ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/log-settings") ||
-    builder.Configuration.GetValue("Vigiloom:Gateway:SecurityCutover", false) && (
-        context.Request.Path.StartsWithSegments("/api/v1/agent/inventory-settings") ||
-        context.Request.Path.StartsWithSegments("/api/v1/agent/inventory/status") ||
-        context.Request.Path.StartsWithSegments("/api/v1/agent/integrity-settings") ||
-        context.Request.Path.StartsWithSegments("/api/v1/agent/integrity-status") ||
-        context.Request.Path.StartsWithSegments("/api/v1/agent/baseline-settings") ||
-        context.Request.Path.StartsWithSegments("/api/v1/agent/yara-scans")),
+    context.Request.Path.StartsWithSegments("/api/v1/agent/inventory-settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/inventory/status") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/integrity-settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/integrity-status") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/baseline-settings") ||
+    context.Request.Path.StartsWithSegments("/api/v1/agent/yara-scans"),
     agent => agent.Use(async (context, next) => await context.RequestServices.GetRequiredService<AgentTransportLimits>().InvokeAsync(context, next)));
 app.UseAuthorization();
 app.MapReverseProxy();
