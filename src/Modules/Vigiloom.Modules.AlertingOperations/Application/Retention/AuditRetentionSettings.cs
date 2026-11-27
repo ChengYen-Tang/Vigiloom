@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Vigiloom.BuildingBlocks.Operations;
 using Vigiloom.Contracts.Operations;
+using Vigiloom.Infrastructure.Operations;
 using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 
@@ -16,7 +17,8 @@ public sealed class AuditRetentionSettings(
     IOperationAuditWriter<OperationAudit> audit,
     IDataProtectionProvider protection,
     IEnumerable<IAuditRetentionSource> sources,
-    IEnumerable<IBackgroundHistorySource>? backgroundSources = null)
+    IEnumerable<IBackgroundHistorySource>? backgroundSources = null,
+    RemotePlatformAuditRetention? legacyPlatform = null)
 {
     private readonly IDataProtector protector = protection.CreateProtector("Vigiloom.AuditRetention.Preview.v1");
 
@@ -51,7 +53,16 @@ public sealed class AuditRetentionSettings(
             count = checked(count + await source.CountAsync(db.Database.GetDbConnection(), tx.GetDbTransaction(), now.AddDays(-input.Days), token));
         var (episodes, notifications) = await AlertRetention.CountAsync(db, now.AddDays(-input.Days), token);
         var jobs = await BackgroundHistoryRetention.CountAsync(db, now.AddDays(-input.Days), token);
-        var coveredDatabases = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { await BackgroundHistoryRetention.DatabaseAsync(db, token) };
+        var currentDatabase = await BackgroundHistoryRetention.DatabaseAsync(db, token);
+        if (legacyPlatform is not null)
+        {
+            var legacy = await legacyPlatform.CountOperationsAsync(now.AddDays(-input.Days), currentDatabase, token);
+            count = checked(count + legacy.AuditRecords);
+            episodes = checked(episodes + legacy.AlertEpisodes);
+            notifications = checked(notifications + legacy.Notifications);
+            jobs = checked(jobs + legacy.BackgroundJobs);
+        }
+        var coveredDatabases = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { currentDatabase };
         foreach (var source in backgroundSources ?? [])
         {
             var result = await source.CountAsync(now.AddDays(-input.Days), coveredDatabases, token);

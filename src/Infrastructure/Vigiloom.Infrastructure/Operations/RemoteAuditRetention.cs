@@ -7,13 +7,13 @@ namespace Vigiloom.Infrastructure.Operations;
 
 public abstract class RemoteAuditRetention(HttpClient client, string path) : IAuditRetentionSource
 {
-    public Task<long> CountAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, CancellationToken token) =>
+    public virtual Task<long> CountAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, CancellationToken token) =>
         SendAsync<long>("count", new(cutoff), token);
 
-    public Task<int> DeleteBatchAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, int batchSize, CancellationToken token) =>
+    public virtual Task<int> DeleteBatchAsync(DbConnection connection, DbTransaction transaction, DateTimeOffset cutoff, int batchSize, CancellationToken token) =>
         SendAsync<int>("delete", new(cutoff, batchSize), token);
 
-    private async Task<T> SendAsync<T>(string action, AuditRetentionRequest request, CancellationToken token)
+    protected async Task<T> SendAsync<T>(string action, AuditRetentionRequest request, CancellationToken token)
     {
         using var response = await client.PostAsJsonAsync(path + action, request, token);
         response.EnsureSuccessStatusCode();

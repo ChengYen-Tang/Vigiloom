@@ -30,7 +30,7 @@ public sealed class ScheduleRetirementTests(TestContext context)
             var storage = new SqlServerStorage(database.ConnectionString, SchedulingRegistration.StorageOptions(prepareSchema: false));
             var recurring = new RecurringJobManager(storage);
             string[] oldHost = ["vigiloom-host-metric-rollup", "vigiloom-host-metric-retention", "vigiloom-agent-inbox-retention"];
-            string[] oldOperations = ["vigiloom-line-delivery", "vigiloom-agent-package-refresh"];
+            string[] oldOperations = ["vigiloom-line-delivery", "vigiloom-agent-package-refresh", "vigiloom-settings-audit-retention"];
             foreach (var id in oldHost.Concat(oldOperations))
                 recurring.AddOrUpdate(id, Job.FromExpression(() => Probe()), Cron.Hourly(), new RecurringJobOptions());
 
@@ -57,6 +57,7 @@ public sealed class ScheduleRetirementTests(TestContext context)
     {
         web.UseSetting("Hangfire:Enabled", "true");
         web.UseSetting("Temporal:Enabled", "false");
+        web.UseSetting("Services:Web:Url", "http://web");
         web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
         { ["ConnectionStrings:Scheduling"] = connectionString, [$"ConnectionStrings:{service}"] = connectionString }));
         web.ConfigureTestServices(services =>

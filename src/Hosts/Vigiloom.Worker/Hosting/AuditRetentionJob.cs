@@ -10,6 +10,8 @@ public sealed class AuditRetentionJob(AuditRetentionCleanup cleanup, FailedJobRe
     [DisableConcurrentExecution(10)]
     public async Task RunAsync(CancellationToken token)
     {
+        if (!string.IsNullOrWhiteSpace(configuration["Services:Operations:Url"]) &&
+            !string.IsNullOrWhiteSpace(configuration["Services:Web:Url"])) return;
         var removed = await cleanup.RunAsync(token);
         logger.LogInformation("Audit, alert and background history retention removed {Count} records", removed);
         if (string.IsNullOrWhiteSpace(configuration["Services:Operations:Url"]))

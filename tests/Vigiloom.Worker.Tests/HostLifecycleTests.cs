@@ -107,6 +107,16 @@ public sealed class HostLifecycleTests(TestContext testContext)
     }
 
     [TestMethod]
+    public void PlatformAuditScheduleMovesOnlyWhenBothServicesAreConfigured()
+    {
+        static bool HasSchedule(params string[] args) => WorkerHost.CreateBuilder(args).Services.Any(service =>
+            service.ServiceType == typeof(IHostedService) && service.ImplementationType?.Name == "AuditRetentionSchedule");
+        Assert.IsTrue(HasSchedule("--Services:Operations:Url=", "--Services:Web:Url="));
+        Assert.IsTrue(HasSchedule("--Services:Operations:Url=http://operations", "--Services:Web:Url="));
+        Assert.IsFalse(HasSchedule("--Services:Operations:Url=http://operations", "--Services:Web:Url=http://web"));
+    }
+
+    [TestMethod]
     public void IdentityRetentionMovesOnlyWhenBothServicesAreConfigured()
     {
         static int CountSources(params string[] args) => WorkerHost.CreateBuilder(args).Services.Count(item => item.ServiceType == typeof(IAuditRetentionSource));

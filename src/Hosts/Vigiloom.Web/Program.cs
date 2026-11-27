@@ -113,6 +113,7 @@ builder.Services.AddScoped<IAuditRetentionSource, DashboardAuditRetention>();
 builder.Services.AddScoped<DashboardAuditRetention>();
 builder.Services.AddScoped<AgentAuditRetention>();
 builder.Services.AddScoped<SecurityAuditRetention>();
+builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Retention.LegacyOperationsRetention>();
 builder.Services.AddScoped<Vigiloom.Web.Diagnostics.LegacyPlatformAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, AgentAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, SecurityAuditRetention>();
@@ -866,6 +867,8 @@ app.MapPost("/internal/v1/legacy-host-logs/cleanup", async (Vigiloom.Contracts.O
     input.RetentionDays is < 1 or > 3650 ? Results.BadRequest() : Results.Ok(await cleanup.RunAsync(input.RetentionDays, token)));
 app.MapPost("/internal/v1/legacy-platform-audit/retention/count", async (AuditRetentionRequest request, Vigiloom.Web.Diagnostics.LegacyPlatformAuditRetention retention, CancellationToken token) =>
     request.Cutoff.Offset != TimeSpan.Zero ? Results.BadRequest() : Results.Ok(await retention.CountAsync(request, token)));
+app.MapPost("/internal/v1/legacy-platform-audit/retention/operations-count", async (AuditRetentionRequest request, Vigiloom.Web.Diagnostics.LegacyPlatformAuditRetention retention, CancellationToken token) =>
+    request.Cutoff.Offset != TimeSpan.Zero ? Results.BadRequest() : Results.Ok(await retention.CountOperationsAsync(request, token)));
 app.MapPost("/internal/v1/legacy-platform-audit/retention/delete", async (AuditRetentionRequest request, Vigiloom.Web.Diagnostics.LegacyPlatformAuditRetention retention, CancellationToken token) =>
     request.Cutoff.Offset != TimeSpan.Zero || request.BatchSize is < 1 or > 500 ? Results.BadRequest() : Results.Ok(await retention.DeleteAsync(request, token)));
 app.MapServiceDetailsEndpoints();

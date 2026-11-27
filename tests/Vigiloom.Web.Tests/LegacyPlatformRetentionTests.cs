@@ -15,6 +15,7 @@ using Vigiloom.Infrastructure.Operations;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Modules.AlertingOperations.Application.Retention;
 using Vigiloom.Modules.AlertingOperations.Persistence;
+using Vigiloom.Modules.AlertingOperations.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
@@ -32,10 +33,15 @@ namespace Vigiloom.Web.Tests;
 public sealed class LegacyPlatformRetentionTests(TestContext context)
 {
     [TestMethod]
-    public Task OperationsPolicyCleansLegacyPlatformHistory() =>
-        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (platform, outerToken) =>
-        await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (operationsDb, token) =>
-        {
+    [DataRow(false)]
+    [DataRow(true)]
+    public Task OperationsPolicyCleansLegacyPlatformHistory(bool sameDatabase) =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), (platform, outerToken) =>
+            sameDatabase ? RunAsync(platform, platform, outerToken) :
+            SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), (operationsDb, token) => RunAsync(platform, operationsDb, token), outerToken), context.CancellationToken);
+
+    private static async Task RunAsync(SqlTestDatabase platform, SqlTestDatabase operationsDb, CancellationToken token)
+    {
             using var web = PingTestSite.CreateFactory(platform.ConnectionString);
             await using (var db = await web.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
             await using (var db = await web.Services.GetRequiredService<IDbContextFactory<AgentManagementDbContext>>().CreateDbContextAsync(token))
@@ -69,6 +75,17 @@ public sealed class LegacyPlatformRetentionTests(TestContext context)
                 var old = DateTimeOffset.UtcNow.AddDays(-40);
                 var recent = DateTimeOffset.UtcNow;
                 await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[DashboardAudit] ([ActorId], [OccurredAt], [Action], [Result]) VALUES ({auditActor}, {old}, '/jobs/delete', 'accepted'), ({auditActor}, {old}, '/jobs/delete', 'started'), ({auditActor}, {recent}, '/jobs/delete', 'accepted')", token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [scheduling].[Outbox] ([MessageId], [MessageType], [Payload], [CreatedAt], [AvailableAt], [State], [Attempts], [CompletedAt]) VALUES ({Guid.CreateVersion7()}, {"test.done"}, {"{}"}, {old}, {old}, {2}, {1}, {old}), ({Guid.CreateVersion7()}, {"test.pending"}, {"{}"}, {old}, {old}, {0}, {0}, {null})", token);
+            }
+            await using (var db = await web.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token))
+            {
+                await db.Database.MigrateAsync(token);
+                var old = DateTimeOffset.UtcNow.AddDays(-40);
+                db.Set<PingAlert>().AddRange(new PingAlert { DeviceId = Guid.CreateVersion7(), Target = "open", OpenedAt = old },
+                    new PingAlert { DeviceId = Guid.CreateVersion7(), Target = "closed", OpenedAt = old, RecoveredAt = old });
+                db.Set<Notification>().Add(new Notification { MessageId = Guid.CreateVersion7(), Source = "ping", Title = "Old", Detail = "", OccurredAt = old });
+                await db.SaveChangesAsync(token);
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO [operations].[AuditEvents] ([ActorId], [ResourceId], [OccurredAt], [Kind], [Details]) VALUES ({Guid.CreateVersion7()}, {Guid.CreateVersion7()}, {old}, {1}, {"{}"})", token);
             }
             using var operations = new WebApplicationFactory<OperationsHost::Program>().WithWebHostBuilder(host =>
             {
@@ -95,7 +112,10 @@ public sealed class LegacyPlatformRetentionTests(TestContext context)
             using var previewResponse = await client.PostAsJsonAsync("/internal/v1/history/retention/preview", new RetentionPreviewChange(actor, new(30, settings!.Version)), token);
             previewResponse.EnsureSuccessStatusCode();
             var preview = await previewResponse.Content.ReadFromJsonAsync<AuditRetentionPreview>(cancellationToken: token);
-            Assert.AreEqual(3L, preview!.AffectedRecords);
+            Assert.AreEqual(4L, preview!.AffectedRecords);
+            Assert.AreEqual(1L, preview.AlertEpisodes);
+            Assert.AreEqual(1L, preview.Notifications);
+            Assert.AreEqual(1L, preview.BackgroundJobs);
             using var updated = await client.PutAsJsonAsync("/internal/v1/history/retention", new RetentionChange(actor, new(30, settings.Version, preview.ConfirmationToken)), token);
             updated.EnsureSuccessStatusCode();
             await using (var scope = operations.Services.CreateAsyncScope()) await scope.ServiceProvider.GetRequiredService<AuditRetentionCleanup>().RunAsync(token);
@@ -106,5 +126,10 @@ public sealed class LegacyPlatformRetentionTests(TestContext context)
             Assert.AreEqual(0, await agentCheck.Set<AgentSettingAudit>().CountAsync(token));
             await using var securityCheck = await web.Services.GetRequiredService<IDbContextFactory<SecurityAnalysisDbContext>>().CreateDbContextAsync(token);
             Assert.AreEqual(0, await securityCheck.InventorySettingAudits.CountAsync(token));
-        }, outerToken), context.CancellationToken);
+            await using var oldOperations = await web.Services.GetRequiredService<IDbContextFactory<OperationsDbContext>>().CreateDbContextAsync(token);
+            Assert.AreEqual(1, await oldOperations.Set<PingAlert>().CountAsync(token));
+            Assert.AreEqual(0, await oldOperations.Set<Notification>().CountAsync(token));
+            Assert.AreEqual(0, await oldOperations.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [operations].[AuditEvents] WHERE [OccurredAt] < DATEADD(day, -30, SYSUTCDATETIME())").SingleAsync(token));
+            Assert.AreEqual(1, await oldOperations.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [scheduling].[Outbox] WHERE [State] = 0").SingleAsync(token));
+    }
 }
