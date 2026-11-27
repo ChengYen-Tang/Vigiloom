@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="開始日期（UTC）" xml:space="preserve"><value>开始日期（UTC）</value></data>
+  <data name="結束日期（UTC）" xml:space="preserve"><value>结束日期（UTC）</value></data>
+  <data name="搜尋目標或監測位置" xml:space="preserve"><value>搜索目标或监测位置</value></data>
+  <data name="目標與監測位置" xml:space="preserve"><value>目标与监测位置</value></data>
+  <data name="時間排序" xml:space="preserve"><value>时间排序</value></data>
+  <data name="最新優先" xml:space="preserve"><value>最新优先</value></data>
+  <data name="最舊優先" xml:space="preserve"><value>最旧优先</value></data>
+  <data name="查詢" xml:space="preserve"><value>查询</value></data>
+  <data name="日期以 UTC 計算，最多查詢七天；資料只代表選定目標與監測位置。" xml:space="preserve"><value>日期以 UTC 计算，最多查询七天；数据只代表选定目标与监测位置。</value></data>
+  <data name="請選擇有效日期；開始日期不可晚於結束日期，範圍最多七天。" xml:space="preserve"><value>请选择有效日期；开始日期不可晚于结束日期，范围最多七天。</value></data>
+  <data name="正在載入 Ping 歷史…" xml:space="preserve"><value>正在加载 Ping 历史…</value></data>
+  <data name="重新載入" xml:space="preserve"><value>重新加载</value></data>
+  <data name="目前設定保留原始樣本 {0} 天、五分鐘彙總 {1} 天。到期後依排程清理；尚未彙總的樣本可能保留較久。" xml:space="preserve"><value>当前设置保留原始样本 {0} 天、五分钟汇总 {1} 天。到期后按计划清理；尚未汇总的样本可能保留较久。</value></data>
+  <data name="目前結果：{0} 至 {1}（UTC，不含結束時間）；{2}。此範圍最後量測（UTC）：{3}。" xml:space="preserve"><value>当前结果：{0} 至 {1}（UTC，不含结束时间）；{2}。此范围最后量测（UTC）：{3}。</value></data>
+  <data name="尚無資料" xml:space="preserve"><value>尚无数据</value></data>
+  <data name="此範圍的目標與位置超過 100 組，請縮小日期範圍。" xml:space="preserve"><value>此范围的目标与位置超过 100 组，请缩小日期范围。</value></data>
+  <data name="舊資料仍在補算，趨勢可能尚不完整；原始紀錄仍可查看。" xml:space="preserve"><value>旧数据仍在补算，趋势可能尚不完整；原始记录仍可查看。</value></data>
+  <data name="部分歷史延遲無法安全加總，該時段平均值顯示為無資料。" xml:space="preserve"><value>部分历史延迟无法安全汇总，该时段平均值显示为无数据。</value></data>
+  <data name="五分鐘平均延遲趨勢" xml:space="preserve"><value>五分钟平均延迟趋势</value></data>
+  <data name="此範圍沒有已彙總的 Ping 資料。" xml:space="preserve"><value>此范围没有已汇总的 Ping 数据。</value></data>
+  <data name="Ping 延遲" xml:space="preserve"><value>Ping 延迟</value></data>
+  <data name="成功量測平均延遲" xml:space="preserve"><value>成功量测平均延迟</value></data>
+  <data name="成功量測最低延遲" xml:space="preserve"><value>成功量测最低延迟</value></data>
+  <data name="成功量測最高延遲" xml:space="preserve"><value>成功量测最高延迟</value></data>
+  <data name="明細為每次實際量測，趨勢以 UTC 每五分鐘彙總。只平均成功的量測；失敗或無資料不視為 0 ms。空白代表沒有可計算的延遲，請查看下方紀錄。" xml:space="preserve"><value>明细为每次实际量测，趋势以 UTC 每五分钟汇总。只平均成功的量测；失败或无数据不视为 0 ms。空白代表没有可计算的延迟，请查看下方记录。</value></data>
+  <data name="Ping 歷史明細" xml:space="preserve"><value>Ping 历史明细</value></data>
+  <data name="此頁沒有原始量測紀錄；資料可能尚未產生或已超過原始資料保存範圍。" xml:space="preserve"><value>此页没有原始量测记录；数据可能尚未产生或已超过原始数据保存范围。</value></data>
+  <data name="左右滑動查看完整表格。" xml:space="preserve"><value>左右滑动查看完整表格。</value></data>
+  <data name="Ping 歷史明細，可左右滑動" xml:space="preserve"><value>Ping 历史明细，可左右滑动</value></data>
+  <data name="時間（UTC）" xml:space="preserve"><value>时间（UTC）</value></data>
+  <data name="結果" xml:space="preserve"><value>结果</value></data>
+  <data name="延遲" xml:space="preserve"><value>延迟</value></data>
+  <data name="解析位址" xml:space="preserve"><value>解析地址</value></data>
+  <data name="上一頁" xml:space="preserve"><value>上一页</value></data>
+  <data name="下一頁" xml:space="preserve"><value>下一页</value></data>
+  <data name="第 {0} 頁，共 {1} 筆" xml:space="preserve"><value>第 {0} 页，共 {1} 条</value></data>
+  <data name="找不到設備或無法讀取 Ping 歷史。" xml:space="preserve"><value>找不到设备或无法读取 Ping 历史。</value></data>
+  <data name="登入已過期或權限已變更，請重新登入。" xml:space="preserve"><value>登录已过期或权限已更改，请重新登录。</value></data>
+  <data name="無法載入 Ping 歷史，請稍後再試。" xml:space="preserve"><value>无法加载 Ping 历史，请稍后重试。</value></data>
+  <data name="無資料" xml:space="preserve"><value>无数据</value></data>
+  <data name="補算中" xml:space="preserve"><value>补算中</value></data>
+  <data name="無法計算" xml:space="preserve"><value>无法计算</value></data>
+  <data name="無有效延遲" xml:space="preserve"><value>无有效延迟</value></data>
+  <data name="舊紀錄（目標未記錄）" xml:space="preserve"><value>旧记录（目标未记录）</value></data>
+  <data name="成功" xml:space="preserve"><value>成功</value></data>
+  <data name="逾時" xml:space="preserve"><value>超时</value></data>
+  <data name="無法抵達" xml:space="preserve"><value>无法抵达</value></data>
+  <data name="名稱解析失敗" xml:space="preserve"><value>名称解析失败</value></data>
+  <data name="量測權限不足" xml:space="preserve"><value>量测权限不足</value></data>
+  <data name="監測程序錯誤" xml:space="preserve"><value>监测程序错误</value></data>
+  <data name="失敗（原因未記錄）" xml:space="preserve"><value>失败（原因未记录）</value></data>
+</root>
