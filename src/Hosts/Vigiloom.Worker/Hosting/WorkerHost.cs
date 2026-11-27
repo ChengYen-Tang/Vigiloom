@@ -83,9 +83,11 @@ public static class WorkerHost
             builder.Services.AddScoped<IAuditRetentionSource, DeviceAuditRetention>();
         if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Operations:Url"]) ||
             string.IsNullOrWhiteSpace(builder.Configuration["Services:Web:Url"]))
+        {
             builder.Services.AddScoped<IAuditRetentionSource, DashboardAuditRetention>();
-        builder.Services.AddScoped<IAuditRetentionSource, AgentAuditRetention>();
-        builder.Services.AddScoped<IAuditRetentionSource, SecurityAuditRetention>();
+            builder.Services.AddScoped<IAuditRetentionSource, AgentAuditRetention>();
+            builder.Services.AddScoped<IAuditRetentionSource, SecurityAuditRetention>();
+        }
         builder.Services.AddWindowsService(options => options.ServiceName = "Vigiloom Worker");
         builder.Services.AddSystemd();
         var securityCutover = SecurityCutover.IsEnabled(builder.Configuration);
