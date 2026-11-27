@@ -114,6 +114,7 @@ services:
     environment:
       <<: *platform-env
       ConnectionStrings__Security: ${VIGILOOM_SECURITY_SQL_CONNECTION:?Set Security SQL connection}
+      Hangfire__Enabled: "true"
   migrator:
     image: ${VIGILOOM_SERVER_IMAGE:-vigiloom-server:local}
     profiles: [setup]
