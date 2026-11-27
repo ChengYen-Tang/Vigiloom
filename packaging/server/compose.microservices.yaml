@@ -1,0 +1,165 @@
+x-platform-env: &platform-env
+  ASPNETCORE_URLS: http://+:8080
+  Services__Identity__Url: http://vigiloom-identity:8080
+  Services__Resources__Url: http://vigiloom-resources:8080
+  Services__Network__Url: http://vigiloom-network:8080
+  Services__Host__Url: http://vigiloom-host-monitoring:8080
+  Services__HostMonitoring__Url: http://vigiloom-host-monitoring:8080
+  Services__Observability__Url: http://vigiloom-observability:8080
+  Services__Operations__Url: http://vigiloom-operations:8080
+  Services__Security__Url: http://vigiloom-security:8080
+  Services__Security__IntelligenceEnabled: "true"
+  Services__Web__Url: http://vigiloom-web:8080
+  Temporal__Address: temporal:7233
+  ConnectionStrings__Scheduling: ${VIGILOOM_RUNTIME_SQL_CONNECTION:?Set the platform SQL connection}
+  Vigiloom__DataProtection__KeyRingPath: /data/keys
+  Vigiloom__Gateway__TrustedProxies__0: ${VIGILOOM_GATEWAY_IP:-172.29.81.10}
+
+x-platform: &platform
+  image: vigiloom-server:local
+  build: .
+  restart: unless-stopped
+  volumes: ["./data/keys:/data/keys"]
+  depends_on:
+    temporal: { condition: service_healthy }
+
+services:
+  gateway:
+    <<: *platform
+    entrypoint: ["/app/gateway/Vigiloom.Gateway"]
+    working_dir: /app/gateway
+    environment:
+      <<: *platform-env
+      ASPNETCORE_URLS: https://+:7043
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /run/vigiloom/tls.pfx
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${VIGILOOM_TLS_CERT_PASSWORD:?Set the TLS certificate password}
+      Services__vigiloom-web__http__0: vigiloom-web:8080
+      Services__vigiloom-agent__http__0: vigiloom-web:8080
+      Services__vigiloom-resources__http__0: vigiloom-resources:8080
+      Services__vigiloom-network__http__0: vigiloom-network:8080
+      Services__vigiloom-host-monitoring__http__0: vigiloom-host-monitoring:8080
+      Services__vigiloom-observability__http__0: vigiloom-observability:8080
+    ports: ["127.0.0.1:7043:7043"]
+    volumes:
+      - ./data/keys:/data/keys
+      - ${VIGILOOM_TLS_CERT_PATH:?Set the TLS certificate path}:/run/vigiloom/tls.pfx:ro
+    networks:
+      default: { ipv4_address: "${VIGILOOM_GATEWAY_IP:-172.29.81.10}" }
+  vigiloom-web:
+    <<: *platform
+    environment:
+      <<: *platform-env
+      ConnectionStrings__Vigiloom: ${VIGILOOM_RUNTIME_SQL_CONNECTION}
+      Vigiloom__SetupToken: ${VIGILOOM_SETUP_TOKEN:-}
+      Vigiloom__AgentPackages__CachePath: /data/packages
+    volumes: ["./data/keys:/data/keys", "./data/packages:/data/packages"]
+  worker:
+    <<: *platform
+    entrypoint: ["/app/worker/Vigiloom.Worker"]
+    working_dir: /app/worker
+    environment:
+      <<: *platform-env
+      ConnectionStrings__Vigiloom: ${VIGILOOM_RUNTIME_SQL_CONNECTION}
+  vigiloom-identity:
+    <<: *platform
+    entrypoint: ["/app/identity/Vigiloom.Identity"]
+    working_dir: /app/identity
+    environment:
+      <<: *platform-env
+      ConnectionStrings__VigiloomIdentity: ${VIGILOOM_IDENTITY_SQL_CONNECTION:?Set Identity SQL connection}
+      Vigiloom__SetupToken: ${VIGILOOM_SETUP_TOKEN:-}
+  vigiloom-resources:
+    <<: *platform
+    entrypoint: ["/app/resources/Vigiloom.Resources"]
+    working_dir: /app/resources
+    environment:
+      <<: *platform-env
+      ConnectionStrings__Resources: ${VIGILOOM_RESOURCES_SQL_CONNECTION:?Set Resources SQL connection}
+      Vigiloom__AgentPackages__CachePath: /data/packages
+    volumes: ["./data/keys:/data/keys", "./data/packages:/data/packages"]
+  vigiloom-network:
+    <<: *platform
+    entrypoint: ["/app/network/Vigiloom.Network"]
+    working_dir: /app/network
+    environment:
+      <<: *platform-env
+      ConnectionStrings__Network: ${VIGILOOM_NETWORK_SQL_CONNECTION:?Set Network SQL connection}
+  vigiloom-host-monitoring:
+    <<: *platform
+    entrypoint: ["/app/hostmonitoring/Vigiloom.HostMonitoring"]
+    working_dir: /app/hostmonitoring
+    environment:
+      <<: *platform-env
+      ConnectionStrings__HostMonitoring: ${VIGILOOM_HOST_SQL_CONNECTION:?Set Host SQL connection}
+  vigiloom-observability:
+    <<: *platform
+    entrypoint: ["/app/observability/Vigiloom.Observability"]
+    working_dir: /app/observability
+    environment:
+      <<: *platform-env
+      ConnectionStrings__Observability: ${VIGILOOM_OBSERVABILITY_SQL_CONNECTION:?Set Observability SQL connection}
+  vigiloom-operations:
+    <<: *platform
+    entrypoint: ["/app/operations/Vigiloom.Operations"]
+    working_dir: /app/operations
+    environment:
+      <<: *platform-env
+      ConnectionStrings__Operations: ${VIGILOOM_OPERATIONS_SQL_CONNECTION:?Set Operations SQL connection}
+  vigiloom-security:
+    <<: *platform
+    entrypoint: ["/app/security/Vigiloom.Security"]
+    working_dir: /app/security
+    environment:
+      <<: *platform-env
+      ConnectionStrings__Security: ${VIGILOOM_SECURITY_SQL_CONNECTION:?Set Security SQL connection}
+  migrator:
+    image: vigiloom-server:local
+    profiles: [setup]
+    entrypoint: ["/app/migrator/Vigiloom.Migrator"]
+    working_dir: /app/migrator
+    environment:
+      VIGILOOM_MIGRATION_SQL_CONNECTION: ${VIGILOOM_MIGRATION_SQL_CONNECTION:?Set platform migration connection}
+      VIGILOOM_IDENTITY_SQL_CONNECTION: ${VIGILOOM_IDENTITY_MIGRATION_SQL_CONNECTION:?Set Identity migration connection}
+      VIGILOOM_RESOURCES_SQL_CONNECTION: ${VIGILOOM_RESOURCES_MIGRATION_SQL_CONNECTION:?Set Resources migration connection}
+      VIGILOOM_NETWORK_SQL_CONNECTION: ${VIGILOOM_NETWORK_MIGRATION_SQL_CONNECTION:?Set Network migration connection}
+      VIGILOOM_HOST_SQL_CONNECTION: ${VIGILOOM_HOST_MIGRATION_SQL_CONNECTION:?Set Host migration connection}
+      VIGILOOM_OBSERVABILITY_SQL_CONNECTION: ${VIGILOOM_OBSERVABILITY_MIGRATION_SQL_CONNECTION:?Set Observability migration connection}
+      VIGILOOM_OPERATIONS_SQL_CONNECTION: ${VIGILOOM_OPERATIONS_MIGRATION_SQL_CONNECTION:?Set Operations migration connection}
+      VIGILOOM_SECURITY_SQL_CONNECTION: ${VIGILOOM_SECURITY_MIGRATION_SQL_CONNECTION:?Set Security migration connection}
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: ${VIGILOOM_TEMPORAL_DB_PASSWORD:?Set Temporal database password}
+    volumes: ["temporal-postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    restart: unless-stopped
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_SEEDS: postgres
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: ${VIGILOOM_TEMPORAL_DB_PASSWORD}
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "temporal:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  temporal-postgres:
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${VIGILOOM_NETWORK_SUBNET:-172.29.81.0/24}
+          ip_range: ${VIGILOOM_DYNAMIC_IP_RANGE:-172.29.81.128/25}

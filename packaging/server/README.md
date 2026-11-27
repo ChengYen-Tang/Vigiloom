@@ -3,8 +3,8 @@
 The package contains the self-contained `web`, `worker` and `migrator`
 applications, along with the `gateway`, `identity`, `resources`, `network`,
 `hostmonitoring`, `observability`, `operations` and `security` service hosts.
-The Compose example below currently configures the Web/Worker deployment; the
-additional service hosts require their own configuration. The package does not
+The `compose.yaml` example configures the existing Web/Worker deployment;
+`compose.microservices.yaml` configures the service hosts and Temporal. The package does not
 install SQL Server or create a production database.
 Choose a supported Windows or Linux x64 host and provide a SQL Server database
 at compatibility level 150 or higher. Linux requires the distribution's .NET
@@ -74,3 +74,30 @@ image. This container example still requires real deployment verification.
 ## Temporal deployment
 
 The `temporal` directory includes a single-host Temporal and PostgreSQL Compose example and its setup instructions. It is separate from the central platform Compose example. Service-specific Temporal integration is delivered with the corresponding microservice.
+
+## Microservice container deployment
+
+Copy `container.env.example` to `.env` and supply the platform and separate
+service database connections, TLS certificate and Temporal database password.
+Create the databases before running the Migrator. The setup profile runs one
+command at a time: for a new installation run `fresh-install` for the platform,
+then `initialize-identity`, `initialize-resources`, `initialize-network`,
+`initialize-host-observations`, `initialize-observability`,
+`initialize-security` and `initialize-operations`. For example:
+
+```sh
+docker compose -f compose.microservices.yaml build
+docker compose -f compose.microservices.yaml --profile setup run --rm migrator initialize-identity
+docker compose -f compose.microservices.yaml up -d
+```
+
+For an existing installation, stop writers, back up the existing platform data,
+and use the corresponding `migrate-*` commands against the new empty service
+databases. Keep the platform database for the remaining Web and Worker functions.
+The setup token must be removed from both Web and Identity after creating the
+first administrator. Only Gateway publishes a port; service communication and
+Temporal remain on the Compose network. `VIGILOOM_NETWORK_SUBNET`,
+`VIGILOOM_DYNAMIC_IP_RANGE` and `VIGILOOM_GATEWAY_IP` can be changed together
+if the default subnet conflicts; the gateway IP must be outside the dynamic range.
+The Temporal/PostgreSQL containers have been started in isolation; the complete
+Compose deployment and migration have not yet been validated end to end.

@@ -67,7 +67,10 @@ jobs:
           if (-not $IsWindows) {
             Copy-Item packaging/server/Dockerfile $package
             Copy-Item packaging/server/compose.yaml $package
+            Copy-Item packaging/server/compose.microservices.yaml $package
             Copy-Item packaging/server/container.env.example $package
+            docker compose --env-file packaging/server/container.env.example -f packaging/server/compose.microservices.yaml --profile setup config --quiet
+            if ($LASTEXITCODE -ne 0) { throw 'Microservice Compose configuration is invalid.' }
             Copy-Item -Recurse packaging/server/systemd (Join-Path $package 'systemd')
           }
           $archive = Join-Path $env:RUNNER_TEMP "server-$env:RELEASE_VERSION-$env:RELEASE_RID"
