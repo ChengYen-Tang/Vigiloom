@@ -377,6 +377,47 @@ public sealed class SecurityWorkTests(TestContext context)
             Assert.AreEqual(2, fake.Deletes);
         }, context.CancellationToken);
 
+    [TestMethod]
+    public Task RecordsYaraStartOnceAndKeepsFinalStatus() =>
+        SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
+        {
+            await SecurityDatabaseCommand.RunAsync(database.ConnectionString, null, token);
+            var options = new DbContextOptionsBuilder<SecurityAnalysisDbContext>().UseSqlServer(database.ConnectionString).Options;
+            var agent = Guid.CreateVersion7();
+            var device = Guid.CreateVersion7();
+            var id = Guid.CreateVersion7();
+            var now = DateTimeOffset.UtcNow;
+            await using (var db = new SecurityAnalysisDbContext(options))
+            {
+                db.YaraScans.Add(new YaraScan { Id = id, AgentId = agent, DeviceId = device, RequestedBy = Guid.CreateVersion7(),
+                    FilePath = "/tmp/test", Rules = "rule test { condition: true }", MaximumBytes = 1024, TimeoutSeconds = 30, RequestedAt = now });
+                await db.SaveChangesAsync(token);
+            }
+            using var http = new HttpClient();
+            var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = database.ConnectionString }).Build();
+            var consumer = new SecurityWorkHandler(config, new TestClients(http));
+            var start = new YaraScanStarted(id, agent, device, now);
+            var work = new ServiceWork(nameof(YaraScanStarted), JsonSerializer.Serialize(start), Guid.CreateVersion7().ToString());
+            await consumer.ExecuteAsync(work, token);
+            await consumer.ExecuteAsync(work, token);
+            await consumer.ExecuteAsync(new(nameof(YaraScanStarted), JsonSerializer.Serialize(start with { StartedAt = now.AddSeconds(5) }), Guid.CreateVersion7().ToString()), token);
+            await using (var db = new SecurityAnalysisDbContext(options))
+            {
+                var scan = await db.YaraScans.SingleAsync(token);
+                Assert.AreEqual(now, scan.StartedAt);
+                scan.Outcome = (int)YaraScanOutcome.Cancelled;
+                scan.CompletedAt = now.AddSeconds(10);
+                await db.SaveChangesAsync(token);
+            }
+            await consumer.ExecuteAsync(new(nameof(YaraScanStarted), JsonSerializer.Serialize(start with { StartedAt = now.AddSeconds(20) }), Guid.CreateVersion7().ToString()), token);
+            await using var verify = new SecurityAnalysisDbContext(options);
+            var result = await verify.YaraScans.SingleAsync(token);
+            Assert.AreEqual(now, result.StartedAt);
+            Assert.AreEqual((int)YaraScanOutcome.Cancelled, result.Outcome);
+            var scans = new YaraScans(new Factory(options), TimeProvider.System);
+            Assert.AreEqual(now, (await scans.GetAsync(device, id, token))!.StartedAt);
+        }, context.CancellationToken);
+
     private sealed class TestClients(HttpClient client) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => client;

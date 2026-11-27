@@ -7,7 +7,10 @@ namespace Vigiloom.Contracts.Agent.Security;
 public sealed record YaraScanRequest(string FilePath, string Rules, long MaximumBytes, int TimeoutSeconds);
 
 public sealed record YaraScanJob(Guid Id, Guid AgentId, Guid DeviceId, Guid RequestedBy, YaraScanRequest Request,
-    DateTimeOffset RequestedAt, YaraScanReport? Result);
+    DateTimeOffset RequestedAt, YaraScanReport? Result, DateTimeOffset? StartedAt = null);
+
+/// <summary>A scan start reported by an Agent through the host service.</summary>
+public sealed record YaraScanStarted(Guid ScanId, Guid AgentId, Guid DeviceId, DateTimeOffset StartedAt);
 
 public enum YaraScanOutcome { Completed = 1, FileTooLarge = 2, TimedOut = 3, Unavailable = 4, Failed = 5, Cancelled = 6 }
 
