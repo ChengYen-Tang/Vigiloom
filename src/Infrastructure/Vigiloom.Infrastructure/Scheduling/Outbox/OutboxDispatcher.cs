@@ -1,6 +1,7 @@
 using System.Data;
 using System.Diagnostics;
 using System.Text.Json;
+using Hangfire;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
@@ -14,6 +15,7 @@ public sealed class OutboxDispatcher(string connectionString, IEnumerable<IOutbo
     private const int LeaseSeconds = 120;
     private readonly Dictionary<string, IOutboxHandler> handlersByType = handlers.ToDictionary(handler => handler.MessageType, StringComparer.Ordinal);
 
+    [Queue(OutboxScheduleManager.Queue)]
     public async Task DispatchAsync(CancellationToken cancellationToken = default)
     {
         var started = Stopwatch.GetTimestamp();

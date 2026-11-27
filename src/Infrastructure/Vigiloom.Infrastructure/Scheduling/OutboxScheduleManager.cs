@@ -17,6 +17,7 @@ public sealed class ScheduleApplyPendingException(Exception inner) : Exception("
 public sealed class OutboxScheduleManager(IServiceProvider services, IDbContextFactory<SchedulingDbContext> contexts)
 {
     public const string ScheduleId = "vigiloom-outbox-dispatch";
+    public const string Queue = "web";
     private const string LockId = "vigiloom:outbox-schedule";
     private static readonly int[] Intervals = [1, 2, 5, 10, 15, 30, 60];
     public static bool IsValidInterval(int minutes) => Intervals.Contains(minutes);
@@ -28,7 +29,7 @@ public sealed class OutboxScheduleManager(IServiceProvider services, IDbContextF
         var minutes = setting?.IntervalMinutes ?? 1;
         using var connection = services.GetRequiredService<JobStorage>().GetConnection();
         var data = connection.GetAllEntriesFromHash($"recurring-job:{ScheduleId}");
-        var applied = setting is not null && data is not null && data.TryGetValue("Cron", out var cron) && cron == CronFor(minutes);
+        var applied = setting is not null && data is not null && data.TryGetValue("Cron", out var cron) && cron == CronFor(minutes) && IsQueueApplied(connection);
         return new ScheduleSnapshot(minutes, setting is null ? "" : Convert.ToBase64String(setting.Version), applied);
     }
 
@@ -41,7 +42,7 @@ public sealed class OutboxScheduleManager(IServiceProvider services, IDbContextF
         token.ThrowIfCancellationRequested();
         using var connection = services.GetRequiredService<SchedulingReadStorage>().Storage.GetConnection();
         var data = connection.GetAllEntriesFromHash($"recurring-job:{ScheduleId}");
-        var applied = setting is not null && data is not null && data.TryGetValue("Cron", out var cron) && cron == CronFor(minutes);
+        var applied = setting is not null && data is not null && data.TryGetValue("Cron", out var cron) && cron == CronFor(minutes) && IsQueueApplied(connection);
         return new ScheduleSnapshot(minutes, setting is null ? "" : Convert.ToBase64String(setting.Version), applied);
     }
 
@@ -59,7 +60,7 @@ public sealed class OutboxScheduleManager(IServiceProvider services, IDbContextF
             db.SaveChanges();
         }
         var data = connection.GetAllEntriesFromHash($"recurring-job:{ScheduleId}");
-        if (data is null || !data.TryGetValue("Cron", out var cron) || cron != CronFor(setting.IntervalMinutes)) Update(setting.IntervalMinutes);
+        if (data is null || !data.TryGetValue("Cron", out var cron) || cron != CronFor(setting.IntervalMinutes) || !IsQueueApplied(connection)) Update(setting.IntervalMinutes);
     }
 
     public void SetIntervalMinutes(int minutes, string expectedVersion, Guid actor)
@@ -86,8 +87,10 @@ public sealed class OutboxScheduleManager(IServiceProvider services, IDbContextF
     }
 
     private void Update(int minutes) => services.GetRequiredService<IRecurringJobManager>().AddOrUpdate(ScheduleId,
-        Job.FromExpression<OutboxDispatcher>(dispatcher => dispatcher.DispatchAsync(CancellationToken.None)), CronFor(minutes),
+        Job.FromExpression<OutboxDispatcher>(dispatcher => dispatcher.DispatchAsync(CancellationToken.None), Queue), CronFor(minutes),
         new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
     private static string CronFor(int minutes) => minutes == 60 ? "0 * * * *" : $"*/{minutes} * * * *";
+    private static bool IsQueueApplied(IStorageConnection connection) =>
+        connection.GetRecurringJobs().FirstOrDefault(job => job.Id == ScheduleId)?.Job?.Queue == Queue;
 }

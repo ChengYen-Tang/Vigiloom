@@ -140,6 +140,16 @@ builder.Services.AddScoped<AuditFeedReader>();
 builder.Services.AddScoped<Vigiloom.Web.Diagnostics.AgentIdentityAuditFeed>();
 builder.Services.AddScoped<IdentityAuditReader>();
 builder.Services.AddVigiloomScheduling(builder.Configuration);
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Services:Operations:Url"]) &&
+    !string.IsNullOrWhiteSpace(builder.Configuration["Services:Web:Url"]) && builder.Configuration.GetValue("Hangfire:Enabled", true))
+{
+    builder.Services.AddHostedService<OutboxSchedule>();
+    builder.Services.AddHangfireServer(options =>
+    {
+        options.Queues = [OutboxScheduleManager.Queue];
+        options.IsLightweightServer = true;
+    });
+}
 builder.Services.AddVigiloomDataProtection(builder.Configuration);
 builder.Services.AddScoped<Vigiloom.Modules.AlertingOperations.Application.Line.LineChannel>();
 builder.Services.AddHttpClient<Vigiloom.Modules.AlertingOperations.Application.Line.LinePushClient>();

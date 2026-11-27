@@ -243,8 +243,10 @@ public static class WorkerHost
             builder.Services.AddHostedService<HealthExpiryWorker>();
             builder.Services.AddHostedService<HealthWorker>();
         }
-        builder.Services.AddHostedService<OutboxSchedule>();
-        builder.Services.AddHangfireServer();
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Operations:Url"]) ||
+            string.IsNullOrWhiteSpace(builder.Configuration["Services:Web:Url"]))
+            builder.Services.AddHostedService<OutboxSchedule>();
+        builder.Services.AddHangfireServer(options => options.Queues = ["default", OutboxScheduleManager.Queue]);
         return builder;
     }
 }
