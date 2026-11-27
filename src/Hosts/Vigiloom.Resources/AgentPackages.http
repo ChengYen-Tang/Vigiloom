@@ -1,4 +1,16 @@
 @resources = http://localhost:5055
+@gateway = https://localhost:7043
+
+### List Agent packages through Gateway (monitoring user or API credential)
+GET {{gateway}}/api/v1/agent-packages?page=1
+Accept: application/json
+
+### Download a release through Gateway (Administrator session and antiforgery token)
+POST {{gateway}}/api/v1/agent-packages/cache
+Content-Type: application/json
+RequestVerificationToken: {{AntiforgeryToken}}
+
+{"version":"1.0.0","runtimeIdentifier":"win-x64"}
 
 ### List cached and previously known Agent packages (internal network only)
 GET {{resources}}/internal/v1/agent-packages?page=1
