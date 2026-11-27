@@ -104,6 +104,11 @@ public sealed class HostRetentionIntegrationTests(TestContext context)
             var metricUpdate = new AgentMetricSettingsUpdate(new AgentMetricSettingsOverrides(45, null), metricAdmin!.Version);
             using (var missingCsrf = await hostClient.PutAsJsonAsync(metricAdminPath, metricUpdate, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+            const string capacityPath = "/api/v1/agent-management/queue-capacity/platform";
+            var capacityBefore = await hostClient.GetFromJsonAsync<AgentQueueCapacityView>(capacityPath, token);
+            var capacityUpdate = new AgentQueueCapacityUpdate(new(1048576, 100), capacityBefore!.Version);
+            using (var missingCsrf = await hostClient.PutAsJsonAsync(capacityPath, capacityUpdate, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
             var antiContext = new DefaultHttpContext { RequestServices = host.Services, User = new ClaimsPrincipal(identity) };
             antiContext.Request.Scheme = "https";
             var anti = host.Services.GetRequiredService<IAntiforgery>().GetAndStoreTokens(antiContext);
@@ -111,6 +116,13 @@ public sealed class HostRetentionIntegrationTests(TestContext context)
             hostClient.DefaultRequestHeaders.Remove("Cookie");
             hostClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={cookie}; {antiCookie}");
             hostClient.DefaultRequestHeaders.Add("RequestVerificationToken", anti.RequestToken);
+            using (var capacitySaved = await hostClient.PutAsJsonAsync(capacityPath, capacityUpdate, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, capacitySaved.StatusCode);
+                Assert.AreEqual(100, (await capacitySaved.Content.ReadFromJsonAsync<AgentQueueCapacityView>(cancellationToken: token))!.Overrides.BatchCount);
+            }
+            using (var stale = await hostClient.PutAsJsonAsync(capacityPath, capacityUpdate, token)) Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
+            using (var invalid = await hostClient.PutAsJsonAsync(capacityPath, new AgentQueueCapacityUpdate(new(1, 100), ""), token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
             using (var metricUpdated = await hostClient.PutAsJsonAsync(metricAdminPath, metricUpdate, token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, metricUpdated.StatusCode);
@@ -149,6 +161,7 @@ public sealed class HostRetentionIntegrationTests(TestContext context)
             using (var denied = await hostClient.GetAsync(replayPath, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             using (var denied = await hostClient.GetAsync(metricPath, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             using (var denied = await hostClient.GetAsync(metricAdminPath, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await hostClient.GetAsync(capacityPath, token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             using var operations = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
             {
                 web.UseEnvironment("Testing");

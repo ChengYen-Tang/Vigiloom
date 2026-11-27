@@ -64,6 +64,9 @@ public sealed class ServiceOpenApiTests(TestContext context)
         }
         if (scheme == "AgentBearer")
         {
+            var capacityWrite = paths.GetProperty("/api/v1/agent-management/queue-capacity/platform").GetProperty("put");
+            Assert.IsTrue(capacityWrite.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
+            Assert.IsTrue(capacityWrite.GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json").TryGetProperty("schema", out _));
             var metricSeriesSecurity = paths.GetProperty("/api/v1/devices/{deviceId}/host-metrics/series").GetProperty("get").GetProperty("security");
             Assert.IsTrue(metricSeriesSecurity.EnumerateArray().Any(x => x.TryGetProperty("BrowserSession", out _)));
             Assert.IsTrue(metricSeriesSecurity.EnumerateArray().Any(x => x.TryGetProperty("ApiBearer", out _)));

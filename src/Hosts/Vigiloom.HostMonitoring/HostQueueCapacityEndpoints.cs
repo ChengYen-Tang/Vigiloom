@@ -17,18 +17,18 @@ internal static class HostQueueCapacityEndpoints
         app.MapPost("/internal/v1/agent-queue-capacity/devices/{deviceId:guid}", async (Guid deviceId, AgentQueueCapacityCommand command, HostQueueCapacity settings, IHttpClientFactory clients, CancellationToken token) =>
             await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateInternalAsync(settings, deviceId, command, token) : Results.NotFound());
         var admin = app.MapGroup("/api/v1/agent-management/queue-capacity").RequireAuthorization("Administrator").RequireRateLimiting("api-client");
-        admin.MapGet("/platform", (HostQueueCapacity settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token));
-        admin.MapPut("/platform", (AgentQueueCapacityUpdate input, HostQueueCapacity settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token));
+        admin.MapGet("/platform", (HostQueueCapacity settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token)).Produces<AgentQueueCapacityView>();
+        admin.MapPut("/platform", (AgentQueueCapacityUpdate input, HostQueueCapacity settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token)).Produces<AgentQueueCapacityView>().ProducesValidationProblem().ProducesProblem(409);
         admin.MapGet("/devices/{deviceId:guid}", async (Guid deviceId, HostQueueCapacity settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
-            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await ReadAsync(settings, deviceId, context, token) : Results.NotFound());
+            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await ReadAsync(settings, deviceId, context, token) : Results.NotFound()).Produces<AgentQueueCapacityView>().ProducesProblem(404);
         admin.MapPut("/devices/{deviceId:guid}", async (Guid deviceId, AgentQueueCapacityUpdate input, HostQueueCapacity settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
-            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateAsync(settings, deviceId, input, context, token) : Results.NotFound());
+            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateAsync(settings, deviceId, input, context, token) : Results.NotFound()).Produces<AgentQueueCapacityView>().ProducesValidationProblem().ProducesProblem(404).ProducesProblem(409);
         app.MapGet("/api/v1/devices/{deviceId:guid}/agent-queue-capacity", async (Guid deviceId, HostQueueCapacity settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
         {
             if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok((await settings.GetAsync(deviceId, token)).Effective);
-        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client").Produces<AgentQueueCapacitySnapshot>().ProducesProblem(404);
         app.MapGet("/api/v1/agent/queue-capacity", async (HttpContext context, HostQueueCapacity settings, CancellationToken token) =>
         {
             var snapshot = await settings.GetForAgentAsync((RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!, token);
@@ -38,7 +38,7 @@ internal static class HostQueueCapacityEndpoints
             var requested = context.Request.GetTypedHeaders().IfNoneMatch;
             return requested?.Any(x => x.Equals(EntityTagHeaderValue.Any) || x.Compare(tag, useStrongComparison: false)) == true
                 ? Results.StatusCode(StatusCodes.Status304NotModified) : Results.Ok(snapshot);
-        });
+        }).Produces<AgentQueueCapacitySnapshot>().Produces(304);
     }
 
     private static async Task<IResult> ReadAsync(HostQueueCapacity settings, Guid? deviceId, HttpContext context, CancellationToken token)

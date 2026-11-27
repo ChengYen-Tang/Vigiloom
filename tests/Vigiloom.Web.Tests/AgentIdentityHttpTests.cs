@@ -1174,10 +1174,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Forbidden, changeSettings.StatusCode);
                 using var readCapacity = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-queue-capacity", token);
                 Assert.AreEqual(HttpStatusCode.OK, readCapacity.StatusCode);
-                using var manageCapacity = await reader.GetAsync("/api/v1/agent-management/queue-capacity/platform", token);
-                Assert.AreEqual(HttpStatusCode.Forbidden, manageCapacity.StatusCode);
-                using var changeCapacity = await reader.PutAsJsonAsync("/api/v1/agent-management/queue-capacity/platform", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token);
-                Assert.AreEqual(HttpStatusCode.Forbidden, changeCapacity.StatusCode);
                 using var details = await reader.GetAsync($"/devices/{device.Id:D}", token);
                 var detailsDoc = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("Agent 狀態", detailsDoc.Body!.TextContent);
@@ -1262,8 +1258,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.BadRequest, forgedAssignment.StatusCode);
             using (var readerAssignment = await reader.PutAsJsonAsync($"/api/v1/agents/{Guid.CreateVersion7():D}/version-assignment", new AgentVersionAssignmentUpdate(Guid.CreateVersion7(), ""), token))
                 Assert.AreEqual(HttpStatusCode.Forbidden, readerAssignment.StatusCode);
-            using (var forgedCapacity = await admin.PutAsJsonAsync("/api/v1/agent-management/queue-capacity/platform", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, forgedCapacity.StatusCode);
             using (var cookieCannotActAsAgent = await admin.GetAsync("/api/v1/agent/identity", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotActAsAgent.StatusCode);
             using (var cookieCannotHeartbeat = await admin.PostAsync("/api/v1/agent/heartbeat", null, token))
@@ -1363,12 +1357,11 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.Conflict, staleSettings.StatusCode);
             using (var invalidSettings = await admin.PutAsJsonAsync($"/api/v1/agent-management/settings/devices/{device.Id:D}", new AgentSettingsUpdate(new(1, null, null), configured.Version), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, invalidSettings.StatusCode);
-            using (var saveCapacity = await admin.PutAsJsonAsync($"/api/v1/agent-management/queue-capacity/devices/{device.Id:D}", new AgentQueueCapacityUpdate(new(1048576, 100), ""), token))
-                Assert.AreEqual(HttpStatusCode.OK, saveCapacity.StatusCode);
-            using (var staleCapacity = await admin.PutAsJsonAsync($"/api/v1/agent-management/queue-capacity/devices/{device.Id:D}", new AgentQueueCapacityUpdate(new(1048576, 200), ""), token))
-                Assert.AreEqual(HttpStatusCode.Conflict, staleCapacity.StatusCode);
-            using (var invalidCapacity = await admin.PutAsJsonAsync($"/api/v1/agent-management/queue-capacity/devices/{device.Id:D}", new AgentQueueCapacityUpdate(new(1, 100), ""), token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, invalidCapacity.StatusCode);
+            await using (var capacityScope = factory.Services.CreateAsyncScope())
+            {
+                var capacitySettings = capacityScope.ServiceProvider.GetRequiredService<IAgentQueueCapacitySettings>();
+                Assert.IsNotNull(await capacitySettings.UpdateAsync(device.Id, new AgentQueueCapacityUpdate(new(1048576, 100), ""), Guid.CreateVersion7(), token));
+            }
             using var issued = await admin.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token);
             Assert.AreEqual(HttpStatusCode.OK, issued.StatusCode);
             Assert.IsTrue(issued.Headers.CacheControl?.NoStore);

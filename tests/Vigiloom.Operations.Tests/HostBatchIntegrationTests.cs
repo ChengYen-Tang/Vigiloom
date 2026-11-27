@@ -959,6 +959,11 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var inboxBefore = await proxyClient.GetFromJsonAsync<AgentInboxSettingsSnapshot>(inboxPath, token);
             Assert.IsTrue(inboxBefore!.CleanupReady);
             var inboxInput = new AgentInboxPreviewRequest(3600, 2, inboxBefore.Version);
+            var capacityAdminPath = $"/api/v1/agent-management/queue-capacity/devices/{identity.DeviceId:D}";
+            var capacityView = await proxyClient.GetFromJsonAsync<AgentQueueCapacityView>(capacityAdminPath, token);
+            var capacityUpdate = new AgentQueueCapacityUpdate(new(1048576, 100), capacityView!.Version);
+            using (var missingCsrf = await proxyClient.PutAsJsonAsync(capacityAdminPath, capacityUpdate, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
             using (var missingCsrf = await proxyClient.PostAsJsonAsync(inboxPath + "/preview", inboxInput, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
             using (var missingCsrf = await proxyClient.PutAsJsonAsync(thresholdUrl, thresholdInput, token))
@@ -970,6 +975,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             proxyClient.DefaultRequestHeaders.Remove("Cookie");
             proxyClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={adminCookie}; {antiCookie}");
             proxyClient.DefaultRequestHeaders.Add("RequestVerificationToken", anti.RequestToken);
+            using (var savedCapacity = await proxyClient.PutAsJsonAsync(capacityAdminPath, capacityUpdate, token))
+                Assert.AreEqual(HttpStatusCode.OK, savedCapacity.StatusCode);
+            using (var staleCapacity = await proxyClient.PutAsJsonAsync(capacityAdminPath, capacityUpdate, token))
+                Assert.AreEqual(HttpStatusCode.Conflict, staleCapacity.StatusCode);
+            using (var invalidCapacity = await proxyClient.PutAsJsonAsync(capacityAdminPath, new AgentQueueCapacityUpdate(new(1, 100), capacityView.Version), token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidCapacity.StatusCode);
             using (var missingPreview = await proxyClient.PutAsJsonAsync(inboxPath, new AgentInboxSettingsUpdate(3600, 2, inboxBefore.Version, null), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, missingPreview.StatusCode);
             using (var inboxPreviewResponse = await proxyClient.PostAsJsonAsync(inboxPath + "/preview", inboxInput, token))
