@@ -34,13 +34,13 @@ internal static class HostAgentStatusEndpoints
                 ?? throw new InvalidOperationException("Resources returned an empty Agent overview.");
             return Results.Ok(await monitoring.GetConnectionsAsync(devices, token));
         });
-        app.MapGet("/api/v1/devices/{id:guid}/agent-status", ReadAsync).RequireAuthorization("MonitoringApiRead")
+        app.MapGet("/api/v1/devices/{id:guid}/agent-status", ReadAsync).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
             .Produces<AgentConnectionStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get Agent connectivity independently of device Ping");
-        app.MapGet("/api/v1/devices/{id:guid}/agent-settings-status", ReadSettingsAsync).RequireAuthorization("MonitoringApiRead")
+        app.MapGet("/api/v1/devices/{id:guid}/agent-settings-status", ReadSettingsAsync).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
             .Produces<AgentSettingsStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get the Agent's observed scheduling settings");
-        app.MapGet("/api/v1/devices/{id:guid}/agent-queue-capacity-status", ReadCapacityAsync).RequireAuthorization("MonitoringApiRead")
+        app.MapGet("/api/v1/devices/{id:guid}/agent-queue-capacity-status", ReadCapacityAsync).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
             .Produces<AgentQueueCapacityStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
             .WithSummary("Get the Agent's observed queue capacity");
     }

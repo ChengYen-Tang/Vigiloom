@@ -40,6 +40,7 @@ builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.Applic
     options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
 });
 builder.Services.AddAuthorization(options => options.AddVigiloomAccessPolicies());
+builder.Services.AddVigiloomApiRateLimiting(builder.Configuration);
 builder.Services.AddModuleSqlServer<HostMonitoringDbContext>(services =>
     services.GetRequiredService<IConfiguration>().GetConnectionString("HostMonitoring")
         ?? throw new InvalidOperationException("ConnectionStrings:HostMonitoring is required."),
@@ -137,6 +138,7 @@ var forwardedHeaders = TrustedProxyForwarding.Create(builder.Configuration);
 if (forwardedHeaders is not null) app.UseForwardedHeaders(forwardedHeaders);
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.UseWhen(context => context.Request.Path.StartsWithSegments("/api/v1/agent/channel") ||
     context.Request.Path.Equals("/api/v1/agent/identity", StringComparison.OrdinalIgnoreCase) ||
     context.Request.Path.StartsWithSegments("/api/v1/agent/yara-scans") ||

@@ -20,7 +20,6 @@ using Vigiloom.Resources.Publication;
 using Vigiloom.Resources.DeploymentLinks;
 using Vigiloom.Contracts.Services;
 using Vigiloom.Contracts.Operations;
-using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddVigiloomSelfTelemetry("Vigiloom.Resources");
@@ -38,26 +37,7 @@ builder.Services.Configure<CookieAuthenticationOptions>(IdentityConstants.Applic
     options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
 });
 builder.Services.AddAuthorization(options => options.AddVigiloomAccessPolicies());
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.OnRejected = async (context, cancellationToken) =>
-    {
-        context.HttpContext.Response.Headers.RetryAfter = "60";
-        await context.HttpContext.Response.WriteAsJsonAsync(new Microsoft.AspNetCore.Mvc.ProblemDetails
-        {
-            Status = StatusCodes.Status429TooManyRequests,
-            Title = "Too Many Requests",
-            Extensions = { ["code"] = "too_many_requests" }
-        }, options: null, contentType: "application/problem+json", cancellationToken: cancellationToken);
-    };
-    options.AddPolicy("api-client", context => RateLimitPartition.GetFixedWindowLimiter(
-        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = Math.Clamp(builder.Configuration.GetValue("Vigiloom:Authentication:ApiRequestsPerMinute", 300), 1, 10000),
-            Window = TimeSpan.FromMinutes(1), QueueLimit = 0
-        }));
-});
+builder.Services.AddVigiloomApiRateLimiting(builder.Configuration);
 builder.Services.AddVigiloomTemporalClient(builder.Configuration["Temporal:Address"] ?? "localhost:7233",
     builder.Configuration["Temporal:Namespace"] ?? "default");
 builder.Services.AddScoped(_ => new WorkHistoryRetention(builder.Configuration.GetConnectionString("Resources")
