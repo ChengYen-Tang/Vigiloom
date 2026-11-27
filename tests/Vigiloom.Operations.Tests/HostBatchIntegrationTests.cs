@@ -7,10 +7,14 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.IO.Compression;
 using System.Text.Json;
+using System.Security.Claims;
 using System.Collections.Immutable;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -20,6 +24,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Agent.Inventory;
@@ -99,6 +104,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     services.AddHttpClient("ResourceDevices").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
                     services.AddHttpClient("observability").ConfigurePrimaryHttpMessageHandler(() => new RetentionHandler(21));
                     services.AddHttpClient("operations").ConfigurePrimaryHttpMessageHandler(() => auditHandler);
+                    services.AddHttpClient<IdentityCookieValidator>().ConfigurePrimaryHttpMessageHandler(() => new AdminSessionHandler());
                     services.RemoveAll<IApiCredentialValidation>();
                     services.AddSingleton<IApiCredentialValidation, CredentialValidation>();
                 });
@@ -196,6 +202,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 securityApi.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
                 using (var denied = await securityApi.GetAsync($"/api/v1/agent-management/devices/{identity.DeviceId:D}/integrity-scopes", token))
                     Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+                using (var denied = await securityApi.GetAsync("/api/v1/admin/intelligence/sources", token))
+                    Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
                 var inventory = await securityApi.GetFromJsonAsync<DeviceInventoryView>($"/api/v1/devices/{identity.DeviceId:D}/inventory", token);
                 Assert.AreEqual(identity.AgentId, inventory!.AgentId);
                 Assert.IsTrue(inventory.Sources.Any(source => source.Source == InventorySource.LinuxDpkg));
@@ -219,6 +227,23 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 using (var yara = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/yara-scans", token))
                     Assert.AreEqual(HttpStatusCode.OK, yara.StatusCode);
                 Assert.AreEqual(1, auditHandler.Calls);
+                securityApi.DefaultRequestHeaders.Authorization = null;
+                var cookieOptions = security.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
+                var claims = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, Guid.CreateVersion7().ToString("D")),
+                    new Claim("AspNet.Identity.SecurityStamp", "stamp")], IdentityConstants.ApplicationScheme);
+                var cookie = cookieOptions.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(claims), IdentityConstants.ApplicationScheme));
+                securityApi.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={cookie}");
+                foreach (var path in new[] { "/api/v1/admin/intelligence/sources", "/api/v1/agent-management/inventory-settings/platform",
+                    $"/api/v1/agent-management/devices/{identity.DeviceId:D}/integrity-scopes" })
+                {
+                    using var adminResponse = await securityApi.GetAsync(path, token);
+                    Assert.AreEqual(HttpStatusCode.OK, adminResponse.StatusCode, path);
+                }
+                using (var missingCsrf = await securityApi.PutAsJsonAsync("/api/v1/agent-management/inventory-settings/platform",
+                    new InventorySettingsUpdate(new InventorySettingsOverrides(300), ""), token))
+                    Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+                securityApi.DefaultRequestHeaders.Remove("Cookie");
+                securityApi.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "vlg_valid");
                 using var missing = await securityApi.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/inventory", token);
                 Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
             }
@@ -713,6 +738,15 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Calls++;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
         }
+    }
+
+    private sealed class AdminSessionHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new ValidatedCookieResponse([
+                new(ClaimTypes.NameIdentifier, Guid.CreateVersion7().ToString("D"), ClaimValueTypes.String, "LOCAL AUTHORITY", "LOCAL AUTHORITY"),
+                new(ClaimTypes.Role, "Administrator", ClaimValueTypes.String, "LOCAL AUTHORITY", "LOCAL AUTHORITY")
+            ])) });
     }
 
     private sealed class CredentialValidation : IApiCredentialValidation

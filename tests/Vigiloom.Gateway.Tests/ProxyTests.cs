@@ -195,6 +195,8 @@ public sealed class ProxyTests
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using (var response = await client.GetAsync("/api/v1/agent-management/inventory-settings/platform", TestContext.CancellationToken))
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        using (var response = await client.GetAsync("/api/v1/admin/intelligence/sources", TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using (var response = await client.GetAsync($"/api/v1/agent-management/devices/{id:D}/integrity-scopes", TestContext.CancellationToken))
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using (var response = await client.GetAsync("/api/v1/agent-management/queue-capacity/platform", TestContext.CancellationToken))
