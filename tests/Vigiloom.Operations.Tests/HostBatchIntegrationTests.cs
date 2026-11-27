@@ -338,8 +338,10 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                     using var offlineSigma = await securityApi.GetAsync("/api/v1/admin/sigma/rules", token);
                     Assert.AreEqual(HttpStatusCode.ServiceUnavailable, offlineSigma.StatusCode);
                 }
-                using (var missingCsrf = await securityApi.PutAsJsonAsync("/api/v1/agent-management/inventory-settings/platform",
-                    new InventorySettingsUpdate(new InventorySettingsOverrides(300), ""), token))
+                const string inventorySettingsPath = "/api/v1/agent-management/inventory-settings/platform";
+                var inventorySettings = await securityApi.GetFromJsonAsync<InventorySettingsView>(inventorySettingsPath, token);
+                var inventoryUpdate = new InventorySettingsUpdate(new InventorySettingsOverrides(1800), inventorySettings!.Version);
+                using (var missingCsrf = await securityApi.PutAsJsonAsync(inventorySettingsPath, inventoryUpdate, token))
                     Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
                 var policyPath = $"/api/v1/agent-management/devices/{identity.DeviceId:D}/integrity-scopes/";
                 var policy = new IntegrityScopeInput(IntegrityScopeKind.Directory, "/srv/api-test", true,
@@ -355,6 +357,11 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 securityApi.DefaultRequestHeaders.Remove("Cookie");
                 securityApi.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={cookie}; {antiCookie}");
                 securityApi.DefaultRequestHeaders.Add("RequestVerificationToken", anti.RequestToken);
+                using (var updated = await securityApi.PutAsJsonAsync(inventorySettingsPath, inventoryUpdate, token))
+                {
+                    Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
+                    Assert.AreEqual(1800, (await updated.Content.ReadFromJsonAsync<InventorySettingsView>(cancellationToken: token))!.Effective.Settings.ScanIntervalSeconds);
+                }
                 using (var created = await securityApi.PostAsJsonAsync(policyPath, policy, token))
                 {
                     Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
