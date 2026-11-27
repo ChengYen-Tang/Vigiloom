@@ -81,7 +81,9 @@ public static class WorkerHost
         if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Operations:Url"]) ||
             string.IsNullOrWhiteSpace(builder.Configuration["Services:Resources:Url"]))
             builder.Services.AddScoped<IAuditRetentionSource, DeviceAuditRetention>();
-        builder.Services.AddScoped<IAuditRetentionSource, DashboardAuditRetention>();
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Operations:Url"]) ||
+            string.IsNullOrWhiteSpace(builder.Configuration["Services:Web:Url"]))
+            builder.Services.AddScoped<IAuditRetentionSource, DashboardAuditRetention>();
         builder.Services.AddScoped<IAuditRetentionSource, AgentAuditRetention>();
         builder.Services.AddScoped<IAuditRetentionSource, SecurityAuditRetention>();
         builder.Services.AddWindowsService(options => options.ServiceName = "Vigiloom Worker");

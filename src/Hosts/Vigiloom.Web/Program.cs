@@ -110,6 +110,8 @@ builder.Services.AddHttpClient<RemoteIdentityAuditRetention>((services, client) 
     .AddServiceDiscovery();
 builder.Services.AddScoped<IAuditRetentionSource, DeviceAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, DashboardAuditRetention>();
+builder.Services.AddScoped<DashboardAuditRetention>();
+builder.Services.AddScoped<Vigiloom.Web.Diagnostics.LegacyDashboardAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, AgentAuditRetention>();
 builder.Services.AddScoped<IAuditRetentionSource, SecurityAuditRetention>();
 builder.Services.AddScoped<IHostLogRetention, HostLogRetention>();
@@ -852,6 +854,10 @@ app.MapTelemetryRetentionEndpoints();
 app.MapPost("/internal/v1/legacy-host-logs/cleanup", async (Vigiloom.Contracts.Operations.ApplicationLogCleanupRequest input,
     Vigiloom.Web.ServiceDetails.LegacyHostLogCleanup cleanup, CancellationToken token) =>
     input.RetentionDays is < 1 or > 3650 ? Results.BadRequest() : Results.Ok(await cleanup.RunAsync(input.RetentionDays, token)));
+app.MapPost("/internal/v1/legacy-dashboard-audit/retention/count", async (AuditRetentionRequest request, Vigiloom.Web.Diagnostics.LegacyDashboardAuditRetention retention, CancellationToken token) =>
+    request.Cutoff.Offset != TimeSpan.Zero ? Results.BadRequest() : Results.Ok(await retention.CountAsync(request, token)));
+app.MapPost("/internal/v1/legacy-dashboard-audit/retention/delete", async (AuditRetentionRequest request, Vigiloom.Web.Diagnostics.LegacyDashboardAuditRetention retention, CancellationToken token) =>
+    request.Cutoff.Offset != TimeSpan.Zero || request.BatchSize is < 1 or > 500 ? Results.BadRequest() : Results.Ok(await retention.DeleteAsync(request, token)));
 app.MapServiceDetailsEndpoints();
 app.MapServiceInstanceEndpoints();
 app.MapHealthTargetEndpoints();
