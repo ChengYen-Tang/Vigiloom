@@ -205,4 +205,61 @@
   <data name="選擇要撤銷的版本" xml:space="preserve"><value>Select a version to revoke</value></data>
   <data name="確認撤銷此版本及相同內容的使用資格" xml:space="preserve"><value>Confirm revocation of this version and identical content</value></data>
   <data name="撤銷版本" xml:space="preserve"><value>Revoke version</value></data>
+  <data name="規則來源資料" xml:space="preserve"><value>Rule source data</value></data>
+  <data name="以下是已保存的上游規則與作者資料。來源符合條件不代表偵測器支援或已啟用。" xml:space="preserve"><value>These are saved upstream rules and author details. Source eligibility does not imply detector support or activation.</value></data>
+  <data name="此頁沒有規則。" xml:space="preserve"><value>No rules on this page.</value></data>
+  <data name="左右滑動可查看完整規則資訊。" xml:space="preserve"><value>Scroll horizontally for complete rule details.</value></data>
+  <data name="規則來源資料，可左右捲動" xml:space="preserve"><value>Rule source data, scroll horizontally</value></data>
+  <data name="規則" xml:space="preserve"><value>Rule</value></data>
+  <data name="上游適用來源" xml:space="preserve"><value>Upstream applicable source</value></data>
+  <data name="作者" xml:space="preserve"><value>Author</value></data>
+  <data name="來源狀態" xml:space="preserve"><value>Source status</value></data>
+  <data name="授權聲明" xml:space="preserve"><value>License declaration</value></data>
+  <data name="來源選用條件" xml:space="preserve"><value>Source selection criteria</value></data>
+  <data name="未指定" xml:space="preserve"><value>Not specified</value></data>
+  <data name="來源聲明 DRL-1.1" xml:space="preserve"><value>Source declares DRL-1.1</value></data>
+  <data name="規則聲明 DRL-1.1" xml:space="preserve"><value>Rule declares DRL-1.1</value></data>
+  <data name="待核對：{0}" xml:space="preserve"><value>Needs review: {0}</value></data>
+  <data name="符合" xml:space="preserve"><value>Eligible</value></data>
+  <data name="不在核心規則範圍" xml:space="preserve"><value>Outside core rule scope</value></data>
+  <data name="缺少作者" xml:space="preserve"><value>Author missing</value></data>
+  <data name="授權待核對" xml:space="preserve"><value>License needs review</value></data>
+  <data name="尚未核對" xml:space="preserve"><value>Not reviewed</value></data>
+  <data name="規則資料分頁" xml:space="preserve"><value>Rule data pages</value></data>
+  <data name="IOC／YARA 來源檔案" xml:space="preserve"><value>IOC/YARA source files</value></data>
+  <data name="以下是上游原始檔案的摘要；IOC 原始檔可依上方條件選用。YARA 規則授權與相容性仍待核對，尚未啟用偵測。" xml:space="preserve"><value>These are upstream source file summaries. IOC files can be selected under the conditions above. YARA rule licensing and compatibility require review; detection is not enabled.</value></data>
+  <data name="此頁沒有來源檔案。" xml:space="preserve"><value>No source files on this page.</value></data>
+  <data name="左右滑動可查看完整檔案資訊。" xml:space="preserve"><value>Scroll horizontally for complete file details.</value></data>
+  <data name="來源檔案，可左右捲動" xml:space="preserve"><value>Source files, scroll horizontally</value></data>
+  <data name="路徑" xml:space="preserve"><value>Path</value></data>
+  <data name="類型" xml:space="preserve"><value>Type</value></data>
+  <data name="IOC 分類" xml:space="preserve"><value>IOC classification</value></data>
+  <data name="查看授權線索" xml:space="preserve"><value>View license evidence</value></data>
+  <data name="授權證據" xml:space="preserve"><value>License evidence</value></data>
+  <data name="{0} 筆，" xml:space="preserve"><value>{0} records, </value></data>
+  <data name="{0} 筆未支援" xml:space="preserve"><value>{0} unsupported</value></data>
+  <data name="不適用" xml:space="preserve"><value>Not applicable</value></data>
+  <data name="來源檔案分頁" xml:space="preserve"><value>Source file pages</value></data>
+  <data name="來源授權線索" xml:space="preserve"><value>Source license evidence</value></data>
+  <data name="檔案：" xml:space="preserve"><value>File: </value></data>
+  <data name="以下僅列出包含作者或授權字樣的原文行，可能來自註解或字串；規則邊界與授權尚未解析或確認，沒有列出也不代表沒有其他條件。" xml:space="preserve"><value>Only original lines containing author or license terms are listed; they may be comments or strings. Rule boundaries and licenses have not been parsed or verified; omitted lines do not imply there are no other terms.</value></data>
+  <data name="檔案與保存的摘要不一致，無法顯示內容。" xml:space="preserve"><value>File does not match the stored digest; content cannot be displayed.</value></data>
+  <data name="檔案不是有效的 UTF-8，無法顯示內容。" xml:space="preserve"><value>File is not valid UTF-8; content cannot be displayed.</value></data>
+  <data name="沒有找到包含這些字樣的行。" xml:space="preserve"><value>No lines containing these terms were found.</value></data>
+  <data name="第 {0} 行：" xml:space="preserve"><value>Line {0}: </value></data>
+  <data name="（此行已截斷）" xml:space="preserve"><value> (line truncated)</value></data>
+  <data name="查看前後內容" xml:space="preserve"><value>View surrounding content</value></data>
+  <data name="授權線索分頁" xml:space="preserve"><value>License evidence pages</value></data>
+  <data name="第 {0} 行的前後內容" xml:space="preserve"><value>Context around line {0}</value></data>
+  <data name="找不到此行。" xml:space="preserve"><value>Line not found.</value></data>
+  <data name="原文上下文分頁" xml:space="preserve"><value>Original context pages</value></data>
+  <data name="較前內容" xml:space="preserve"><value>Earlier content</value></data>
+  <data name="較後內容" xml:space="preserve"><value>Later content</value></data>
+  <data name="未支援的 IOC 項目" xml:space="preserve"><value>Unsupported IOC entries</value></data>
+  <data name="來源檔案：{0}。行號對應原始來源，內容仍保留在該版本中。" xml:space="preserve"><value>Source file: {0}. Line numbers correspond to the original source, whose content remains in this version.</value></data>
+  <data name="此頁沒有未支援的項目。" xml:space="preserve"><value>No unsupported entries on this page.</value></data>
+  <data name="未支援的 IOC 項目，可左右捲動" xml:space="preserve"><value>Unsupported IOC entries, scroll horizontally</value></data>
+  <data name="行號" xml:space="preserve"><value>Line</value></data>
+  <data name="原因" xml:space="preserve"><value>Reason</value></data>
+  <data name="未支援項目分頁" xml:space="preserve"><value>Unsupported entry pages</value></data>
 </root>

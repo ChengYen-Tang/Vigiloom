@@ -142,11 +142,17 @@ public sealed class IntelligenceBrowserTests(TestContext context)
         await page.GetByRole(AriaRole.Cell, new() { Name = "test-catalog-v1", Exact = true }).WaitForAsync();
         await page.GetByText("Update settings", new() { Exact = true }).ClickAsync();
         await page.GetByLabel("Update interval (seconds)", new() { Exact = true }).WaitForAsync();
+        await page.GotoAsync($"{url}/settings/intelligence?source={sigmaSource.Id:D}");
+        await page.GetByRole(AriaRole.Heading, new() { Name = "Rule source data", Exact = true }).WaitForAsync();
+        await page.GetByText("Example author", new() { Exact = true }).WaitForAsync();
         await page.GotoAsync($"{url}/culture/set?culture=zh-Hans&returnUrl={Uri.EscapeDataString(sourcePath)}");
         await page.GetByRole(AriaRole.Heading, new() { Name = "情报来源", Exact = true }).First.WaitForAsync();
         await page.GetByText("无法取得来源数据。", new() { Exact = false }).WaitForAsync();
         await page.GetByRole(AriaRole.Heading, new() { Name = "来源版本", Exact = true }).WaitForAsync();
         await page.GetByText("更新设置", new() { Exact = true }).ClickAsync();
         await page.GetByLabel("更新间隔（秒）", new() { Exact = true }).WaitForAsync();
+        await page.GotoAsync($"{url}/settings/intelligence?source={signatureSource.Id:D}");
+        await page.GetByRole(AriaRole.Heading, new() { Name = "IOC／YARA 来源文件", Exact = true }).WaitForAsync();
+        await page.GetByText("iocs/hash-iocs.txt", new() { Exact = true }).WaitForAsync();
     }, context.CancellationToken);
 }
