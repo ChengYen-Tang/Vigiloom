@@ -1097,4 +1097,5 @@
   <data name="請先確認操作影響。" xml:space="preserve"><value>请先确认操作影响。</value></data>
   <data name="設定已變更或找不到範圍，請重新整理後再試。" xml:space="preserve"><value>设置已更改或找不到范围，请刷新后重试。</value></data>
   <data name="無法確認移除結果，請重新整理並檢查設定。" xml:space="preserve"><value>无法确认移除结果，请刷新并检查设置。</value></data>
+  <data name="掃描執行中，開始時間（UTC）：{0}" xml:space="preserve"><value>扫描进行中，开始时间（UTC）：{0}</value></data>
 </root>
