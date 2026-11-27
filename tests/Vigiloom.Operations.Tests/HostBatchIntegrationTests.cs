@@ -97,6 +97,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var writer = new SecurityWriter();
             using var host = new WebApplicationFactory<HostMonitoring::Program>().WithWebHostBuilder(web =>
             {
+                web.UseUrls("http://127.0.0.1:0");
                 web.UseSetting("Hangfire:Enabled", "false"); web.UseSetting("Temporal:Enabled", temporalAddress is null ? "false" : "true");
                 web.UseSetting("Work:SecurityQueue", queue);
                 web.UseSetting("Work:AgentQueue", queue + "-agent");
@@ -163,6 +164,43 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.AreEqual(1L, progress!.Single(x => x.Source == InventorySource.LinuxDpkg).HighWaterGeneration);
             await using (var db = new SecurityAnalysisDbContext(securityOptions)) Assert.AreEqual(1, await db.InventorySnapshots.CountAsync(token));
             await using (var db = new HostMonitoringDbContext(hostOptions)) Assert.AreEqual(0, await db.HostSecurityBatches.CountAsync(token));
+
+            var scanId = Guid.CreateVersion7();
+            await using (var db = new SecurityAnalysisDbContext(securityOptions))
+            {
+                db.YaraScans.Add(new Vigiloom.Modules.SecurityAnalysis.Domain.YaraScan
+                {
+                    Id = scanId, AgentId = identity.AgentId, DeviceId = identity.DeviceId, RequestedBy = Guid.CreateVersion7(),
+                    FilePath = "/tmp/test", Rules = "rule test { condition: true }", MaximumBytes = 1024,
+                    TimeoutSeconds = 30, RequestedAt = nowUtc
+                });
+                await db.SaveChangesAsync(token);
+            }
+            var started = new YaraStartBatch(YaraStartBatchCodec.SchemaVersion, Guid.CreateVersion7(), nowUtc, scanId);
+            var startPayload = YaraStartBatchCodec.Serialize(started);
+            using (var accepted = await SendAsync(client, startPayload, "valid", token)) Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
+            using (var duplicate = await SendAsync(client, startPayload, "valid", token)) Assert.AreEqual(HttpStatusCode.NoContent, duplicate.StatusCode);
+            if (temporalAddress is null)
+            {
+                var start = Assert.ContainsSingle(writer.Starts);
+                var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = securityDb.ConnectionString }).Build();
+                var worker = new SecurityHost::Vigiloom.Security.SecurityWorkHandler(config, new SingleHttpClientFactory(hostClient));
+                var work = new ServiceWork(nameof(YaraScanStarted), JsonSerializer.Serialize(start), Guid.CreateVersion7().ToString());
+                await worker.ExecuteAsync(work, token);
+            }
+            else
+            {
+                var deadline = DateTime.UtcNow.AddSeconds(45);
+                while (true)
+                {
+                    await using var db = new SecurityAnalysisDbContext(securityOptions);
+                    if (await db.YaraScans.AnyAsync(x => x.Id == scanId && x.StartedAt != null, token)) break;
+                    if (DateTime.UtcNow >= deadline) Assert.Fail("Temporal did not deliver the YARA start.");
+                    await Task.Delay(250, token);
+                }
+            }
+            await using (var db = new SecurityAnalysisDbContext(securityOptions))
+                Assert.AreEqual(nowUtc, (await db.YaraScans.SingleAsync(x => x.Id == scanId, token)).StartedAt);
         }, outerToken), context.CancellationToken);
 
     private sealed class SingleHttpClientFactory(HttpClient client) : IHttpClientFactory
@@ -535,6 +573,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
     private sealed class SecurityWriter : IHostSecurityWorkWriter
     {
         public List<HostSecurityBatchReady> Batches { get; } = [];
+        public List<YaraScanStarted> Starts { get; } = [];
+        public Task WriteStartAsync(HostMonitoringDbContext db, YaraScanStarted started, CancellationToken token) { Starts.Add(started); return Task.CompletedTask; }
         public Task WriteAsync(HostMonitoringDbContext db, HostSecurityBatchReady batch, CancellationToken token)
         {
             Batches.Add(batch);

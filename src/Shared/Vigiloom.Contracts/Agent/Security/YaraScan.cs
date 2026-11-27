@@ -12,6 +12,38 @@ public sealed record YaraScanJob(Guid Id, Guid AgentId, Guid DeviceId, Guid Requ
 /// <summary>A scan start reported by an Agent through the host service.</summary>
 public sealed record YaraScanStarted(Guid ScanId, Guid AgentId, Guid DeviceId, DateTimeOffset StartedAt);
 
+/// <summary>Durable Agent notification that a scan has started.</summary>
+public sealed record YaraStartBatch(int SchemaVersion, Guid BatchId, DateTimeOffset EnqueuedAt, Guid ScanId);
+
+public static class YaraStartBatchCodec
+{
+    public const int SchemaVersion = 13;
+    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
+
+    public static byte[] Serialize(YaraStartBatch batch)
+    {
+        if (!Valid(batch)) throw new ArgumentException("Invalid YARA start.", nameof(batch));
+        return JsonSerializer.SerializeToUtf8Bytes(batch, Options);
+    }
+
+    public static bool TryRead(ReadOnlySpan<byte> bytes, out YaraStartBatch? batch)
+    {
+        batch = null;
+        if (bytes.Length is < 1 or > AgentBatchCodec.MaximumBytes) return false;
+        try
+        {
+            var value = JsonSerializer.Deserialize<YaraStartBatch>(bytes, Options);
+            if (!Valid(value)) return false;
+            batch = value;
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private static bool Valid(YaraStartBatch? batch) => batch is { SchemaVersion: SchemaVersion } &&
+        batch.BatchId.Version == 7 && batch.ScanId.Version == 7 && batch.EnqueuedAt != default && batch.EnqueuedAt.Offset == TimeSpan.Zero;
+}
+
 public enum YaraScanOutcome { Completed = 1, FileTooLarge = 2, TimedOut = 3, Unavailable = 4, Failed = 5, Cancelled = 6 }
 
 public sealed record YaraScanReport(YaraScanOutcome Outcome, string Output, string Error, bool OutputTruncated, DateTimeOffset CompletedAt,

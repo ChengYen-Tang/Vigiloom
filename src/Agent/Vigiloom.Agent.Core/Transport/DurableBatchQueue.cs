@@ -347,7 +347,7 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
     }
 
     /// <summary>Read the oldest unacknowledged batch. Repeated reads return the same ID and bytes.</summary>
-    public async Task<QueuedBatch?> PeekAsync(CancellationToken token, int? skipSchemaVersion = null, int? skipSecondSchemaVersion = null)
+    public async Task<QueuedBatch?> PeekAsync(CancellationToken token, int? skipSchemaVersion = null, int? skipSecondSchemaVersion = null, int? skipThirdSchemaVersion = null)
     {
         await gate.WaitAsync(token);
         try
@@ -356,18 +356,19 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
             token.ThrowIfCancellationRequested();
             using var connection = Open(session.DirectoryPath);
             using var command = connection.CreateCommand();
-            command.CommandText = skipSchemaVersion is null && skipSecondSchemaVersion is null
+            command.CommandText = skipSchemaVersion is null && skipSecondSchemaVersion is null && skipThirdSchemaVersion is null
                 ? "SELECT batch_id, created_ticks, record_count, payload FROM batches WHERE rejection IS NULL ORDER BY ordinal LIMIT 1"
                 : """
                   SELECT batch_id, created_ticks, record_count, payload FROM batches
                   WHERE rejection IS NULL AND CASE WHEN json_valid(CAST(payload AS TEXT))
-                      THEN COALESCE(json_extract(CAST(payload AS TEXT), '$.schemaVersion'), -1) ELSE -1 END NOT IN ($schema, $other)
+                      THEN COALESCE(json_extract(CAST(payload AS TEXT), '$.schemaVersion'), -1) ELSE -1 END NOT IN ($schema, $other, $third)
                   ORDER BY ordinal LIMIT 1
                   """;
-            if (skipSchemaVersion is not null || skipSecondSchemaVersion is not null)
+            if (skipSchemaVersion is not null || skipSecondSchemaVersion is not null || skipThirdSchemaVersion is not null)
             {
                 command.Parameters.AddWithValue("$schema", skipSchemaVersion ?? -999);
                 command.Parameters.AddWithValue("$other", skipSecondSchemaVersion ?? -999);
+                command.Parameters.AddWithValue("$third", skipThirdSchemaVersion ?? -999);
             }
             using var reader = command.ExecuteReader();
             return reader.Read() ? new QueuedBatch(Guid.Parse(reader.GetString(0)), new DateTimeOffset(reader.GetInt64(1), TimeSpan.Zero),
@@ -411,11 +412,12 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
             query.CommandText = """
                 SELECT batch_id, created_ticks, record_count, payload FROM batches
                 WHERE rejection = $reason AND CASE WHEN json_valid(CAST(payload AS TEXT))
-                    THEN json_extract(CAST(payload AS TEXT), '$.schemaVersion') ELSE NULL END IN ($schema, $yara)
+                    THEN json_extract(CAST(payload AS TEXT), '$.schemaVersion') ELSE NULL END IN ($schema, $yara, $yaraStart)
                 """;
             query.Parameters.AddWithValue("$reason", (int)QueueRejection.InvalidLocalBatch);
             query.Parameters.AddWithValue("$schema", Vigiloom.Contracts.Agent.Baseline.BaselineBatchCodec.SchemaVersion);
             query.Parameters.AddWithValue("$yara", Vigiloom.Contracts.Agent.Security.YaraResultBatchCodec.SchemaVersion);
+            query.Parameters.AddWithValue("$yaraStart", Vigiloom.Contracts.Agent.Security.YaraStartBatchCodec.SchemaVersion);
             var restored = new List<string>();
             using (var reader = query.ExecuteReader())
                 while (reader.Read())
@@ -424,7 +426,7 @@ public sealed partial class DurableBatchQueue(IdentityVault vault, Guid agentId,
                     var pending = new QueuedBatch(Guid.Parse(reader.GetString(0)), new DateTimeOffset(reader.GetInt64(1), TimeSpan.Zero),
                         reader.GetInt32(2), (byte[])reader[3]);
                     if (AgentBatchClient.MatchesQueueEntry(pending, out var schema) &&
-                        schema is Vigiloom.Contracts.Agent.Baseline.BaselineBatchCodec.SchemaVersion or Vigiloom.Contracts.Agent.Security.YaraResultBatchCodec.SchemaVersion)
+                        schema is Vigiloom.Contracts.Agent.Baseline.BaselineBatchCodec.SchemaVersion or Vigiloom.Contracts.Agent.Security.YaraResultBatchCodec.SchemaVersion or Vigiloom.Contracts.Agent.Security.YaraStartBatchCodec.SchemaVersion)
                         restored.Add(pending.BatchId.ToString("D"));
                 }
             using var update = connection.CreateCommand();

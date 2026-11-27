@@ -1,4 +1,5 @@
 using Vigiloom.Contracts.Agent;
+using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Modules.AgentManagement.Persistence;
 
 namespace Vigiloom.Modules.AgentManagement.Application;
@@ -7,4 +8,5 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 public interface IHostSecurityWorkWriter
 {
     Task WriteAsync(HostMonitoringDbContext db, HostSecurityBatchReady batch, CancellationToken token);
+    Task WriteStartAsync(HostMonitoringDbContext db, YaraScanStarted started, CancellationToken token);
 }
