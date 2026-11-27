@@ -64,6 +64,10 @@ public sealed class ServiceOpenApiTests(TestContext context)
         }
         if (scheme == "AgentBearer")
         {
+            var metricAdmin = paths.GetProperty("/api/v1/agent-management/metric-settings/platform").GetProperty("put");
+            Assert.IsTrue(metricAdmin.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
+            Assert.IsTrue(metricAdmin.GetProperty("responses").GetProperty("200").GetProperty("content").GetProperty("application/json").TryGetProperty("schema", out _));
+            Assert.IsTrue(paths.GetProperty("/api/v1/agent/metric-settings").GetProperty("get").GetProperty("security")[0].TryGetProperty("AgentBearer", out _));
             var retentionWrite = paths.GetProperty("/api/v1/settings/host-metrics/retention").GetProperty("put").GetProperty("security")[0];
             Assert.IsTrue(retentionWrite.TryGetProperty("BrowserSession", out _));
             Assert.IsTrue(retentionWrite.TryGetProperty("Antiforgery", out _));

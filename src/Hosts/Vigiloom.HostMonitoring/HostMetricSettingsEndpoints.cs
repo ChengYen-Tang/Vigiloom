@@ -17,12 +17,12 @@ internal static class HostMetricSettingsEndpoints
         app.MapPost("/internal/v1/agent-metric-settings/devices/{deviceId:guid}", async (Guid deviceId, AgentMetricSettingsCommand command, HostMetricConfiguration settings, IHttpClientFactory clients, CancellationToken token) =>
             await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateInternalAsync(settings, deviceId, command, token) : Results.NotFound());
         var admin = app.MapGroup("/api/v1/agent-management/metric-settings").RequireAuthorization("Administrator").RequireRateLimiting("api-client");
-        admin.MapGet("/platform", (HostMetricConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token));
-        admin.MapPut("/platform", (AgentMetricSettingsUpdate input, HostMetricConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token));
+        admin.MapGet("/platform", (HostMetricConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token)).Produces<AgentMetricSettingsView>();
+        admin.MapPut("/platform", (AgentMetricSettingsUpdate input, HostMetricConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token)).Produces<AgentMetricSettingsView>().ProducesProblem(409).ProducesValidationProblem();
         admin.MapGet("/devices/{deviceId:guid}", async (Guid deviceId, HostMetricConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
-            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await ReadAsync(settings, deviceId, context, token) : Results.NotFound());
+            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await ReadAsync(settings, deviceId, context, token) : Results.NotFound()).Produces<AgentMetricSettingsView>().ProducesProblem(404);
         admin.MapPut("/devices/{deviceId:guid}", async (Guid deviceId, AgentMetricSettingsUpdate input, HostMetricConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
-            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateAsync(settings, deviceId, input, context, token) : Results.NotFound());
+            await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateAsync(settings, deviceId, input, context, token) : Results.NotFound()).Produces<AgentMetricSettingsView>().ProducesProblem(404).ProducesProblem(409).ProducesValidationProblem();
         app.MapGet("/api/v1/agent/metric-settings", async (HttpContext context, HostMetricConfiguration settings, CancellationToken token) =>
         {
             var snapshot = await settings.GetForAgentAsync((RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!, token);
@@ -32,7 +32,7 @@ internal static class HostMetricSettingsEndpoints
             var requested = context.Request.GetTypedHeaders().IfNoneMatch;
             return requested?.Any(x => x.Equals(EntityTagHeaderValue.Any) || x.Compare(tag, useStrongComparison: false)) == true
                 ? Results.StatusCode(StatusCodes.Status304NotModified) : Results.Ok(snapshot);
-        });
+        }).Produces<AgentMetricSettingsSnapshot>().Produces(304);
     }
 
     private static async Task<IResult> ReadAsync(HostMetricConfiguration settings, Guid? deviceId, HttpContext context, CancellationToken token)
