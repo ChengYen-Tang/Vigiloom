@@ -1102,7 +1102,7 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
-            var monitoringPaths = new[] { "/api/v1/agent-packages", $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status", $"/api/v1/devices/{device.Id:D}/agent-queue-capacity-status" };
+            var monitoringPaths = new[] { "/api/v1/agent-packages", $"/api/v1/devices/{device.Id:D}/agent-status", $"/api/v1/devices/{device.Id:D}/agent-settings", $"/api/v1/devices/{device.Id:D}/agent-settings-status" };
             foreach (var path in monitoringPaths)
             {
                 using var anonymousRead = await agent.GetAsync(path, token);

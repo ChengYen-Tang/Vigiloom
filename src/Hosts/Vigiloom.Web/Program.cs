@@ -814,7 +814,6 @@ app.MapAgentPackageUiEndpoints();
 app.MapAgentConfigurationEndpoints();
 app.MapAgentVersionEndpoints();
 app.MapYaraScanEndpoints();
-app.MapAgentQueueCapacityEndpoints();
 app.MapInventorySettingsEndpoints();
 app.MapBaselineSettingsEndpoints();
 app.MapIntelligenceEndpoints();

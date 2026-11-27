@@ -884,6 +884,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             proxiedHost.UseKestrel(0);
             using var proxyClient = proxiedHost.CreateClient();
             proxyClient.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
+            using (var anonymous = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/agent-queue-capacity-status", token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             using (var anonymous = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-metrics?from={from}&until={until}", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             using (var anonymous = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-metrics/series?from={from}&until={until}&kind=CpuTotalPercent", token))
