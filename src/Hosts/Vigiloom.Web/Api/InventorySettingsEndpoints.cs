@@ -9,13 +9,6 @@ internal static class InventorySettingsEndpoints
 {
     public static void MapInventorySettingsEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/v1/devices/{deviceId:guid}/inventory-settings-status", async (Guid deviceId, AgentInventorySettingsMonitoring monitoring, HttpContext context, CancellationToken token) =>
-        {
-            context.Response.Headers.CacheControl = "no-store";
-            return await monitoring.GetAsync(deviceId, token) is { } status ? Results.Ok(status) : Results.NotFound();
-        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
-            .Produces<InventorySettingsStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404);
-
         app.MapGet("/api/v1/agent/inventory-settings", async (int? contract, AgentInventorySettings settings, HttpContext context, CancellationToken token) =>
         {
             if (contract is not (null or 2)) return Results.BadRequest();

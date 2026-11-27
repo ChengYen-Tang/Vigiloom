@@ -400,12 +400,9 @@ public sealed class AgentIdentityHttpTests
             using (var accepted = await client.PostAsync("/api/v1/agent/batches", JsonBytes(InventoryChunkCodec.Serialize(next)), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
             await PingTestSite.InitializeAsync(factory, token);
-            using var reader = PingTestSite.Client(factory);
-            await PingTestSite.LoginAsync(reader, "reader", token);
-            using (var policyStatus = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/inventory-settings-status", token))
+            await using (var scope = factory.Services.CreateAsyncScope())
             {
-                Assert.AreEqual(HttpStatusCode.OK, policyStatus.StatusCode);
-                var reported = await policyStatus.Content.ReadFromJsonAsync<InventorySettingsStatus>(cancellationToken: token);
+                var reported = await scope.ServiceProvider.GetRequiredService<AgentInventorySettingsMonitoring>().GetAsync(device.Id, token);
                 Assert.IsNotNull(reported);
                 Assert.AreEqual(AgentSettingsApplyState.Applied, reported.State);
                 Assert.AreEqual(appliedInventory.Revision, reported.Applied!.Revision);
