@@ -318,41 +318,37 @@ public sealed class AgentSettingsUiHttpTests
             Assert.IsNotNull(firstSettings);
             Assert.IsTrue(firstSettings.IsValid());
             Assert.AreEqual(saved.Scope.Id, firstSettings.Scopes.Single().Id);
-            var settingsStatusUrl = $"/api/v1/devices/{first.Id:D}/integrity/settings-status";
-            using (var initialStatus = await reader.GetAsync(settingsStatusUrl, token))
+            async Task<IntegritySettingsStatus> ReadSettingsStatusAsync()
             {
-                Assert.AreEqual(HttpStatusCode.OK, initialStatus.StatusCode);
-                var value = await initialStatus.Content.ReadFromJsonAsync<IntegritySettingsStatus>(cancellationToken: token);
-                Assert.AreEqual(AgentSettingsApplyState.WaitingForHeartbeat, value!.State);
+                await using var scope = factory.Services.CreateAsyncScope();
+                return (await scope.ServiceProvider.GetRequiredService<AgentIntegritySettingsMonitoring>().GetAsync(first.Id, token))!;
             }
+            Assert.AreEqual(AgentSettingsApplyState.WaitingForHeartbeat, (await ReadSettingsStatusAsync()).State);
             var epoch = Guid.CreateVersion7();
             using (var session = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
             var report = new AgentHeartbeatReport(1, epoch, 1, null, IntegrityConfiguration:
                 new(firstSettings.Revision, firstSettings.Generation, DateTimeOffset.UtcNow, null));
             using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", report, token)) Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
-            using (var status = await reader.GetAsync(settingsStatusUrl, token))
             {
-                var value = await status.Content.ReadFromJsonAsync<IntegritySettingsStatus>(cancellationToken: token);
-                Assert.AreEqual(AgentSettingsApplyState.Applied, value!.State);
+                var value = await ReadSettingsStatusAsync();
+                Assert.AreEqual(AgentSettingsApplyState.Applied, value.State);
                 Assert.AreEqual(firstSettings.Revision, value.AppliedRevision);
             }
             using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", report with { Sequence = 2, IntegrityConfiguration = report.IntegrityConfiguration! with { Failure = AgentConfigurationFailure.Unavailable } }, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
             using (var stale = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", report, token)) Assert.AreEqual(HttpStatusCode.NoContent, stale.StatusCode);
-            using (var status = await reader.GetAsync(settingsStatusUrl, token))
             {
-                var value = await status.Content.ReadFromJsonAsync<IntegritySettingsStatus>(cancellationToken: token);
-                Assert.AreEqual(AgentSettingsApplyState.Failed, value!.State);
+                var value = await ReadSettingsStatusAsync();
+                Assert.AreEqual(AgentSettingsApplyState.Failed, value.State);
                 Assert.AreEqual(firstSettings.Revision, value.AppliedRevision);
             }
             var replacementEpoch = Guid.CreateVersion7();
             using (var replacementSession = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(epoch, replacementEpoch), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, replacementSession.StatusCode);
-            using (var status = await reader.GetAsync(settingsStatusUrl, token))
             {
-                var value = await status.Content.ReadFromJsonAsync<IntegritySettingsStatus>(cancellationToken: token);
-                Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, value!.State);
+                var value = await ReadSettingsStatusAsync();
+                Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, value.State);
                 Assert.IsNull(value.AppliedRevision);
             }
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", secondToken);

@@ -19,12 +19,6 @@ internal static class IntegrityMonitoringEndpoints
             return resolved.Exists ? Results.Ok(await query.GetAsync(deviceId, resolved.AgentId, token)) : Results.NotFound();
         }).Produces<DeviceIntegrityView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
 
-        group.MapGet("/settings-status", async (Guid deviceId, HttpContext context, AgentIntegritySettingsMonitoring monitoring, CancellationToken token) =>
-        {
-            context.Response.Headers.CacheControl = "private, no-store";
-            return await monitoring.GetAsync(deviceId, token) is { } status ? Results.Ok(status) : Results.NotFound();
-        }).Produces<IntegritySettingsStatus>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
-
         group.MapGet("/changes", async (Guid deviceId, DateTimeOffset from, DateTimeOffset until, Guid? scopeId,
             string? cursor, HttpContext context, IDeviceInventoryAgent ownership, IntegrityAccess query, CancellationToken token) =>
         {
