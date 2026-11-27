@@ -113,70 +113,70 @@
                     @if (selected.Key == "cisa-kev")
                     {
                         <section class="device-panel">
-                            <details><summary><h2>離線匯入</h2></summary>
-                                <p>選擇從可信管道取得的 KEV JSON 檔案。系統會驗證格式與紀錄內容，並標記為管理員匯入；匯入本身不證明檔案由 CISA 簽署，也不會自動啟用。</p>
+                            <details><summary><h2>@L["離線匯入"]</h2></summary>
+                                <p>@L["選擇從可信管道取得的 KEV JSON 檔案。系統會驗證格式與紀錄內容，並標記為管理員匯入；匯入本身不證明檔案由 CISA 簽署，也不會自動啟用。"]</p>
                                 <form method="post" action="@($"/settings/intelligence/{selected.Id:D}/offline-import")" enctype="multipart/form-data" class="intelligence-form">
                                     <AntiforgeryToken />
-                                    <label for="kev-file">KEV JSON 檔案</label><input id="kev-file" type="file" name="file" accept=".json,application/json" required />
-                                    <div><button type="submit">匯入檔案</button></div>
+                                    <label for="kev-file">@L["KEV JSON 檔案"]</label><input id="kev-file" type="file" name="file" accept=".json,application/json" required />
+                                    <div><button type="submit">@L["匯入檔案"]</button></div>
                                 </form>
                             </details>
                             @if (ImportMessage is not null) { <p role="status">@ImportMessage</p> }
                         </section>
                     }
                     <section class="device-panel">
-                        <h2>來源版本</h2>
-                        @if (revisions is null || revisions.Items.Count == 0) { <p>尚無已驗證的版本。</p> }
+                        <h2>@L["來源版本"]</h2>
+                        @if (revisions is null || revisions.Items.Count == 0) { <p>@L["尚無已驗證的版本。"]</p> }
                         else
                         {
-                            <p class="intelligence-scroll-hint">左右滑動可查看完整版本資訊。</p>
-                            <div class="device-table-wrap intelligence-versions" role="region" tabindex="0" aria-label="情報版本，可左右捲動"><table><thead><tr><th>來源版本</th><th>來源時間（UTC）</th><th>取得時間（UTC）</th><th>紀錄</th><th>狀態</th><th>版本資訊</th>@if (selected.Key is "sigmahq-rules" or "signature-base") { <th>來源資料</th> }</tr></thead><tbody>
-                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? "已撤銷" : revision.ContentPurgedAt is not null ? "內容已清理" : selected.Key == "msrc-cvrf" && revision.UpstreamVersion == "staging" ? "下載未完成" : selected.Key == "msrc-cvrf" && !revision.Normalized ? "已下載，尚未支援比對" : !revision.Normalized ? "未完成驗證" : revision.Active ? "目前使用" : "已保留")</td><td><details><summary>查看資訊</summary><p>格式版本：@revision.SchemaVersion</p><p>轉換版本：@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>授權依據：@revision.LicenseEvidence</p>@if (revision.LastOfflineImportAt is { } imported) { <p>管理員離線匯入（UTC）：@DisplayTime(imported)。匯入不代表上游來源已驗證。</p> }</details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td>@if (revision.ContentPurgedAt is null) { <a href="@RulesUrl(revision.Id, 1)">查看來源資料</a> } else { <span>已清理</span> }</td> }</tr> }
+                            <p class="intelligence-scroll-hint">@L["左右滑動可查看完整版本資訊。"]</p>
+                            <div class="device-table-wrap intelligence-versions" role="region" tabindex="0" aria-label="@L["情報版本，可左右捲動"]"><table><thead><tr><th>@L["來源版本"]</th><th>@L["來源時間（UTC）"]</th><th>@L["取得時間（UTC）"]</th><th>@L["紀錄"]</th><th>@L["狀態"]</th><th>@L["版本資訊"]</th>@if (selected.Key is "sigmahq-rules" or "signature-base") { <th>@L["來源資料"]</th> }</tr></thead><tbody>
+                                @foreach (var revision in revisions.Items) { <tr @key="revision.Id"><td>@revision.UpstreamVersion</td><td>@DisplayTime(revision.ReleasedAt)</td><td>@DisplayTime(revision.RetrievedAt)</td><td>@revision.RecordCount</td><td>@(revision.Revoked ? L["已撤銷"].Value : revision.ContentPurgedAt is not null ? L["內容已清理"].Value : selected.Key == "msrc-cvrf" && revision.UpstreamVersion == "staging" ? L["下載未完成"].Value : selected.Key == "msrc-cvrf" && !revision.Normalized ? L["已下載，尚未支援比對"].Value : !revision.Normalized ? L["未完成驗證"].Value : revision.Active ? L["目前使用"].Value : L["已保留"].Value)</td><td><details><summary>@L["查看資訊"]</summary><p>@L["格式版本："]@revision.SchemaVersion</p><p>@L["轉換版本："]@revision.MappingVersion</p><p>SHA-256：@revision.Sha256</p><p>@L["授權依據："]@revision.LicenseEvidence</p>@if (revision.LastOfflineImportAt is { } imported) { <p>@L["管理員離線匯入（UTC）：{0}。匯入不代表上游來源已驗證。", DisplayTime(imported)]</p> }</details></td>@if (selected.Key is "sigmahq-rules" or "signature-base") { <td>@if (revision.ContentPurgedAt is null) { <a href="@RulesUrl(revision.Id, 1)">@L["查看來源資料"]</a> } else { <span>@L["已清理"]</span> }</td> }</tr> }
                             </tbody></table></div>
-                            <nav aria-label="情報版本分頁">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">上一頁</a> } <span>第 @revisions.Page 頁</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">下一頁</a> }</nav>
+                            <nav aria-label="@L["情報版本分頁"]">@if (revisions.Page > 1) { <a href="@VersionUrl(revisions.Page - 1)">@L["上一頁"]</a> } <span>@L["第 {0} 頁", revisions.Page]</span> @if (revisions.HasMore) { <a href="@VersionUrl(revisions.Page + 1)">@L["下一頁"]</a> }</nav>
                             @if (selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal))
                             {
-                                <h3>審核檢查內容</h3>
-                                <p>請核對目標、預期值及適用系統，再選擇要啟用的版本。</p>
+                                <h3>@L["審核檢查內容"]</h3>
+                                <p>@L["請核對目標、預期值及適用系統，再選擇要啟用的版本。"]</p>
                                 @foreach (var revision in revisions.Items)
                                 {
                                     @if (localVersions.TryGetValue(revision.Id, out var check))
                                     {
-                                        <details><summary>@revision.UpstreamVersion @(revision.Active ? "（目前使用）" : "")</summary>
-                                            <p>名稱：@check.Title</p><p>作業系統：@string.Join("、", check.Versions)</p>
-                                            <p>目標：@check.Target</p><p>預期值：@check.Expected</p><p>參考：@(string.IsNullOrWhiteSpace(check.SourceUrl) ? "未提供" : check.SourceUrl)</p>
-                                            <p>來源與使用條件：@check.License</p><p class="baseline-guidance">處理建議：@(check.Guidance ?? "未提供")</p>
-                                            <p><a href="@($"/settings/baseline-checks?source={selected.Id:D}&revision={revision.Id:D}")">以此版本編輯草稿</a></p>
+                                        <details><summary>@revision.UpstreamVersion @(revision.Active ? L["（目前使用）"].Value : "")</summary>
+                                            <p>@L["名稱："]@check.Title</p><p>@L["作業系統："]@string.Join("、", check.Versions)</p>
+                                            <p>@L["目標："]@check.Target</p><p>@L["預期值："]@check.Expected</p><p>@L["參考："]@(string.IsNullOrWhiteSpace(check.SourceUrl) ? L["未提供"].Value : check.SourceUrl)</p>
+                                            <p>@L["來源與使用條件："]@check.License</p><p class="baseline-guidance">@L["處理建議："]@(check.Guidance ?? L["未提供"].Value)</p>
+                                            <p><a href="@($"/settings/baseline-checks?source={selected.Id:D}&revision={revision.Id:D}")">@L["以此版本編輯草稿"]</a></p>
                                         </details>
                                     }
                                 }
                             }
                             @if (selected.Key is not ("cisa-kev" or "github-reviewed" or "ubuntu-osv" or "debian-security" or "msrc-cvrf" or "first-epss" or "sigmahq-rules" or "signature-base" or "compliance-as-code-shadow" or "powerstig-network-selection") && !selected.Key.StartsWith(BaselineSources.LocalPrefix, StringComparison.Ordinal))
-                            { <p>此來源目前僅保存規則資料，尚未支援偵測與發布。</p> }
+                            { <p>@L["此來源目前僅保存規則資料，尚未支援偵測與發布。"]</p> }
                             else if (revisions.Items.Any(x => !x.Revoked && x.Normalized && !x.Active))
                             {
-                            @if (selected.Key == "sigmahq-rules") { <p>僅選用符合授權與作者條件的核心來源規則；這不會部署規則或啟用偵測。</p> }
-                            @if (selected.Key == "signature-base") { <p>僅選用符合來源授權及完整性檢查的兩份 IOC 原始檔；發現新的授權聲明時須重新核對。YARA 規則與偵測尚未啟用。</p> }
-                            @if (selected.Key is "compliance-as-code-shadow" or "powerstig-network-selection") { <p>僅支援已審查版本中的指定唯讀檢查；選用來源不代表設備已完成檢查。</p> }
+                            @if (selected.Key == "sigmahq-rules") { <p>@L["僅選用符合授權與作者條件的核心來源規則；這不會部署規則或啟用偵測。"]</p> }
+                            @if (selected.Key == "signature-base") { <p>@L["僅選用符合來源授權及完整性檢查的兩份 IOC 原始檔；發現新的授權聲明時須重新核對。YARA 規則與偵測尚未啟用。"]</p> }
+                            @if (selected.Key is "compliance-as-code-shadow" or "powerstig-network-selection") { <p>@L["僅支援已審查版本中的指定唯讀檢查；選用來源不代表設備已完成檢查。"]</p> }
                             <EditForm Model="ActivationInput" FormName="intelligence-activation" method="post" OnValidSubmit="ActivateAsync" class="intelligence-form"><DataAnnotationsValidator /><ValidationSummary />
                                 <input type="hidden" name="ActivationInput.SourceId" value="@ActivationInput.SourceId" /><input type="hidden" name="ActivationInput.ExpectedActiveId" value="@ActivationInput.ExpectedActiveId" /><InputHidden @bind-Value="ActivationInput.ExpectedVersion" />
-                                <label for="revision">選擇要啟用或回復的版本</label><InputSelect id="revision" @bind-Value="ActivationInput.RevisionId"><option value="">請選擇版本</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked && x.Normalized && !x.Active)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
-                                <label><InputCheckbox @bind-Value="ActivationInput.ConfirmReduction" /> 確認接受紀錄數大幅減少</label>
-                                @if (revisions.Items.Any(x => x.MappingVersion == "kev-cve-offline-v1")) { <label><InputCheckbox @bind-Value="ActivationInput.ConfirmOffline" /> 若選擇離線匯入版本，我已自行確認檔案來源與使用條件；系統未驗證上游身分。</label> }
-                                <div><button type="submit">@(selected.Key is "sigmahq-rules" or "signature-base" ? "選用來源版本" : "啟用選擇的版本")</button></div>
+                                <label for="revision">@L["選擇要啟用或回復的版本"]</label><InputSelect id="revision" @bind-Value="ActivationInput.RevisionId"><option value="">@L["請選擇版本"]</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked && x.Normalized && !x.Active)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
+                                <label><InputCheckbox @bind-Value="ActivationInput.ConfirmReduction" /> @L["確認接受紀錄數大幅減少"]</label>
+                                @if (revisions.Items.Any(x => x.MappingVersion == "kev-cve-offline-v1")) { <label><InputCheckbox @bind-Value="ActivationInput.ConfirmOffline" /> @L["若選擇離線匯入版本，我已自行確認檔案來源與使用條件；系統未驗證上游身分。"]</label> }
+                                <div><button type="submit">@(selected.Key is "sigmahq-rules" or "signature-base" ? L["選用來源版本"].Value : L["啟用選擇的版本"].Value)</button></div>
                             </EditForm>
                             }
-                            else { <p>此頁沒有其他可選的版本。</p> }
+                            else { <p>@L["此頁沒有其他可選的版本。"]</p> }
                             @if (revisions.Items.Any(x => !x.Revoked))
                             {
-                                <details><summary>撤銷不可信的版本</summary>
-                                    <p>撤銷後，同內容的版本也無法重新發布；若目前使用相同內容，後續查詢會顯示不可用。需要使用時請選擇其他可信版本。</p>
+                                <details><summary>@L["撤銷不可信的版本"]</summary>
+                                    <p>@L["撤銷後，同內容的版本也無法重新發布；若目前使用相同內容，後續查詢會顯示不可用。需要使用時請選擇其他可信版本。"]</p>
                                     <EditForm Model="RevocationInput" FormName="intelligence-revocation" method="post" OnValidSubmit="RevokeAsync" class="intelligence-form">
                                         <DataAnnotationsValidator /><ValidationSummary />
                                         <input type="hidden" name="RevocationInput.SourceId" value="@RevocationInput.SourceId" />
-                                        <label for="revoke-revision">選擇要撤銷的版本</label><InputSelect id="revoke-revision" @bind-Value="RevocationInput.RevisionId"><option value="">請選擇版本</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
-                                        <label><InputCheckbox @bind-Value="RevocationInput.Confirm" /> 確認撤銷此版本及相同內容的使用資格</label>
-                                        <div><button type="submit">撤銷版本</button></div>
+                                        <label for="revoke-revision">@L["選擇要撤銷的版本"]</label><InputSelect id="revoke-revision" @bind-Value="RevocationInput.RevisionId"><option value="">@L["請選擇版本"]</option>@foreach (var revision in revisions.Items.Where(x => !x.Revoked)) { <option value="@revision.Id">@revision.UpstreamVersion</option> }</InputSelect>
+                                        <label><InputCheckbox @bind-Value="RevocationInput.Confirm" /> @L["確認撤銷此版本及相同內容的使用資格"]</label>
+                                        <div><button type="submit">@L["撤銷版本"]</button></div>
                                     </EditForm>
                                 </details>
                             }

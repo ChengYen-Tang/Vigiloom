@@ -147,4 +147,62 @@
   <data name="目前基礎版本不可使用。" xml:space="preserve"><value>The current base version is unavailable.</value></data>
   <data name="無法讀取來源憑證，請重新設定。" xml:space="preserve"><value>Unable to read the source credential. Configure it again.</value></data>
   <data name="無法完成匯入。" xml:space="preserve"><value>Unable to complete the import.</value></data>
+  <data name="離線匯入" xml:space="preserve"><value>Offline import</value></data>
+  <data name="選擇從可信管道取得的 KEV JSON 檔案。系統會驗證格式與紀錄內容，並標記為管理員匯入；匯入本身不證明檔案由 CISA 簽署，也不會自動啟用。" xml:space="preserve"><value>Choose a KEV JSON file obtained from a trusted source. Its format and records are validated and marked as administrator-imported; importing does not prove CISA signed it or enable it automatically.</value></data>
+  <data name="KEV JSON 檔案" xml:space="preserve"><value>KEV JSON file</value></data>
+  <data name="匯入檔案" xml:space="preserve"><value>Import file</value></data>
+  <data name="來源版本" xml:space="preserve"><value>Source versions</value></data>
+  <data name="尚無已驗證的版本。" xml:space="preserve"><value>No validated versions yet.</value></data>
+  <data name="左右滑動可查看完整版本資訊。" xml:space="preserve"><value>Scroll horizontally to view all version details.</value></data>
+  <data name="情報版本，可左右捲動" xml:space="preserve"><value>Intelligence versions, scroll horizontally</value></data>
+  <data name="來源時間（UTC）" xml:space="preserve"><value>Source time (UTC)</value></data>
+  <data name="取得時間（UTC）" xml:space="preserve"><value>Retrieved at (UTC)</value></data>
+  <data name="紀錄" xml:space="preserve"><value>Records</value></data>
+  <data name="狀態" xml:space="preserve"><value>Status</value></data>
+  <data name="版本資訊" xml:space="preserve"><value>Version details</value></data>
+  <data name="來源資料" xml:space="preserve"><value>Source data</value></data>
+  <data name="已撤銷" xml:space="preserve"><value>Revoked</value></data>
+  <data name="內容已清理" xml:space="preserve"><value>Content removed</value></data>
+  <data name="下載未完成" xml:space="preserve"><value>Download incomplete</value></data>
+  <data name="已下載，尚未支援比對" xml:space="preserve"><value>Downloaded; matching is not supported yet</value></data>
+  <data name="未完成驗證" xml:space="preserve"><value>Validation incomplete</value></data>
+  <data name="目前使用" xml:space="preserve"><value>In use</value></data>
+  <data name="已保留" xml:space="preserve"><value>Retained</value></data>
+  <data name="查看資訊" xml:space="preserve"><value>View details</value></data>
+  <data name="格式版本：" xml:space="preserve"><value>Schema version: </value></data>
+  <data name="轉換版本：" xml:space="preserve"><value>Mapping version: </value></data>
+  <data name="授權依據：" xml:space="preserve"><value>License evidence: </value></data>
+  <data name="管理員離線匯入（UTC）：{0}。匯入不代表上游來源已驗證。" xml:space="preserve"><value>Administrator offline import (UTC): {0}. Import does not verify the upstream source.</value></data>
+  <data name="查看來源資料" xml:space="preserve"><value>View source data</value></data>
+  <data name="已清理" xml:space="preserve"><value>Removed</value></data>
+  <data name="情報版本分頁" xml:space="preserve"><value>Intelligence version pages</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>Page {0}</value></data>
+  <data name="審核檢查內容" xml:space="preserve"><value>Review check details</value></data>
+  <data name="請核對目標、預期值及適用系統，再選擇要啟用的版本。" xml:space="preserve"><value>Check the target, expected value and applicable systems before selecting a version.</value></data>
+  <data name="（目前使用）" xml:space="preserve"><value> (in use)</value></data>
+  <data name="名稱：" xml:space="preserve"><value>Name: </value></data>
+  <data name="作業系統：" xml:space="preserve"><value>Operating system: </value></data>
+  <data name="目標：" xml:space="preserve"><value>Target: </value></data>
+  <data name="預期值：" xml:space="preserve"><value>Expected value: </value></data>
+  <data name="參考：" xml:space="preserve"><value>Reference: </value></data>
+  <data name="未提供" xml:space="preserve"><value>Not provided</value></data>
+  <data name="來源與使用條件：" xml:space="preserve"><value>Source and terms: </value></data>
+  <data name="處理建議：" xml:space="preserve"><value>Guidance: </value></data>
+  <data name="以此版本編輯草稿" xml:space="preserve"><value>Edit draft from this version</value></data>
+  <data name="此來源目前僅保存規則資料，尚未支援偵測與發布。" xml:space="preserve"><value>This source currently stores rules only; detection and publication are not supported.</value></data>
+  <data name="僅選用符合授權與作者條件的核心來源規則；這不會部署規則或啟用偵測。" xml:space="preserve"><value>Only core source rules meeting license and author requirements are selected; this does not deploy rules or enable detection.</value></data>
+  <data name="僅選用符合來源授權及完整性檢查的兩份 IOC 原始檔；發現新的授權聲明時須重新核對。YARA 規則與偵測尚未啟用。" xml:space="preserve"><value>Only two IOC source files meeting license and integrity checks are selected. New license notices require review. YARA rules and detection are not enabled.</value></data>
+  <data name="僅支援已審查版本中的指定唯讀檢查；選用來源不代表設備已完成檢查。" xml:space="preserve"><value>Only specified read-only checks in reviewed versions are supported. Selecting a source does not mean devices have been checked.</value></data>
+  <data name="選擇要啟用或回復的版本" xml:space="preserve"><value>Select a version to enable or restore</value></data>
+  <data name="請選擇版本" xml:space="preserve"><value>Select a version</value></data>
+  <data name="確認接受紀錄數大幅減少" xml:space="preserve"><value>Confirm the substantial reduction in record count</value></data>
+  <data name="若選擇離線匯入版本，我已自行確認檔案來源與使用條件；系統未驗證上游身分。" xml:space="preserve"><value>If selecting an offline import, I have verified its origin and terms; the system has not verified upstream identity.</value></data>
+  <data name="選用來源版本" xml:space="preserve"><value>Select source version</value></data>
+  <data name="啟用選擇的版本" xml:space="preserve"><value>Enable selected version</value></data>
+  <data name="此頁沒有其他可選的版本。" xml:space="preserve"><value>No other versions are available on this page.</value></data>
+  <data name="撤銷不可信的版本" xml:space="preserve"><value>Revoke an untrusted version</value></data>
+  <data name="撤銷後，同內容的版本也無法重新發布；若目前使用相同內容，後續查詢會顯示不可用。需要使用時請選擇其他可信版本。" xml:space="preserve"><value>Revocation also prevents versions with identical content from being republished. If identical content is in use, later queries show it as unavailable. Select another trusted version when needed.</value></data>
+  <data name="選擇要撤銷的版本" xml:space="preserve"><value>Select a version to revoke</value></data>
+  <data name="確認撤銷此版本及相同內容的使用資格" xml:space="preserve"><value>Confirm revocation of this version and identical content</value></data>
+  <data name="撤銷版本" xml:space="preserve"><value>Revoke version</value></data>
 </root>

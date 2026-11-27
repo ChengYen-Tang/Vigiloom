@@ -147,4 +147,62 @@
   <data name="目前基礎版本不可使用。" xml:space="preserve"><value>当前基础版本不可使用。</value></data>
   <data name="無法讀取來源憑證，請重新設定。" xml:space="preserve"><value>无法读取来源凭证，请重新设置。</value></data>
   <data name="無法完成匯入。" xml:space="preserve"><value>无法完成导入。</value></data>
+  <data name="離線匯入" xml:space="preserve"><value>离线导入</value></data>
+  <data name="選擇從可信管道取得的 KEV JSON 檔案。系統會驗證格式與紀錄內容，並標記為管理員匯入；匯入本身不證明檔案由 CISA 簽署，也不會自動啟用。" xml:space="preserve"><value>选择从可信渠道取得的 KEV JSON 文件。系统会验证格式与记录内容，并标记为管理员导入；导入本身不证明文件由 CISA 签署，也不会自动启用。</value></data>
+  <data name="KEV JSON 檔案" xml:space="preserve"><value>KEV JSON 文件</value></data>
+  <data name="匯入檔案" xml:space="preserve"><value>导入文件</value></data>
+  <data name="來源版本" xml:space="preserve"><value>来源版本</value></data>
+  <data name="尚無已驗證的版本。" xml:space="preserve"><value>尚无已验证的版本。</value></data>
+  <data name="左右滑動可查看完整版本資訊。" xml:space="preserve"><value>左右滑动可查看完整版本信息。</value></data>
+  <data name="情報版本，可左右捲動" xml:space="preserve"><value>情报版本，可左右滚动</value></data>
+  <data name="來源時間（UTC）" xml:space="preserve"><value>来源时间（UTC）</value></data>
+  <data name="取得時間（UTC）" xml:space="preserve"><value>取得时间（UTC）</value></data>
+  <data name="紀錄" xml:space="preserve"><value>记录</value></data>
+  <data name="狀態" xml:space="preserve"><value>状态</value></data>
+  <data name="版本資訊" xml:space="preserve"><value>版本信息</value></data>
+  <data name="來源資料" xml:space="preserve"><value>来源数据</value></data>
+  <data name="已撤銷" xml:space="preserve"><value>已撤销</value></data>
+  <data name="內容已清理" xml:space="preserve"><value>内容已清理</value></data>
+  <data name="下載未完成" xml:space="preserve"><value>下载未完成</value></data>
+  <data name="已下載，尚未支援比對" xml:space="preserve"><value>已下载，尚未支持比对</value></data>
+  <data name="未完成驗證" xml:space="preserve"><value>未完成验证</value></data>
+  <data name="目前使用" xml:space="preserve"><value>当前使用</value></data>
+  <data name="已保留" xml:space="preserve"><value>已保留</value></data>
+  <data name="查看資訊" xml:space="preserve"><value>查看信息</value></data>
+  <data name="格式版本：" xml:space="preserve"><value>格式版本：</value></data>
+  <data name="轉換版本：" xml:space="preserve"><value>转换版本：</value></data>
+  <data name="授權依據：" xml:space="preserve"><value>授权依据：</value></data>
+  <data name="管理員離線匯入（UTC）：{0}。匯入不代表上游來源已驗證。" xml:space="preserve"><value>管理员离线导入（UTC）：{0}。导入不代表上游来源已验证。</value></data>
+  <data name="查看來源資料" xml:space="preserve"><value>查看来源数据</value></data>
+  <data name="已清理" xml:space="preserve"><value>已清理</value></data>
+  <data name="情報版本分頁" xml:space="preserve"><value>情报版本分页</value></data>
+  <data name="第 {0} 頁" xml:space="preserve"><value>第 {0} 页</value></data>
+  <data name="審核檢查內容" xml:space="preserve"><value>审核检查内容</value></data>
+  <data name="請核對目標、預期值及適用系統，再選擇要啟用的版本。" xml:space="preserve"><value>请核对目标、预期值及适用系统，再选择要启用的版本。</value></data>
+  <data name="（目前使用）" xml:space="preserve"><value>（当前使用）</value></data>
+  <data name="名稱：" xml:space="preserve"><value>名称：</value></data>
+  <data name="作業系統：" xml:space="preserve"><value>操作系统：</value></data>
+  <data name="目標：" xml:space="preserve"><value>目标：</value></data>
+  <data name="預期值：" xml:space="preserve"><value>预期值：</value></data>
+  <data name="參考：" xml:space="preserve"><value>参考：</value></data>
+  <data name="未提供" xml:space="preserve"><value>未提供</value></data>
+  <data name="來源與使用條件：" xml:space="preserve"><value>来源与使用条件：</value></data>
+  <data name="處理建議：" xml:space="preserve"><value>处理建议：</value></data>
+  <data name="以此版本編輯草稿" xml:space="preserve"><value>以此版本编辑草稿</value></data>
+  <data name="此來源目前僅保存規則資料，尚未支援偵測與發布。" xml:space="preserve"><value>此来源目前仅保存规则数据，尚未支持检测与发布。</value></data>
+  <data name="僅選用符合授權與作者條件的核心來源規則；這不會部署規則或啟用偵測。" xml:space="preserve"><value>仅选用符合授权与作者条件的核心来源规则；这不会部署规则或启用检测。</value></data>
+  <data name="僅選用符合來源授權及完整性檢查的兩份 IOC 原始檔；發現新的授權聲明時須重新核對。YARA 規則與偵測尚未啟用。" xml:space="preserve"><value>仅选用符合来源授权及完整性检查的两份 IOC 原始文件；发现新的授权声明时须重新核对。YARA 规则与检测尚未启用。</value></data>
+  <data name="僅支援已審查版本中的指定唯讀檢查；選用來源不代表設備已完成檢查。" xml:space="preserve"><value>仅支持已审查版本中的指定只读检查；选用来源不代表设备已完成检查。</value></data>
+  <data name="選擇要啟用或回復的版本" xml:space="preserve"><value>选择要启用或恢复的版本</value></data>
+  <data name="請選擇版本" xml:space="preserve"><value>请选择版本</value></data>
+  <data name="確認接受紀錄數大幅減少" xml:space="preserve"><value>确认接受记录数大幅减少</value></data>
+  <data name="若選擇離線匯入版本，我已自行確認檔案來源與使用條件；系統未驗證上游身分。" xml:space="preserve"><value>若选择离线导入版本，我已自行确认文件来源与使用条件；系统未验证上游身份。</value></data>
+  <data name="選用來源版本" xml:space="preserve"><value>选用来源版本</value></data>
+  <data name="啟用選擇的版本" xml:space="preserve"><value>启用选择的版本</value></data>
+  <data name="此頁沒有其他可選的版本。" xml:space="preserve"><value>此页没有其他可选的版本。</value></data>
+  <data name="撤銷不可信的版本" xml:space="preserve"><value>撤销不可信的版本</value></data>
+  <data name="撤銷後，同內容的版本也無法重新發布；若目前使用相同內容，後續查詢會顯示不可用。需要使用時請選擇其他可信版本。" xml:space="preserve"><value>撤销后，相同内容的版本也无法重新发布；若当前使用相同内容，后续查询会显示不可用。需要使用时请选择其他可信版本。</value></data>
+  <data name="選擇要撤銷的版本" xml:space="preserve"><value>选择要撤销的版本</value></data>
+  <data name="確認撤銷此版本及相同內容的使用資格" xml:space="preserve"><value>确认撤销此版本及相同内容的使用资格</value></data>
+  <data name="撤銷版本" xml:space="preserve"><value>撤销版本</value></data>
 </root>
