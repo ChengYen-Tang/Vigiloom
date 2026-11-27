@@ -787,7 +787,7 @@
   <data name="YARA 掃描" xml:space="preserve"><value>YARA 扫描</value></data>
   <data name="{0} · 掃描指定的單一檔案；命中是調查線索，並不代表已入侵。" xml:space="preserve"><value>{0} · 扫描指定的单个文件；命中是调查线索，并不代表已入侵。</value></data>
   <data name="新增掃描" xml:space="preserve"><value>新增扫描</value></data>
-  <data name="Agent 主機需有可執行的 YARA；若尚未安裝，結果會顯示無法使用。掃描工作會在 Agent 下次同步後執行。" xml:space="preserve"><value>Agent 主机需有可运行的 YARA；若尚未安装，结果会显示无法使用。扫描任务会在 Agent 下次同步后运行。</value></data>
+  <data name="Agent 主機需有可執行的 YARA；若尚未安裝，結果會顯示無法使用。線上的 Agent 會收到工作通知；離線時可在重新連線或同步後領取。" xml:space="preserve"><value>Agent 主机需有可运行的 YARA；若尚未安装，结果会显示无法使用。在线的 Agent 会收到工作通知；离线时可在重新连接或同步后领取。</value></data>
   <data name="YARA 引擎採用 " xml:space="preserve"><value>YARA 引擎采用 </value></data>
   <data name="BSD 3-Clause 授權" xml:space="preserve"><value>BSD 3-Clause 许可</value></data>
   <data name="；手動輸入的規則有各自的授權，請管理員確認後使用。" xml:space="preserve"><value>；手动输入的规则有各自的许可，请管理员确认后使用。</value></data>
