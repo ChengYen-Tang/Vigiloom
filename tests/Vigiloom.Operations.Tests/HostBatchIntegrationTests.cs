@@ -527,6 +527,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.AreEqual(AgentSettingsApplyState.Applied, capacityStatus!.State);
             var publicMetrics = await proxyClient.GetFromJsonAsync<HostMetricPage>($"/api/v1/devices/{identity.DeviceId:D}/host-metrics?from={from}&until={until}", token);
             Assert.IsNotNull(publicMetrics);
+            var publicThreshold = await proxyClient.GetFromJsonAsync<HostMetricThresholdStatus>($"/api/v1/devices/{identity.DeviceId:D}/host-metric-threshold?agentId={identity.AgentId:D}&kind=CpuTotalPercent&source=cpu", token);
+            Assert.AreEqual(HostMetricThresholdState.Exceeded, publicThreshold!.State);
             using (var missing = await proxyClient.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/host-metrics?from={from}&until={until}", token))
             {
                 Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
