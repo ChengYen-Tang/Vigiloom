@@ -205,4 +205,61 @@
   <data name="選擇要撤銷的版本" xml:space="preserve"><value>选择要撤销的版本</value></data>
   <data name="確認撤銷此版本及相同內容的使用資格" xml:space="preserve"><value>确认撤销此版本及相同内容的使用资格</value></data>
   <data name="撤銷版本" xml:space="preserve"><value>撤销版本</value></data>
+  <data name="規則來源資料" xml:space="preserve"><value>规则来源数据</value></data>
+  <data name="以下是已保存的上游規則與作者資料。來源符合條件不代表偵測器支援或已啟用。" xml:space="preserve"><value>以下是已保存的上游规则与作者数据。来源符合条件不代表检测器支持或已启用。</value></data>
+  <data name="此頁沒有規則。" xml:space="preserve"><value>此页没有规则。</value></data>
+  <data name="左右滑動可查看完整規則資訊。" xml:space="preserve"><value>左右滑动可查看完整规则信息。</value></data>
+  <data name="規則來源資料，可左右捲動" xml:space="preserve"><value>规则来源数据，可左右滚动</value></data>
+  <data name="規則" xml:space="preserve"><value>规则</value></data>
+  <data name="上游適用來源" xml:space="preserve"><value>上游适用来源</value></data>
+  <data name="作者" xml:space="preserve"><value>作者</value></data>
+  <data name="來源狀態" xml:space="preserve"><value>来源状态</value></data>
+  <data name="授權聲明" xml:space="preserve"><value>授权声明</value></data>
+  <data name="來源選用條件" xml:space="preserve"><value>来源选用条件</value></data>
+  <data name="未指定" xml:space="preserve"><value>未指定</value></data>
+  <data name="來源聲明 DRL-1.1" xml:space="preserve"><value>来源声明 DRL-1.1</value></data>
+  <data name="規則聲明 DRL-1.1" xml:space="preserve"><value>规则声明 DRL-1.1</value></data>
+  <data name="待核對：{0}" xml:space="preserve"><value>待核对：{0}</value></data>
+  <data name="符合" xml:space="preserve"><value>符合</value></data>
+  <data name="不在核心規則範圍" xml:space="preserve"><value>不在核心规则范围</value></data>
+  <data name="缺少作者" xml:space="preserve"><value>缺少作者</value></data>
+  <data name="授權待核對" xml:space="preserve"><value>授权待核对</value></data>
+  <data name="尚未核對" xml:space="preserve"><value>尚未核对</value></data>
+  <data name="規則資料分頁" xml:space="preserve"><value>规则数据分页</value></data>
+  <data name="IOC／YARA 來源檔案" xml:space="preserve"><value>IOC／YARA 来源文件</value></data>
+  <data name="以下是上游原始檔案的摘要；IOC 原始檔可依上方條件選用。YARA 規則授權與相容性仍待核對，尚未啟用偵測。" xml:space="preserve"><value>以下是上游原始文件的摘要；IOC 原始文件可依上方条件选用。YARA 规则授权与兼容性仍待核对，尚未启用检测。</value></data>
+  <data name="此頁沒有來源檔案。" xml:space="preserve"><value>此页没有来源文件。</value></data>
+  <data name="左右滑動可查看完整檔案資訊。" xml:space="preserve"><value>左右滑动可查看完整文件信息。</value></data>
+  <data name="來源檔案，可左右捲動" xml:space="preserve"><value>来源文件，可左右滚动</value></data>
+  <data name="路徑" xml:space="preserve"><value>路径</value></data>
+  <data name="類型" xml:space="preserve"><value>类型</value></data>
+  <data name="IOC 分類" xml:space="preserve"><value>IOC 分类</value></data>
+  <data name="查看授權線索" xml:space="preserve"><value>查看授权线索</value></data>
+  <data name="授權證據" xml:space="preserve"><value>授权证据</value></data>
+  <data name="{0} 筆，" xml:space="preserve"><value>{0} 条，</value></data>
+  <data name="{0} 筆未支援" xml:space="preserve"><value>{0} 条不支持</value></data>
+  <data name="不適用" xml:space="preserve"><value>不适用</value></data>
+  <data name="來源檔案分頁" xml:space="preserve"><value>来源文件分页</value></data>
+  <data name="來源授權線索" xml:space="preserve"><value>来源授权线索</value></data>
+  <data name="檔案：" xml:space="preserve"><value>文件：</value></data>
+  <data name="以下僅列出包含作者或授權字樣的原文行，可能來自註解或字串；規則邊界與授權尚未解析或確認，沒有列出也不代表沒有其他條件。" xml:space="preserve"><value>以下仅列出包含作者或授权字样的原文行，可能来自注释或字符串；规则边界与授权尚未解析或确认，没有列出也不代表没有其他条件。</value></data>
+  <data name="檔案與保存的摘要不一致，無法顯示內容。" xml:space="preserve"><value>文件与保存的摘要不一致，无法显示内容。</value></data>
+  <data name="檔案不是有效的 UTF-8，無法顯示內容。" xml:space="preserve"><value>文件不是有效的 UTF-8，无法显示内容。</value></data>
+  <data name="沒有找到包含這些字樣的行。" xml:space="preserve"><value>没有找到包含这些字样的行。</value></data>
+  <data name="第 {0} 行：" xml:space="preserve"><value>第 {0} 行：</value></data>
+  <data name="（此行已截斷）" xml:space="preserve"><value>（此行已截断）</value></data>
+  <data name="查看前後內容" xml:space="preserve"><value>查看前后内容</value></data>
+  <data name="授權線索分頁" xml:space="preserve"><value>授权线索分页</value></data>
+  <data name="第 {0} 行的前後內容" xml:space="preserve"><value>第 {0} 行的前后内容</value></data>
+  <data name="找不到此行。" xml:space="preserve"><value>找不到此行。</value></data>
+  <data name="原文上下文分頁" xml:space="preserve"><value>原文上下文分页</value></data>
+  <data name="較前內容" xml:space="preserve"><value>较前内容</value></data>
+  <data name="較後內容" xml:space="preserve"><value>较后内容</value></data>
+  <data name="未支援的 IOC 項目" xml:space="preserve"><value>不支持的 IOC 项目</value></data>
+  <data name="來源檔案：{0}。行號對應原始來源，內容仍保留在該版本中。" xml:space="preserve"><value>来源文件：{0}。行号对应原始来源，内容仍保留在该版本中。</value></data>
+  <data name="此頁沒有未支援的項目。" xml:space="preserve"><value>此页没有不支持的项目。</value></data>
+  <data name="未支援的 IOC 項目，可左右捲動" xml:space="preserve"><value>不支持的 IOC 项目，可左右滚动</value></data>
+  <data name="行號" xml:space="preserve"><value>行号</value></data>
+  <data name="原因" xml:space="preserve"><value>原因</value></data>
+  <data name="未支援項目分頁" xml:space="preserve"><value>不支持项目分页</value></data>
 </root>
