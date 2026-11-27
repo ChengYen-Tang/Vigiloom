@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms</value></resheader>
+  <data name="修改密碼 - Vigiloom" xml:space="preserve"><value>Change password - Vigiloom</value></data>
+  <data name="修改密碼" xml:space="preserve"><value>Change password</value></data>
+  <data name="修改後請使用新密碼重新登入。" xml:space="preserve"><value>After changing your password, sign in again with the new one.</value></data>
+  <data name="目前密碼" xml:space="preserve"><value>Current password</value></data>
+  <data name="新密碼" xml:space="preserve"><value>New password</value></data>
+  <data name="確認新密碼" xml:space="preserve"><value>Confirm new password</value></data>
+  <data name="至少 12 個字元，包含大小寫英文字母、數字及符號。" xml:space="preserve"><value>At least 12 characters including uppercase and lowercase letters, numbers and symbols.</value></data>
+  <data name="返回總覽" xml:space="preserve"><value>Back to overview</value></data>
+  <data name="無法修改密碼，請確認目前密碼與新密碼規則。" xml:space="preserve"><value>Unable to change password. Check your current password and the new password requirements.</value></data>
+  <data name="登出 - Vigiloom" xml:space="preserve"><value>Sign out - Vigiloom</value></data>
+  <data name="登出 Vigiloom" xml:space="preserve"><value>Sign out of Vigiloom</value></data>
+  <data name="登出會結束此帳號在所有裝置上的登入。" xml:space="preserve"><value>Signing out ends this account’s sessions on all devices.</value></data>
+  <data name="登出" xml:space="preserve"><value>Sign out</value></data>
+  <data name="無法結束登入，請稍後重試。" xml:space="preserve"><value>Unable to end the session. Try again later.</value></data>
+  <data name="無法存取 - Vigiloom" xml:space="preserve"><value>Access denied - Vigiloom</value></data>
+  <data name="無法存取此頁面" xml:space="preserve"><value>Access to this page is denied</value></data>
+  <data name="目前的帳號沒有執行此操作的權限。" xml:space="preserve"><value>The current account does not have permission to perform this action.</value></data>
+  <data name="沒有權限或登入已過期。" xml:space="preserve"><value>Access denied or your session has expired. </value></data>
+  <data name="前往登入" xml:space="preserve"><value>Sign in</value></data>
+</root>
