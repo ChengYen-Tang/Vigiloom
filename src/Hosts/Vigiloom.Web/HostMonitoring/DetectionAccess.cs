@@ -6,15 +6,15 @@ using Vigiloom.Modules.SecurityAnalysis.Application.Detection;
 
 namespace Vigiloom.Web.HostMonitoring;
 
-internal sealed class DetectionAccess(SigmaDetectionHistory sigma, IocDetectionHistory ioc, IHttpClientFactory clients, IConfiguration configuration)
+internal sealed class DetectionAccess(IServiceProvider services, IHttpClientFactory clients, IConfiguration configuration)
 {
     private bool Remote => !string.IsNullOrWhiteSpace(configuration["Services:Security:Url"]);
     public Task<SigmaDetectionEventPage?> GetEventsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token) => Remote
-        ? ReadAsync<SigmaDetectionEventPage>(deviceId, "sigma", from, until, cursor, null, token) : sigma.GetEventsAsync(deviceId, from, until, cursor, token);
+        ? ReadAsync<SigmaDetectionEventPage>(deviceId, "sigma", from, until, cursor, null, token) : services.GetRequiredService<SigmaDetectionHistory>().GetEventsAsync(deviceId, from, until, cursor, token);
     public Task<SigmaDetectionGapPage?> GetGapsAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, string? cursor, CancellationToken token) => Remote
-        ? ReadAsync<SigmaDetectionGapPage>(deviceId, "sigma-gaps", from, until, cursor, null, token) : sigma.GetGapsAsync(deviceId, from, until, cursor, token);
+        ? ReadAsync<SigmaDetectionGapPage>(deviceId, "sigma-gaps", from, until, cursor, null, token) : services.GetRequiredService<SigmaDetectionHistory>().GetGapsAsync(deviceId, from, until, cursor, token);
     public Task<IocDetectionPage?> GetIocAsync(Guid deviceId, DateTimeOffset from, DateTimeOffset until, int page, CancellationToken token) => Remote
-        ? ReadAsync<IocDetectionPage>(deviceId, "ioc", from, until, null, page, token) : ioc.GetAsync(deviceId, from, until, page, token);
+        ? ReadAsync<IocDetectionPage>(deviceId, "ioc", from, until, null, page, token) : services.GetRequiredService<IocDetectionHistory>().GetAsync(deviceId, from, until, page, token);
 
     private async Task<T?> ReadAsync<T>(Guid deviceId, string kind, DateTimeOffset from, DateTimeOffset until, string? cursor, int? page, CancellationToken token)
     {
