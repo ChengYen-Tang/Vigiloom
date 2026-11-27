@@ -8,6 +8,8 @@ internal sealed class OperationsRetentionSchedule(IRecurringJobManager jobs) : I
 {
     public Task StartAsync(CancellationToken token)
     {
+        jobs.RemoveIfExists("vigiloom-line-delivery");
+        jobs.RemoveIfExists("vigiloom-agent-package-refresh");
         jobs.AddOrUpdate("vigiloom-operations-retention",
             Job.FromExpression<OperationsRetentionJob>(job => job.RunAsync(CancellationToken.None), "operations"),
             Cron.Hourly(), new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });

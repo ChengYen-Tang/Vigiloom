@@ -56,7 +56,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
             "UbuntuRefreshSchedule", "MsrcRefreshSchedule", "EpssRefreshSchedule", "LinuxReassessmentSchedule", "WindowsReassessmentSchedule",
             "AdvisoryRefreshSchedule", "SigmaRefreshSchedule", "SignatureRefreshSchedule", "BaselineRefreshSchedule" })
             Assert.DoesNotContain(name, hosted);
-        Assert.Contains("RetiredSecuritySchedule", hosted);
+        Assert.DoesNotContain("RetiredSecuritySchedule", hosted);
         var legacy = WorkerHost.CreateBuilder(["--Services:Security:Url=http://security"]);
         var legacyHosted = legacy.Services.Where(service => service.ServiceType == typeof(IHostedService))
             .Select(service => service.ImplementationType?.Name).ToArray();
@@ -93,7 +93,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         Assert.DoesNotContain("HostMetricRollupSchedule", hosted);
         Assert.DoesNotContain("HostMetricRetentionSchedule", hosted);
         Assert.DoesNotContain("AgentInboxRetentionSchedule", hosted);
-        Assert.Contains("RetiredHostSchedules", hosted);
+        Assert.DoesNotContain("RetiredHostSchedules", hosted);
     }
 
     [TestMethod]
@@ -103,7 +103,7 @@ public sealed class HostLifecycleTests(TestContext testContext)
         var hosted = builder.Services.Where(service => service.ServiceType == typeof(IHostedService))
             .Select(service => service.ImplementationType?.Name).ToArray();
         Assert.DoesNotContain("LineDeliverySchedule", hosted);
-        Assert.Contains("RetiredLineDeliverySchedule", hosted);
+        Assert.DoesNotContain("RetiredLineDeliverySchedule", hosted);
     }
 
     [TestMethod]

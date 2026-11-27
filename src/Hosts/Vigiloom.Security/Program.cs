@@ -92,6 +92,7 @@ if (builder.Configuration.GetValue("Hangfire:Enabled", false))
         .UseSqlServerStorage(services.GetRequiredService<IConfiguration>().GetConnectionString("Scheduling")
             ?? throw new InvalidOperationException("ConnectionStrings:Scheduling is required."), SchedulingRegistration.StorageOptions(prepareSchema: false)));
     builder.Services.AddHangfireServer(options => { options.Queues = ["security"]; options.IsLightweightServer = true; });
+    builder.Services.AddHostedService<RetiredSecuritySchedule>();
     builder.Services.AddScoped<IntelligenceRefresh>();
     builder.Services.AddScoped<DebianRefresh>();
     builder.Services.AddScoped<UbuntuRefresh>();

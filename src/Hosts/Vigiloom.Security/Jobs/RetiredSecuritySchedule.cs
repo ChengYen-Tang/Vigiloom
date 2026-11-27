@@ -1,8 +1,7 @@
 using Hangfire;
 
-namespace Vigiloom.Worker.Hosting;
+namespace Vigiloom.Security.Jobs;
 
-/// <summary>Retires the legacy schedules after the security service takes ownership.</summary>
 internal sealed class RetiredSecuritySchedule(IRecurringJobManager jobs) : IHostedService
 {
     public Task StartAsync(CancellationToken token)
@@ -16,11 +15,4 @@ internal sealed class RetiredSecuritySchedule(IRecurringJobManager jobs) : IHost
     }
 
     public Task StopAsync(CancellationToken token) => Task.CompletedTask;
-}
-
-internal static class SecurityCutover
-{
-    public static bool IsEnabled(IConfiguration configuration) =>
-        configuration.GetValue("Services:Security:IntelligenceEnabled", false) &&
-        !string.IsNullOrWhiteSpace(configuration["Services:Security:Url"]);
 }

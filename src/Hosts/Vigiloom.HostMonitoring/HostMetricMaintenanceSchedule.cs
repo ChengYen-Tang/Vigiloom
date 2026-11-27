@@ -8,6 +8,9 @@ internal sealed class HostMetricMaintenanceSchedule(IRecurringJobManager jobs) :
 {
     public Task StartAsync(CancellationToken token)
     {
+        jobs.RemoveIfExists("vigiloom-host-metric-rollup");
+        jobs.RemoveIfExists("vigiloom-host-metric-retention");
+        jobs.RemoveIfExists("vigiloom-agent-inbox-retention");
         jobs.AddOrUpdate("vigiloom-host-service-metric-rollup", Job.FromExpression<HostMetricMaintenance>(job => job.RollupAsync(CancellationToken.None), "host"),
             Cron.Minutely(), new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
         jobs.AddOrUpdate("vigiloom-host-service-metric-retention", Job.FromExpression<HostMetricMaintenance>(job => job.RetainAsync(CancellationToken.None), "host"),

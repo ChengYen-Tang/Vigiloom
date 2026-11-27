@@ -64,8 +64,6 @@ public static class WorkerHost
         builder.Services.AddScoped<LineDeliveryJob>();
         if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Operations:Url"]))
             builder.Services.AddHostedService<LineDeliverySchedule>();
-        else
-            builder.Services.AddHostedService<RetiredLineDeliverySchedule>();
         builder.Services.AddScoped<IOperationAuditWriter<OperationAudit>, OperationAuditWriter>();
         builder.Services.AddScoped<IdentityAuditRetention>();
         builder.Services.AddServiceDiscovery();
@@ -208,9 +206,7 @@ public static class WorkerHost
         }
         if (string.IsNullOrWhiteSpace(builder.Configuration["Services:HostMonitoring:Url"]))
             builder.Services.AddHostedService<AgentInboxRetentionSchedule>();
-        if (securityCutover)
-            builder.Services.AddHostedService<RetiredSecuritySchedule>();
-        else
+        if (!securityCutover)
         {
             builder.Services.AddHostedService<InventoryExpirySchedule>();
             builder.Services.AddHostedService<IntelligenceRefreshSchedule>();
@@ -226,13 +222,13 @@ public static class WorkerHost
             builder.Services.AddHostedService<BaselineRefreshSchedule>();
             builder.Services.AddHostedService<IntegrityExpirySchedule>();
         }
-        builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
+        if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Operations:Url"]))
+            builder.Services.AddHostedService<AgentPackageRefreshSchedule>();
         if (string.IsNullOrWhiteSpace(builder.Configuration["Services:HostMonitoring:Url"]))
         {
             builder.Services.AddHostedService<HostMetricRollupSchedule>();
             builder.Services.AddHostedService<HostMetricRetentionSchedule>();
         }
-        else builder.Services.AddHostedService<RetiredHostSchedules>();
         builder.Services.AddHostedService<AuditRetentionSchedule>();
         if (string.IsNullOrWhiteSpace(builder.Configuration["Services:Observability:Url"]))
         {
