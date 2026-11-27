@@ -16,7 +16,7 @@ internal static class HostQueueCapacityEndpoints
             UpdateInternalAsync(settings, null, command, token));
         app.MapPost("/internal/v1/agent-queue-capacity/devices/{deviceId:guid}", async (Guid deviceId, AgentQueueCapacityCommand command, HostQueueCapacity settings, IHttpClientFactory clients, CancellationToken token) =>
             await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateInternalAsync(settings, deviceId, command, token) : Results.NotFound());
-        var admin = app.MapGroup("/api/v1/agent-management/queue-capacity").RequireAuthorization("Administrator");
+        var admin = app.MapGroup("/api/v1/agent-management/queue-capacity").RequireAuthorization("Administrator").RequireRateLimiting("api-client");
         admin.MapGet("/platform", (HostQueueCapacity settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token));
         admin.MapPut("/platform", (AgentQueueCapacityUpdate input, HostQueueCapacity settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token));
         admin.MapGet("/devices/{deviceId:guid}", async (Guid deviceId, HostQueueCapacity settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
@@ -28,7 +28,7 @@ internal static class HostQueueCapacityEndpoints
             if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok((await settings.GetAsync(deviceId, token)).Effective);
-        }).RequireAuthorization("MonitoringApiRead");
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
         app.MapGet("/api/v1/agent/queue-capacity", async (HttpContext context, HostQueueCapacity settings, CancellationToken token) =>
         {
             var snapshot = await settings.GetForAgentAsync((RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!, token);

@@ -15,7 +15,7 @@ internal static class HostAgentSettingsEndpoints
             UpdateInternalAsync(settings, null, command, token));
         app.MapPost("/internal/v1/agent-settings/devices/{deviceId:guid}", async (Guid deviceId, AgentSettingsCommand command, HostAgentConfiguration settings, IHttpClientFactory clients, CancellationToken token) =>
             await ResourceDevices.ExistsAsync(clients, deviceId, token) ? await UpdateInternalAsync(settings, deviceId, command, token) : Results.NotFound());
-        var admin = app.MapGroup("/api/v1/agent-management/settings").RequireAuthorization("Administrator");
+        var admin = app.MapGroup("/api/v1/agent-management/settings").RequireAuthorization("Administrator").RequireRateLimiting("api-client");
         admin.MapGet("/platform", (HostAgentConfiguration settings, HttpContext context, CancellationToken token) => ReadAsync(settings, null, context, token));
         admin.MapPut("/platform", (AgentSettingsUpdate input, HostAgentConfiguration settings, HttpContext context, CancellationToken token) => UpdateAsync(settings, null, input, context, token));
         admin.MapGet("/devices/{deviceId:guid}", async (Guid deviceId, HostAgentConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
@@ -27,7 +27,7 @@ internal static class HostAgentSettingsEndpoints
             if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok((await settings.GetAsync(deviceId, token)).Effective);
-        }).RequireAuthorization("MonitoringApiRead");
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
     }
 
     private static async Task<IResult> UpdateInternalAsync(HostAgentConfiguration settings, Guid? deviceId, AgentSettingsCommand command, CancellationToken token)

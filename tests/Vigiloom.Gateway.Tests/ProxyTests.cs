@@ -163,6 +163,12 @@ public sealed class ProxyTests
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/agent-queue-capacity-status", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/host-metrics", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/host-metrics/series", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/agent-settings", TestContext.CancellationToken));
+        Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/agent-queue-capacity", TestContext.CancellationToken));
+        using (var response = await client.GetAsync("/api/v1/agent-management/settings/platform", TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        using (var response = await client.GetAsync("/api/v1/agent-management/queue-capacity/platform", TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using (var response = await client.GetAsync("/api/v1/settings/ping", TestContext.CancellationToken))
             Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         using (var response = await client.PostAsync($"/api/v1/speed-tests/{id:D}/cancel", null, TestContext.CancellationToken))
