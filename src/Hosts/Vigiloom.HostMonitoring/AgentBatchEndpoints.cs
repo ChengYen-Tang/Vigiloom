@@ -21,7 +21,7 @@ internal static class AgentBatchEndpoints
     private static async Task<IResult> ReceiveAsync(HttpContext context, HostObservationReceiver receiver, CancellationToken token)
     {
         context.Response.Headers[AgentMetricBatchCodec.SupportedSchemaHeader] =
-            context.RequestServices.GetService<IHostSecurityWorkWriter>() is null ? "1, 2, 3" : "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12";
+            context.RequestServices.GetService<IHostSecurityWorkWriter>() is null ? "1, 2, 3" : "1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13";
         var encodings = context.Request.Headers.ContentEncoding;
         var gzip = encodings.Count == 1 && string.Equals(encodings[0], "gzip", StringComparison.OrdinalIgnoreCase);
         if (!context.Request.HasJsonContentType() || encodings.Count != 0 && !gzip)
