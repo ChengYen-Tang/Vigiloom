@@ -86,6 +86,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var queue = "vigiloom-security-test-" + Guid.CreateVersion7().ToString("N");
             HttpClient? hostClientForWorker = null;
             var identity = new RegisteredAgentIdentity(Guid.CreateVersion7(), Guid.CreateVersion7(), 1);
+            var auditHandler = new AuditHandler();
             using var security = new WebApplicationFactory<SecurityHost::Program>().WithWebHostBuilder(web =>
             {
                 web.UseSetting("Temporal:Enabled", temporalAddress is null ? "false" : "true");
@@ -96,6 +97,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 web.ConfigureTestServices(services =>
                 {
                     services.AddHttpClient("ResourceDevices").ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity));
+                    services.AddHttpClient("observability").ConfigurePrimaryHttpMessageHandler(() => new RetentionHandler(21));
+                    services.AddHttpClient("operations").ConfigurePrimaryHttpMessageHandler(() => auditHandler);
                     services.RemoveAll<IApiCredentialValidation>();
                     services.AddSingleton<IApiCredentialValidation, CredentialValidation>();
                 });
@@ -183,6 +186,18 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.IsTrue(inventory.Sources.Any(source => source.Source == InventorySource.LinuxDpkg));
                 using (var vulnerability = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/vulnerabilities", token))
                     Assert.AreEqual(HttpStatusCode.OK, vulnerability.StatusCode);
+                var start = Uri.EscapeDataString(nowUtc.AddMinutes(-1).ToString("O"));
+                var end = Uri.EscapeDataString(nowUtc.AddMinutes(1).ToString("O"));
+                foreach (var path in new[] { "sigma-detections", "sigma-gaps", "ioc-detections" })
+                {
+                    using var detection = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/{path}?from={start}&until={end}", token);
+                    Assert.AreEqual(HttpStatusCode.OK, detection.StatusCode);
+                    if (path == "ioc-detections")
+                        Assert.AreEqual(21, (await detection.Content.ReadFromJsonAsync<Vigiloom.Contracts.Intelligence.IocDetectionPage>(cancellationToken: token))!.RetentionDays);
+                }
+                using (var yara = await securityApi.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/yara-scans", token))
+                    Assert.AreEqual(HttpStatusCode.OK, yara.StatusCode);
+                Assert.AreEqual(1, auditHandler.Calls);
                 using var missing = await securityApi.GetAsync($"/api/v1/devices/{Guid.CreateVersion7():D}/inventory", token);
                 Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
             }
@@ -661,10 +676,20 @@ public sealed class HostBatchIntegrationTests(TestContext context)
         }
     }
 
-    private sealed class RetentionHandler : HttpMessageHandler
+    private sealed class RetentionHandler(int days = 14) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new Vigiloom.Contracts.Services.TelemetryRetentionSnapshot(14, 30, "test")) });
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new Vigiloom.Contracts.Services.TelemetryRetentionSnapshot(days, 30, "test")) });
+    }
+
+    private sealed class AuditHandler : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Calls++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+        }
     }
 
     private sealed class CredentialValidation : IApiCredentialValidation

@@ -171,6 +171,12 @@ public sealed class ProxyTests
         Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/inventory", TestContext.CancellationToken));
         Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/inventory/changes", TestContext.CancellationToken));
         Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/vulnerabilities", TestContext.CancellationToken));
+        Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/sigma-detections", TestContext.CancellationToken));
+        Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/sigma-gaps", TestContext.CancellationToken));
+        Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/ioc-detections", TestContext.CancellationToken));
+        Assert.AreEqual("security", await client.GetStringAsync($"/api/v1/devices/{id:D}/yara-scans", TestContext.CancellationToken));
+        using (var response = await client.PostAsync($"/api/v1/devices/{id:D}/yara-scans", null, TestContext.CancellationToken))
+            Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/agent-settings", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/agent-queue-capacity", TestContext.CancellationToken));
         Assert.AreEqual("host-monitoring", await client.GetStringAsync($"/api/v1/devices/{id:D}/host-metric-threshold", TestContext.CancellationToken));

@@ -137,6 +137,9 @@ builder.Services.AddHttpClient("host", (services, client) =>
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(30);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
+builder.Services.AddHttpClient("observability", (services, client) =>
+    client.BaseAddress = new Uri((services.GetRequiredService<IConfiguration>()["Services:Observability:Url"] ?? "http://vigiloom-observability").TrimEnd('/') + "/"))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
 builder.Services.AddHttpClient("operations", (services, client) =>
 {
     var address = services.GetRequiredService<IConfiguration>()["Services:Operations:Url"] ?? "http://vigiloom-operations";
@@ -189,6 +192,8 @@ app.UseAuthorization();
 app.UseRateLimiter();
 app.MapPublicInventory();
 app.MapPublicVulnerabilities();
+app.MapPublicDetections();
+app.MapPublicYara();
 app.MapWorkHistoryEndpoints();
 app.MapPost("/internal/v1/inventory-settings/audit", async (OperationAuditQuery query, InventoryAuditFeed audit, CancellationToken token) =>
     AuditFeedLimits.Valid(query) ? Results.Ok(await audit.QueryAsync(query, token)) : Results.BadRequest());
