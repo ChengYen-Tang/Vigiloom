@@ -1,9 +1,13 @@
-extern alias WorkerHostAssembly;
+extern alias NetworkHost;
 using Hangfire;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Playwright;
 using Vigiloom.Contracts.SpeedTests;
 using Vigiloom.Infrastructure.Scheduling;
@@ -13,7 +17,6 @@ using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Testing.SpeedTests;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Tests.Fixtures;
-using WorkerHost = WorkerHostAssembly::Vigiloom.Worker.Hosting.WorkerHost;
 
 namespace Vigiloom.Web.Tests;
 
@@ -35,21 +38,39 @@ public sealed class SpeedJourneyTests
         var scheduling = new DbContextOptionsBuilder<SchedulingDbContext>().UseSqlServer(database.ConnectionString,
             sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
         await using (var db = new SchedulingDbContext(scheduling)) await db.Database.MigrateAsync(token);
-        using var web = PingTestSite.CreateFactory(database.ConnectionString);
+        await using (var db = new NetworkDbContext(new DbContextOptionsBuilder<NetworkDbContext>()
+            .UseSqlServer(database.ConnectionString, sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "network")).Options))
+            await db.Database.MigrateAsync(token);
+        using var network = new WebApplicationFactory<NetworkHost::Program>().WithWebHostBuilder(builder =>
+        {
+            builder.UseUrls("http://127.0.0.1:0");
+            builder.UseSetting("ConnectionStrings:Network", database.ConnectionString);
+            builder.UseSetting("Services:Resources:Url", "http://127.0.0.1:1");
+            builder.UseSetting("Hangfire:Enabled", "false");
+            builder.UseSetting("Temporal:EnableNetworkWorker", "false");
+            builder.ConfigureTestServices(services =>
+            {
+                foreach (var item in services.Where(x => x.ServiceType == typeof(IHostedService) &&
+                    x.ImplementationType?.Name is "WorkDispatcher" or "PingWorker" or "NetworkDiagnosticsPublisher").ToArray()) services.Remove(item);
+                services.AddSingleton<IHttpMessageHandlerFactory>(new ControlledPhaseFactory(new ControlledPhaseHandler()));
+                services.RemoveAll<ISpeedProbe>();
+                services.AddScoped<ISpeedProbe>(provider => new SpeedtestNetProbe(
+                    provider.GetRequiredService<IHttpMessageHandlerFactory>(), 2_000, 4, defaultMultiServer: true));
+            });
+        });
+        network.UseKestrel(0);
+        using var networkClient = network.CreateClient();
+        using var web = PingTestSite.CreateFactory(database.ConnectionString).WithWebHostBuilder(builder =>
+        {
+            builder.UseSetting("Services:Network:Url", networkClient.BaseAddress!.ToString());
+            builder.UseSetting("Services:Resources:Url", "http://127.0.0.1:1");
+            builder.UseSetting("Services:Observability:Url", "http://127.0.0.1:1");
+        });
         web.UseKestrel(0);
         web.StartServer();
         await PingTestSite.InitializeAsync(web, token);
 
-        var builder = WorkerHost.CreateBuilder([]);
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Vigiloom"] = database.ConnectionString });
-        builder.Services.AddSingleton<IHttpMessageHandlerFactory>(new ControlledPhaseFactory(new ControlledPhaseHandler()));
-        // Exercise the real probe and multi-server path without waiting for production-length samples.
-        builder.Services.AddScoped<ISpeedProbe>(services => new SpeedtestNetProbe(
-            services.GetRequiredService<IHttpMessageHandlerFactory>(), 2_000, 4, defaultMultiServer: true));
-        using var worker = builder.Build();
-        try
         {
-            await worker.StartAsync(token);
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
             var page = await browser.NewPageAsync();
@@ -63,7 +84,7 @@ public sealed class SpeedJourneyTests
             var contexts = web.Services.GetRequiredService<IDbContextFactory<NetworkDbContext>>();
             await using (var db = await contexts.CreateDbContextAsync(token))
                 await db.Database.ExecuteSqlRawAsync("UPDATE network.SpeedSettings SET NextAutomaticAt = DATEADD(minute,-1,TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')) WHERE Name=N'central'", token);
-            await using var scope = worker.Services.CreateAsyncScope();
+            await using var scope = network.Services.CreateAsyncScope();
             await scope.ServiceProvider.GetRequiredService<SpeedQueue>().RequestAsync(Guid.CreateVersion7(), token);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(90));
@@ -93,6 +114,5 @@ public sealed class SpeedJourneyTests
             Assert.Contains("Example (#1) · speedtest.example.com", await row.InnerTextAsync());
             Assert.Contains(id.ToString("D"), (await row.GetByRole(AriaRole.Link, new() { Name = "查看結果" }).GetAttributeAsync("href"))!);
         }
-        finally { await worker.StopAsync(CancellationToken.None); }
     }, TestContext.CancellationToken);
 }

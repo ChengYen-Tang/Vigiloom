@@ -50,7 +50,7 @@ public sealed class SelfTelemetryTests(TestContext context)
         var builder = Host.CreateApplicationBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         { ["Services:Observability:Url"] = $"http://127.0.0.1:{port}", ["Vigiloom:SelfTelemetry:Enabled"] = "true" });
-        builder.AddVigiloomSelfTelemetry("Vigiloom.Worker");
+        builder.AddVigiloomSelfTelemetry("Vigiloom.Network");
         using var host = builder.Build();
         await host.StartAsync(context.CancellationToken);
         var flush = Task.Run(() => host.Services.GetRequiredService<MeterProvider>().ForceFlush(10000), context.CancellationToken);
@@ -64,7 +64,7 @@ public sealed class SelfTelemetryTests(TestContext context)
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Vigiloom:SelfTelemetry:Enabled"] = "false" });
-        builder.AddVigiloomSelfTelemetry("Vigiloom.Worker");
+        builder.AddVigiloomSelfTelemetry("Vigiloom.Network");
         using var host = builder.Build();
         Assert.IsNull(host.Services.GetService<MeterProvider>());
     }

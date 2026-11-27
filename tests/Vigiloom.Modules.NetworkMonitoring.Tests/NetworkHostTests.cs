@@ -23,6 +23,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Vigiloom.Contracts.Network;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Identity;
@@ -37,6 +38,7 @@ using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Infrastructure.Scheduling;
 using Vigiloom.Infrastructure.Work;
 using Vigiloom.Modules.NetworkMonitoring.Application;
+using Vigiloom.Modules.NetworkMonitoring.Application.SpeedTests;
 using Vigiloom.Modules.NetworkMonitoring.Domain;
 using Vigiloom.Modules.NetworkMonitoring.Persistence;
 using Vigiloom.Testing.SqlServer;
@@ -48,6 +50,27 @@ namespace Vigiloom.Modules.NetworkMonitoring.Tests;
 [TestCategory("Database")]
 public sealed class NetworkHostTests(TestContext context)
 {
+    [TestMethod]
+    public void SpeedtestHttpHandlersArePooledAcrossMeasurements()
+    {
+        using var network = new WebApplicationFactory<NetworkHost::Program>().WithWebHostBuilder(web =>
+        {
+            web.UseSetting("ConnectionStrings:Network", "Server=localhost;Database=unused;Integrated Security=true;Encrypt=false");
+            web.UseSetting("Hangfire:Enabled", "false");
+            web.UseSetting("Temporal:EnableNetworkWorker", "false");
+            web.ConfigureTestServices(services =>
+            {
+                foreach (var item in services.Where(x => x.ServiceType == typeof(IHostedService) &&
+                    x.ImplementationType?.Name is "WorkDispatcher" or "PingWorker" or "SpeedWorker" or "NetworkDiagnosticsPublisher").ToArray()) services.Remove(item);
+            });
+        });
+        using var startup = network.CreateClient();
+        var factory = network.Services.GetRequiredService<IHttpMessageHandlerFactory>();
+        using var first = factory.CreateHandler(SpeedtestNetProbe.HttpClientName);
+        using var second = factory.CreateHandler(SpeedtestNetProbe.HttpClientName);
+        Assert.AreSame(first, second);
+    }
+
     [TestMethod]
     [Timeout(90000, CooperativeCancellation = true)]
     public Task ReportsScannerStateToIndependentOperationsService() =>

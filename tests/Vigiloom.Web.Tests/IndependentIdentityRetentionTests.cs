@@ -1,5 +1,4 @@
 extern alias IdentityHost;
-extern alias WorkerHostAssembly;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -60,11 +59,6 @@ public sealed class IndependentIdentityRetentionTests
             });
             await using var scope = web.Services.CreateAsyncScope();
             var source = scope.ServiceProvider.GetServices<IAuditRetentionSource>().OfType<RemoteIdentityAuditRetention>().Single();
-            var workerBuilder = WorkerHostAssembly::Vigiloom.Worker.Hosting.WorkerHost.CreateBuilder([]);
-            workerBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Services:Identity:Url"] = "http://identity" });
-            using (var worker = workerBuilder.Build())
-            using (var workerScope = worker.Services.CreateScope())
-                Assert.HasCount(1, workerScope.ServiceProvider.GetServices<IAuditRetentionSource>().OfType<RemoteIdentityAuditRetention>());
             var operations = scope.ServiceProvider.GetRequiredService<IDbContextFactory<OperationsDbContext>>();
             await using var operationDb = await operations.CreateDbContextAsync(token);
             await using var transaction = await operationDb.Database.BeginTransactionAsync(token);

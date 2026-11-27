@@ -22,7 +22,7 @@ try {
     $solution.Save($temporary)
     & dotnet test $temporary --configuration Release --no-build --no-restore -m:2
     if ($LASTEXITCODE -ne 0) { throw "Current service tests failed with exit code $LASTEXITCODE." }
-    & dotnet test (Join-Path $root 'tests/Vigiloom.Infrastructure.Tests/Vigiloom.Infrastructure.Tests.csproj') --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~ServiceWorkTests|FullyQualifiedName~TransactionalWorkTests|FullyQualifiedName~CrossProcessTemporalTests'
+    & dotnet test (Join-Path $root 'tests/Vigiloom.Infrastructure.Tests/Vigiloom.Infrastructure.Tests.csproj') --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~ServiceWorkTests|FullyQualifiedName~TransactionalWorkTests|FullyQualifiedName~CrossProcessTemporalTests|FullyQualifiedName~OutboxQueueMigrationTests'
     if ($LASTEXITCODE -ne 0) { throw "Temporal work tests failed with exit code $LASTEXITCODE." }
     & dotnet test (Join-Path $root 'tests/Vigiloom.Modules.SecurityAnalysis.Tests/Vigiloom.Modules.SecurityAnalysis.Tests.csproj') --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~SecurityWorkTests|FullyQualifiedName~SecurityMigrationTests|FullyQualifiedName~Stage_PublicationFailureRollsBackDeletedOldChunksAndWrittenChanges|FullyQualifiedName~CompletePartialAndChangedPolicy_ProtectBaselineAndRecordGaps|FullyQualifiedName~Debian_TracksPackageFixAndReappearance|FullyQualifiedName~Publication_RequiresConfirmationWhenCveAssociationsShrinkButDocumentCountDoesNot|FullyQualifiedName~SourceSelection_CanSwitchRollbackAndRejectRevokedVersion|FullyQualifiedName~CorrelationRuleTesting_SavesBaseRuleAndPolicyEvidence|FullyQualifiedName~MatchingEvent_IsStoredWithSourceAndOriginalEvent'
     if ($LASTEXITCODE -ne 0) { throw "Security service tests failed with exit code $LASTEXITCODE." }
@@ -30,8 +30,6 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Network service tests failed with exit code $LASTEXITCODE." }
     & dotnet test (Join-Path $root 'tests/Vigiloom.Modules.ServiceObservability.Tests/Vigiloom.Modules.ServiceObservability.Tests.csproj') --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~MigrationPreservesHealthEvidenceAndPolicyInvalidation|FullyQualifiedName~ReceptionOverviewTests|FullyQualifiedName~CoordinatorMaterializesClosedWindowsAndRevisitsLateData|FullyQualifiedName~CleanupPreservesRecentRecordsAndSharedContexts|FullyQualifiedName~ConfirmedHealthChanges_CreateAlertsWithoutTreatingUnknownAsRecovery|FullyQualifiedName~Export_ForwardsSharedResourceAndRollsBackOnBusy'
     if ($LASTEXITCODE -ne 0) { throw "Observability service tests failed with exit code $LASTEXITCODE." }
-    & dotnet test (Join-Path $root 'tests/Vigiloom.Worker.Tests/Vigiloom.Worker.Tests.csproj') --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~TemporalNotificationWriterTests|FullyQualifiedName~SecurityCutover'
-    if ($LASTEXITCODE -ne 0) { throw "Security notification handoff tests failed with exit code $LASTEXITCODE." }
     & dotnet test (Join-Path $root 'tests/Vigiloom.Web.Tests/Vigiloom.Web.Tests.csproj') --configuration Release --no-build --no-restore --filter 'FullyQualifiedName~LegacyWorkerRetirementTests|FullyQualifiedName~OutboxWebWorkerTests|FullyQualifiedName~DistributedAgentSiteTests'
     if ($LASTEXITCODE -ne 0) { throw "Scheduler cutover tests failed with exit code $LASTEXITCODE." }
 } finally {

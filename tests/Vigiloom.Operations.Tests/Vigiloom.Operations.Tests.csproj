@@ -8,7 +8,6 @@
     <ProjectReference Include="../../src/Hosts/Vigiloom.Gateway/Vigiloom.Gateway.csproj" Aliases="GatewayHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Identity/Vigiloom.Identity.csproj" Aliases="IdentityHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Security/Vigiloom.Security.csproj" Aliases="SecurityHost" />
-    <ProjectReference Include="../../src/Hosts/Vigiloom.Worker/Vigiloom.Worker.csproj" Aliases="WorkerHostAssembly" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.AgentManagement/Vigiloom.Modules.AgentManagement.csproj" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.NetworkMonitoring/Vigiloom.Modules.NetworkMonitoring.csproj" />
     <ProjectReference Include="../../src/Modules/Vigiloom.Modules.Resources/Vigiloom.Modules.Resources.csproj" />

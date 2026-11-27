@@ -9,11 +9,11 @@
     <ProjectReference Include="../../src/Hosts/Vigiloom.Web/Vigiloom.Web.csproj" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Resources/Vigiloom.Resources.csproj" Aliases="ResourcesHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.HostMonitoring/Vigiloom.HostMonitoring.csproj" Aliases="HostMonitoring" />
+    <ProjectReference Include="../../src/Hosts/Vigiloom.Network/Vigiloom.Network.csproj" Aliases="NetworkHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Operations/Vigiloom.Operations.csproj" Aliases="OperationsHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Observability/Vigiloom.Observability.csproj" Aliases="ObservabilityHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Gateway/Vigiloom.Gateway.csproj" Aliases="GatewayHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Identity/Vigiloom.Identity.csproj" Aliases="IdentityHost" />
-    <ProjectReference Include="../../src/Hosts/Vigiloom.Worker/Vigiloom.Worker.csproj" Aliases="WorkerHostAssembly" />
     <ProjectReference Include="../../src/Agent/Vigiloom.Agent.Core/Vigiloom.Agent.Core.csproj" />
     <ProjectReference Include="../../src/Agent/Vigiloom.Agent/Vigiloom.Agent.csproj" />
     <ProjectReference Include="../../src/Updater/Vigiloom.Updater.Core/Vigiloom.Updater.Core.csproj" />

@@ -1,5 +1,5 @@
 extern alias ResourcesHost;
-extern alias WorkerHostAssembly;
+extern alias OperationsHost;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Hosting;
 using Vigiloom.Web.Devices;
 using Vigiloom.Web.Groups;
 using Vigiloom.Web.Publishing;
@@ -66,7 +68,7 @@ public sealed class ServiceDiscoveryRoutingTests(TestContext context)
     }
 
     [TestMethod]
-    public async Task WorkerIdentityClientResolvesLogicalServiceName()
+    public async Task OperationsIdentityClientResolvesLogicalServiceName()
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -74,13 +76,23 @@ public sealed class ServiceDiscoveryRoutingTests(TestContext context)
         upstream.MapGet("/probe", () => "identity");
         await upstream.StartAsync(context.CancellationToken);
         var address = new Uri(upstream.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single());
-        var worker = WorkerHostAssembly::Vigiloom.Worker.Hosting.WorkerHost.CreateBuilder([]);
-        worker.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        using var host = new WebApplicationFactory<OperationsHost::Program>().WithWebHostBuilder(web =>
         {
-            ["Services:Identity:Url"] = "http://test-identity",
-            ["Services:test-identity:http:0"] = address.Authority
+            web.UseSetting("Hangfire:Enabled", "false");
+            web.UseSetting("Temporal:EnableOperationsWorker", "false");
+            web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Operations"] = "Server=localhost;Database=unused;Integrated Security=true;Encrypt=false",
+                ["Services:Identity:Url"] = "http://test-identity",
+                ["Services:test-identity:http:0"] = address.Authority
+            }));
+            web.ConfigureTestServices(services =>
+            {
+                foreach (var item in services.Where(x => x.ServiceType == typeof(IHostedService) &&
+                    x.ImplementationType?.Name is "WorkDispatcher" or "LineAggregationWorker").ToArray()) services.Remove(item);
+            });
         });
-        using var host = worker.Build();
+        using var startup = host.CreateClient();
         using var client = host.Services.GetRequiredService<IHttpClientFactory>().CreateClient("RemoteIdentityAuditRetention");
         Assert.AreEqual("identity", await client.GetStringAsync("/probe", context.CancellationToken));
     }

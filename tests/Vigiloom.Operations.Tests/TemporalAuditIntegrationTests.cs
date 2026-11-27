@@ -1,4 +1,4 @@
-extern alias WorkerHostAssembly;
+extern alias SecurityHost;
 
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -106,7 +106,7 @@ public sealed class TemporalAuditIntegrationTests(TestContext context)
                     var work = scope.ServiceProvider.GetRequiredService<TemporalWorkWriter>();
                     var sink = new TemporalPingTransitionSink(scope.ServiceProvider.GetRequiredService<OutboxWriter>(), host.Services.GetRequiredService<IConfiguration>());
                     await sink.RecordAsync(ping, resources.Database.GetDbConnection(), transaction.GetDbTransaction(), token);
-                    var writerType = typeof(WorkerHostAssembly::Vigiloom.Worker.Hosting.WorkerHost).Assembly.GetType("Vigiloom.Worker.Hosting.TemporalNotificationWriter", throwOnError: true)!;
+                    var writerType = typeof(SecurityHost::Program).Assembly.GetType("Vigiloom.Security.TemporalNotificationWriter", throwOnError: true)!;
                     var temporalHandler = scope.ServiceProvider.GetServices<IOutboxHandler>().Single(handler => handler.MessageType == TemporalOutboxHandler.Type);
                     var notificationWriter = (INotificationWriter)Activator.CreateInstance(writerType, new OutboxWriter([temporalHandler], maxPayloadLength: null), host.Services.GetRequiredService<IConfiguration>())!;
                     await notificationWriter.WriteAsync(securityNotification, resources.Database.GetDbConnection(), transaction.GetDbTransaction(), token);

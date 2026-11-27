@@ -12,7 +12,7 @@ using Vigiloom.Infrastructure.Scheduling.Outbox;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Testing.SqlServer;
 
-namespace Vigiloom.Worker.Tests;
+namespace Vigiloom.Infrastructure.Tests;
 
 [TestClass]
 [TestCategory("Integration")]
@@ -56,7 +56,16 @@ public sealed class OutboxQueueMigrationTests(TestContext context)
             Assert.AreEqual(120L, monitor.EnqueuedCount(OutboxScheduleManager.Queue));
             Assert.AreEqual(1L, monitor.EnqueuedCount("default"));
             using var scope = provider.CreateScope();
-            Assert.IsTrue(scope.ServiceProvider.GetRequiredService<OutboxScheduleManager>().GetSnapshot().Applied);
+            var manager = scope.ServiceProvider.GetRequiredService<OutboxScheduleManager>();
+            var snapshot = manager.GetSnapshot();
+            Assert.IsTrue(snapshot.Applied);
+            manager.SetIntervalMinutes(10, snapshot.Version, Guid.CreateVersion7());
+            Assert.ThrowsExactly<ScheduleConflictException>(() => manager.SetIntervalMinutes(5, snapshot.Version, Guid.CreateVersion7()));
+            provider.GetRequiredService<IRecurringJobManager>().RemoveIfExists(OutboxScheduleManager.ScheduleId);
+            Assert.IsFalse(manager.GetSnapshot().Applied);
+            manager.EnsureDefault();
+            Assert.AreEqual(10, manager.GetSnapshot().Minutes);
+            Assert.IsTrue(manager.GetSnapshot().Applied);
         }, context.CancellationToken);
 
     public static void OtherJob() { }
