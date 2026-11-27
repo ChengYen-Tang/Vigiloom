@@ -23,6 +23,8 @@ public sealed class RemoteSecurityAccessTests
         services.AddScoped<VulnerabilityAccess>();
         services.AddScoped<IntegrityAccess>();
         services.AddScoped<IntegritySettingsAccess>();
+        services.AddScoped<InventorySettingsAccess>();
+        services.AddScoped<BaselineAccess>();
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
         var id = Guid.CreateVersion7();
@@ -33,6 +35,8 @@ public sealed class RemoteSecurityAccessTests
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => scope.ServiceProvider.GetRequiredService<VulnerabilityAccess>().GetCurrentAsync(id, 1, null, null, CancellationToken.None));
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => scope.ServiceProvider.GetRequiredService<IntegrityAccess>().GetAsync(id, null, CancellationToken.None));
         await Assert.ThrowsExactlyAsync<HttpRequestException>(() => scope.ServiceProvider.GetRequiredService<IntegritySettingsAccess>().ListAsync(id, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => scope.ServiceProvider.GetRequiredService<InventorySettingsAccess>().GetAsync(id, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(() => scope.ServiceProvider.GetRequiredService<BaselineAccess>().GetAsync(id, CancellationToken.None));
     }
 
     private sealed class BadRequestHandler : HttpMessageHandler
