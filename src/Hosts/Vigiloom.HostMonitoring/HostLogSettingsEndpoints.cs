@@ -18,13 +18,13 @@ internal static class HostLogSettingsEndpoints
             context.Response.Headers.CacheControl = "no-store";
             if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
             return await settings.ListAsync(deviceId, token) is { } list ? Results.Ok(list) : Results.NotFound();
-        });
+        }).Produces<IReadOnlyList<HostLogSourceView>>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
         admin.MapGet("/{sourceId:guid}", async (Guid deviceId, Guid sourceId, HostMonitoringLogConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             if (!await ResourceDevices.ExistsAsync(clients, deviceId, token)) return Results.NotFound();
             return (await settings.ListAsync(deviceId, token))?.FirstOrDefault(x => x.Settings.SourceId == sourceId) is { } source ? Results.Ok(source) : Results.NotFound();
-        });
+        }).Produces<HostLogSourceView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(429);
         admin.MapPost("/", async (Guid deviceId, HostLogSourceCreate input, HostMonitoringLogConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
@@ -34,7 +34,7 @@ internal static class HostLogSettingsEndpoints
                 try { return SourceResult(await settings.CreateAsync(deviceId, input, actor, token), deviceId, true); }
                 catch (ArgumentException) { return Invalid(); }
             }, allowApiCredential: false);
-        });
+        }).Produces<HostLogSourceView>(201).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429);
         admin.MapPut("/{sourceId:guid}", async (Guid deviceId, Guid sourceId, HostLogSourceUpdate input, HostMonitoringLogConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
@@ -44,7 +44,7 @@ internal static class HostLogSettingsEndpoints
                 try { return SourceResult(await settings.UpdateAsync(deviceId, sourceId, input, actor, token), deviceId); }
                 catch (ArgumentException) { return Invalid(); }
             }, allowApiCredential: false);
-        });
+        }).Produces<HostLogSourceView>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429);
         admin.MapPost("/{sourceId:guid}/retire", async (Guid deviceId, Guid sourceId, HostLogSourceRetire input, HostMonitoringLogConfiguration settings, IHttpClientFactory clients, HttpContext context, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";
@@ -54,7 +54,7 @@ internal static class HostLogSettingsEndpoints
                 try { return SourceResult(await settings.RetireAsync(deviceId, sourceId, input.Version, actor, token), deviceId); }
                 catch (ArgumentException) { return Invalid(); }
             }, allowApiCredential: false);
-        });
+        }).Produces<HostLogSourceView>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409).ProducesProblem(429);
         const string root = "/internal/v1/devices/{deviceId:guid}/log-sources";
         app.MapGet(root, async (Guid deviceId, HostMonitoringLogConfiguration settings, IHttpClientFactory clients, CancellationToken token) =>
             await ResourceDevices.ExistsAsync(clients, deviceId, token) ? Results.Ok(await settings.ListAsync(deviceId, token)) : Results.NotFound());
@@ -88,7 +88,7 @@ internal static class HostLogSettingsEndpoints
             context.Response.Headers.CacheControl = "private, no-store";
             return context.Request.GetTypedHeaders().IfNoneMatch?.Any(x => x.Equals(EntityTagHeaderValue.Any) || x.Compare(tag, useStrongComparison: false)) == true
                 ? Results.StatusCode(StatusCodes.Status304NotModified) : Results.Ok(snapshot);
-        });
+        }).Produces<AgentLogSettingsSnapshot>().Produces(304).ProducesProblem(401).ProducesProblem(403).ProducesProblem(429);
     }
 
     private static IResult Invalid() => Results.ValidationProblem(new Dictionary<string, string[]> { ["source"] = ["日誌來源設定無效。"] });

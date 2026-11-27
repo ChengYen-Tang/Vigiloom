@@ -884,6 +884,20 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             proxiedHost.UseKestrel(0);
             using var proxyClient = proxiedHost.CreateClient();
             proxyClient.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
+            using (var apiDocument = await proxyClient.GetFromJsonAsync<JsonDocument>("/openapi/v1.json", token))
+            {
+                var paths = apiDocument!.RootElement.GetProperty("paths");
+                var agentSettings = paths.GetProperty("/api/v1/agent/log-settings").GetProperty("get");
+                Assert.IsTrue(agentSettings.GetProperty("security")[0].TryGetProperty("AgentBearer", out _));
+                Assert.IsTrue(agentSettings.GetProperty("responses").TryGetProperty("304", out _));
+                var create = paths.GetProperty("/api/v1/agent-management/devices/{deviceId}/log-sources").GetProperty("post");
+                Assert.IsTrue(create.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
+                Assert.IsTrue(create.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
+                Assert.IsTrue(create.GetProperty("responses").TryGetProperty("201", out _));
+            }
+            var logSourcesPath = $"/api/v1/agent-management/devices/{identity.DeviceId:D}/log-sources/";
+            using (var anonymous = await proxyClient.GetAsync(logSourcesPath, token))
+                Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             using (var anonymous = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/agent-queue-capacity-status", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             using (var anonymous = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/host-metrics?from={from}&until={until}", token))
@@ -964,6 +978,9 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 new Claim("AspNet.Identity.SecurityStamp", "stamp")], IdentityConstants.ApplicationScheme);
             var adminCookie = cookieOptions.TicketDataFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(adminIdentity), IdentityConstants.ApplicationScheme));
             proxyClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={adminCookie}");
+            var logSourceInput = new HostLogSourceCreate(AgentLogSourceKind.Journal, "audit-test", "local", true, null);
+            using (var missingCsrf = await proxyClient.PostAsJsonAsync(logSourcesPath, logSourceInput, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
             const string inboxPath = "/api/v1/settings/agent-inbox";
             var inboxBefore = await proxyClient.GetFromJsonAsync<AgentInboxSettingsSnapshot>(inboxPath, token);
             Assert.IsTrue(inboxBefore!.CleanupReady);
@@ -984,6 +1001,28 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             proxyClient.DefaultRequestHeaders.Remove("Cookie");
             proxyClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={adminCookie}; {antiCookie}");
             proxyClient.DefaultRequestHeaders.Add("RequestVerificationToken", anti.RequestToken);
+            HostLogSourceView createdLogSource;
+            using (var invalidLogSource = await proxyClient.PostAsJsonAsync(logSourcesPath, new { }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, invalidLogSource.StatusCode);
+            using (var created = await proxyClient.PostAsJsonAsync(logSourcesPath, logSourceInput, token))
+            {
+                Assert.AreEqual(HttpStatusCode.Created, created.StatusCode);
+                createdLogSource = (await created.Content.ReadFromJsonAsync<HostLogSourceView>(cancellationToken: token))!;
+                Assert.IsNotNull(createdLogSource);
+                Assert.IsTrue(created.Headers.Location!.OriginalString.EndsWith(createdLogSource.Settings.SourceId.ToString("D"), StringComparison.OrdinalIgnoreCase));
+            }
+            var logSourcePath = logSourcesPath + createdLogSource.Settings.SourceId.ToString("D");
+            var updateLogSource = new HostLogSourceUpdate("renamed", false, null, createdLogSource.Version);
+            HostLogSourceView updatedLogSource;
+            using (var updated = await proxyClient.PutAsJsonAsync(logSourcePath, updateLogSource, token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode);
+                updatedLogSource = (await updated.Content.ReadFromJsonAsync<HostLogSourceView>(cancellationToken: token))!;
+            }
+            using (var stale = await proxyClient.PutAsJsonAsync(logSourcePath, updateLogSource, token))
+                Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
+            using (var retired = await proxyClient.PostAsJsonAsync(logSourcePath + "/retire", new HostLogSourceRetire(updatedLogSource.Version), token))
+                Assert.AreEqual(HttpStatusCode.OK, retired.StatusCode);
             using (var savedCapacity = await proxyClient.PutAsJsonAsync(capacityAdminPath, capacityUpdate, token))
                 Assert.AreEqual(HttpStatusCode.OK, savedCapacity.StatusCode);
             using (var staleCapacity = await proxyClient.PutAsJsonAsync(capacityAdminPath, capacityUpdate, token))
@@ -1015,6 +1054,8 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             await using (var audit = new HostMonitoringDbContext(hostOptions))
                 Assert.AreEqual(2, await audit.Set<HostMetricThresholdAudit>().CountAsync(token));
             thresholdSession.Role = "Read only";
+            using (var deniedLogs = await proxyClient.GetAsync(logSourcesPath, token))
+                Assert.AreEqual(HttpStatusCode.Forbidden, deniedLogs.StatusCode);
             using (var readerCapacity = await proxyClient.GetAsync($"/api/v1/devices/{identity.DeviceId:D}/agent-queue-capacity", token))
                 Assert.AreEqual(HttpStatusCode.OK, readerCapacity.StatusCode);
             using (var readerMetrics = await proxyClient.GetAsync($"{metricsPath}?from={from}&until={until}", token))
