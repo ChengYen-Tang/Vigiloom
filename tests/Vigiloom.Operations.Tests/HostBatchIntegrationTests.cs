@@ -7,6 +7,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.IO.Compression;
 using System.Text.Json;
+using System.Collections.Immutable;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
@@ -22,6 +23,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Vigiloom.Contracts.Agent;
 using Vigiloom.Contracts.Agent.Security;
 using Vigiloom.Contracts.Agent.Inventory;
+using Vigiloom.Contracts.Agent.Integrity;
 using Vigiloom.Contracts.Operations;
 using Vigiloom.Contracts.Identity;
 using Vigiloom.Contracts.Devices;
@@ -37,6 +39,7 @@ using Vigiloom.Modules.AgentManagement.Domain;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using Vigiloom.Modules.SecurityAnalysis.Persistence;
+using Vigiloom.Modules.SecurityAnalysis.Domain.Integrity;
 using Vigiloom.Testing.SqlServer;
 
 namespace Vigiloom.Operations.Tests;
@@ -164,6 +167,52 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             Assert.AreEqual(1L, progress!.Single(x => x.Source == InventorySource.LinuxDpkg).HighWaterGeneration);
             await using (var db = new SecurityAnalysisDbContext(securityOptions)) Assert.AreEqual(1, await db.InventorySnapshots.CountAsync(token));
             await using (var db = new HostMonitoringDbContext(hostOptions)) Assert.AreEqual(0, await db.HostSecurityBatches.CountAsync(token));
+
+            var scopeId = Guid.CreateVersion7();
+            var scope = new IntegrityScopeInput(IntegrityScopeKind.Directory, "/srv/app", true,
+                ImmutableArray<string>.Empty, 3600, 1000, 1048576, 10485760, 16).WithIdentity(scopeId, 1);
+            await using (var db = new SecurityAnalysisDbContext(securityOptions))
+            {
+                db.IntegrityScopes.Add(new IntegrityScopeSetting { Id = scopeId, DeviceId = identity.DeviceId, Revision = 1,
+                    DefinitionJson = JsonSerializer.Serialize(scope), UpdatedBy = Guid.CreateVersion7(), UpdatedAt = nowUtc });
+                await db.SaveChangesAsync(token);
+            }
+            var item = new IntegrityItem(IntegrityKey.Create(IntegrityItemKind.File, ["test"]), IntegrityItemKind.File, new string('a', 64));
+            var measuredIntegrity = IntegrityDigest.MeasureChunk([item]);
+            var integrity = new IntegrityChunk(IntegrityChunkCodec.SchemaVersion, Guid.CreateVersion7(), nowUtc, scopeId, 1,
+                Guid.CreateVersion7(), 1, nowUtc, IntegrityScanOutcome.Complete, false, null, 0, 1, 1,
+                measuredIntegrity.Bytes, IntegrityDigest.Combine([measuredIntegrity.Digest]), [item]);
+            var integrityPayload = IntegrityChunkCodec.Serialize(integrity);
+            using (var accepted = await SendAsync(client, integrityPayload, "valid", token)) Assert.AreEqual(HttpStatusCode.NoContent, accepted.StatusCode);
+            using (var duplicate = await SendAsync(client, integrityPayload, "valid", token)) Assert.AreEqual(HttpStatusCode.NoContent, duplicate.StatusCode);
+            if (temporalAddress is null)
+            {
+                var reference = writer.Batches.Single(x => x.BatchId == integrity.BatchId);
+                var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Security"] = securityDb.ConnectionString }).Build();
+                var worker = new SecurityHost::Vigiloom.Security.SecurityWorkHandler(config, new SingleHttpClientFactory(hostClient));
+                var work = new ServiceWork(nameof(HostSecurityBatchReady), JsonSerializer.Serialize(reference), Guid.CreateVersion7().ToString());
+                await worker.ExecuteAsync(work, token);
+                await worker.ExecuteAsync(work, token);
+            }
+            else
+            {
+                var deadline = DateTime.UtcNow.AddSeconds(45);
+                while (true)
+                {
+                    await using var db = new SecurityAnalysisDbContext(securityOptions);
+                    await using var hostState = new HostMonitoringDbContext(hostOptions);
+                    if (await db.IntegrityScans.AnyAsync(x => x.ScopeId == scopeId && x.Status == IntegrityScanStatus.Complete, token) &&
+                        !await hostState.HostSecurityBatches.AnyAsync(x => x.BatchId == integrity.BatchId, token)) break;
+                    if (DateTime.UtcNow >= deadline) Assert.Fail("Temporal did not deliver the integrity batch.");
+                    await Task.Delay(250, token);
+                }
+            }
+            await using (var db = new SecurityAnalysisDbContext(securityOptions))
+            {
+                Assert.AreEqual(1, await db.IntegrityScans.CountAsync(x => x.ScopeId == scopeId && x.Status == IntegrityScanStatus.Complete, token));
+                Assert.AreEqual(1L, (await db.IntegrityScopeStates.SingleAsync(x => x.ScopeId == scopeId, token)).CurrentGeneration);
+            }
+            await using (var db = new HostMonitoringDbContext(hostOptions)) Assert.IsFalse(await db.HostSecurityBatches.AnyAsync(x => x.BatchId == integrity.BatchId, token));
 
             var scanId = Guid.CreateVersion7();
             await using (var db = new SecurityAnalysisDbContext(securityOptions))
