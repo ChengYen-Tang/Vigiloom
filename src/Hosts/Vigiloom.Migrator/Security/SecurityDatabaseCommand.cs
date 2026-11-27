@@ -48,7 +48,7 @@ internal static class SecurityDatabaseCommand
         if (source is not null)
         {
             var mappings = Tables.Select(name => new SqlTableDataMigration.TableMapping("security", name, "security", name)).ToList();
-            mappings.Add(new("agent", "YaraScans", "security", "YaraScans"));
+            mappings.Add(new("agent", "YaraScans", "security", "YaraScans", OptionalSourceColumns: ["StartedAt"]));
             await SqlTableDataMigration.CopyAsync(source, target, mappings, token);
         }
         Console.WriteLine(source is null ? "Security schema initialized successfully." : "Security data copied successfully.");
