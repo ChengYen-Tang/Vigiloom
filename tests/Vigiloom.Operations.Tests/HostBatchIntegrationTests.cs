@@ -685,8 +685,18 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
             }
             var epoch = Guid.CreateVersion7();
-            using (var session = await client.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
+            var firstSession = new AgentQueueSessionRequest(null, epoch);
+            using (var session = await client.PostAsJsonAsync("/api/v1/agent/queue-session", firstSession, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
+            using (var retry = await client.PostAsJsonAsync("/api/v1/agent/queue-session", firstSession, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, retry.StatusCode);
+            using (var conflict = await client.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, Guid.CreateVersion7()), token))
+                Assert.AreEqual(HttpStatusCode.Conflict, conflict.StatusCode);
+            using (var current = await client.GetAsync("/api/v1/agent/queue-session", token))
+            {
+                Assert.IsTrue(current.Headers.CacheControl?.NoStore);
+                Assert.AreEqual(epoch, (await current.Content.ReadFromJsonAsync<AgentQueueSession>(cancellationToken: token))!.Epoch);
+            }
             using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 1, null), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
             var update = new AgentUpdateResult(Guid.CreateVersion7(), targetUpdate.UpdateId, targetUpdate.PackageId, targetUpdate.ManifestSha256, 1,

@@ -238,16 +238,20 @@ app.MapPost("/internal/v1/agent-package-usage", async (AgentPackageUsageRequest 
 });
 app.MapGet("/api/v1/agent/queue-session", async (HttpContext context, HostHeartbeat service, CancellationToken token) =>
 {
+    context.Response.Headers.CacheControl = "no-store";
     var session = await service.GetSessionAsync((RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!, token);
     return session is null ? Results.Unauthorized() : Results.Ok(session);
-});
+}).Produces<AgentQueueSession>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429).ProducesProblem(503)
+  .WithSummary("Inspect the current Agent queue-report session");
 app.MapPost("/api/v1/agent/queue-session", async (AgentQueueSessionRequest request, HttpContext context, HostHeartbeat service, CancellationToken token) =>
     await service.BeginSessionAsync((RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!, request, token) switch
     {
         AgentIdentityStatus.Success => Results.NoContent(),
         AgentIdentityStatus.Conflict => Results.Conflict(),
         _ => Results.Unauthorized()
-    }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(1024));
+    }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(1024))
+    .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(413).ProducesProblem(429).ProducesProblem(503)
+    .WithSummary("Atomically establish an idempotent Agent queue-report session");
 app.MapGet("/api/v1/agent/settings", async (HttpContext context, HostAgentConfiguration service, CancellationToken token) =>
 {
     var snapshot = await service.GetForAgentAsync((RegisteredAgentIdentity)context.Items[typeof(RegisteredAgentIdentity)]!, token);
