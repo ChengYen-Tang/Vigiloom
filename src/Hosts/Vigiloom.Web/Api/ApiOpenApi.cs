@@ -57,8 +57,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                 if (path.StartsWith("/api/v1/admin/intelligence/", StringComparison.OrdinalIgnoreCase))
                     operation.Description = "Requires a signed-in Administrator session; mutations also require an antiforgery token.";
             }
-            else if (path.Equals("/api/v1/agent/inventory/status", StringComparison.OrdinalIgnoreCase) ||
-                     path.Equals("/api/v1/agent/inventory-settings", StringComparison.OrdinalIgnoreCase) ||
+            else if (path.Equals("/api/v1/agent/inventory-settings", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/batches", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/agent/rotation/", StringComparison.OrdinalIgnoreCase))
                 operation.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("AgentBearer", document)] = [] }];

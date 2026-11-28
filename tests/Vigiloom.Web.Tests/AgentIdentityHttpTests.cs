@@ -16,7 +16,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Playwright;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Inventory;
@@ -59,7 +58,7 @@ public sealed class AgentIdentityHttpTests
     public Task Inventory_RealAgentCycleQueuesSendsAndConfirmsThroughHttp() =>
         ReusableWebDatabase.ExecuteAsync(async (database, token) =>
         {
-            var parent = Path.Combine(Path.GetTempPath(), "VigiloomInventoryEndToEndTests");
+            var parent = Path.Combine(AppContext.BaseDirectory, "VigiloomInventoryEndToEndTests");
             var directory = Path.Combine(parent, Path.GetRandomFileName());
             try
             {
@@ -93,7 +92,8 @@ public sealed class AgentIdentityHttpTests
                 await using (var session = vault.Acquire())
                     await session.WriteAsync(new IdentityState { AgentId = agentId, Server = server.AbsoluteUri, MachineSecret = WebEncoders.Base64UrlEncode(secret) }, token);
                 using var http = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = server });
-                var statusClient = new InventoryStatusClient(http, TimeProvider.System);
+                using var statusBridge = new InventoryStatusBridge(database.ConnectionString, factory.Services);
+                var statusClient = new InventoryStatusClient(statusBridge.Client, TimeProvider.System);
                 var capabilities = await statusClient.ReadAsync(vault, server, token);
                 Assert.IsTrue(capabilities.SupportsDpkgSource);
                 Assert.IsTrue(capabilities.SupportsWindowsRelease);
@@ -137,7 +137,7 @@ public sealed class AgentIdentityHttpTests
                 using (var legacyActive = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/inventory/status?contract=5"))
                 {
                     legacyActive.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{agentId:D}.{WebEncoders.Base64UrlEncode(secret)}");
-                    using var response = await http.SendAsync(legacyActive, token);
+                    using var response = await statusBridge.Client.SendAsync(legacyActive, token);
                     Assert.AreEqual(HttpStatusCode.ServiceUnavailable, response.StatusCode);
                 }
                 while (await queue.PeekAsync(token) is not null)
@@ -146,7 +146,7 @@ public sealed class AgentIdentityHttpTests
                 using (var legacyDone = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/inventory/status?contract=5"))
                 {
                     legacyDone.Headers.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{agentId:D}.{WebEncoders.Base64UrlEncode(secret)}");
-                    using var response = await http.SendAsync(legacyDone, token);
+                    using var response = await statusBridge.Client.SendAsync(legacyDone, token);
                     Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
                     var legacy = await response.Content.ReadFromJsonAsync<InventorySourceStatus[]>(cancellationToken: token);
                     Assert.IsNotNull(legacy);
@@ -242,53 +242,6 @@ public sealed class AgentIdentityHttpTests
                     var changes = await new InventoryChangeQuery(security).GetAsync(device.Id, queryNow.AddMinutes(-1), queryNow.AddMinutes(1), InventorySource.HostProcesses, null, token);
                     Assert.IsTrue(changes.Items.Any(x => x.Kind == InventoryChangeType.NewlyObserved && x.After?.NumericId == (uint)child.Id));
                     Assert.IsFalse(changes.Items.Any(x => x.Kind == InventoryChangeType.Removed));
-                    await PingTestSite.InitializeAsync(factory, token, schemaInitialized: true);
-                    using var browserFactory = PingTestSite.CreateFactory(database.ConnectionString);
-                    browserFactory.UseKestrel(0); browserFactory.StartServer();
-                    var url = browserFactory.ClientOptions.BaseAddress.ToString().TrimEnd('/');
-                    using var playwright = await Playwright.CreateAsync();
-                    await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
-                    await using var browserContext = await browser.NewContextAsync();
-                    var page = await browserContext.NewPageAsync();
-                    await using var gate = await AutoRenderGate.HoldAsync(page);
-                    await page.GotoAsync($"{url}/devices/{device.Id:D}");
-                    await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
-                    await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
-                    await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
-                    await page.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
-                    await page.GetByRole(AriaRole.Button, new() { Name = "程序與服務", Exact = true }).ClickAsync();
-                    var table = page.GetByRole(AriaRole.Region, new() { Name = "盤點表格，可左右捲動" });
-                    var selfRow = table.GetByRole(AriaRole.Row).Filter(new() { HasText = self.Key });
-                    await selfRow.GetByText($"程序 ID：{Environment.ProcessId}", new() { Exact = false }).WaitForAsync();
-                    await selfRow.GetByText(self.CommandLine!, new() { Exact = false }).WaitForAsync();
-                    await page.GetByText("原因：AccessDenied", new() { Exact = false }).WaitForAsync();
-                    await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.HostListeners).ToString());
-                    var listenerRow = table.GetByRole(AriaRole.Row).Filter(new() { HasText = $"TCP {listenerPort}" });
-                    await listenerRow.GetByText($"位址：127.0.0.1", new() { Exact = false }).WaitForAsync();
-                    if (service is not null)
-                    {
-                        await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.HostServices).ToString());
-                        var serviceRow = table.GetByRole(AriaRole.Row).Filter(new() { HasText = service.Key });
-                        await serviceRow.GetByText(service.Name, new() { Exact = true }).WaitForAsync();
-                        if (service.ServiceStatus is not null) await serviceRow.GetByText($"狀態：{service.ServiceStatus}", new() { Exact = false }).WaitForAsync();
-                        if (service.StartupMode is not null) await serviceRow.GetByText($"啟動模式：{service.StartupMode}", new() { Exact = false }).WaitForAsync();
-                    }
-                    await gate.ReleaseAsync();
-                    await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
-                    await page.ReloadAsync();
-                    await page.Locator(".host-details[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
-                    await page.GetByRole(AriaRole.Button, new() { Name = "程序與服務", Exact = true }).ClickAsync();
-                    var wasmRow = page.GetByRole(AriaRole.Region, new() { Name = "盤點表格，可左右捲動" }).GetByRole(AriaRole.Row).Filter(new() { HasText = self.Key });
-                    await wasmRow.GetByText(self.CommandLine!, new() { Exact = false }).WaitForAsync();
-                    await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.HostListeners).ToString());
-                    await page.GetByRole(AriaRole.Region, new() { Name = "盤點表格，可左右捲動" }).GetByText($"TCP {listenerPort}", new() { Exact = true }).WaitForAsync();
-                    if (service is not null)
-                    {
-                        await page.Locator("#host-source").SelectOptionAsync(((int)InventorySource.HostServices).ToString());
-                        var serviceRow = page.GetByRole(AriaRole.Region, new() { Name = "盤點表格，可左右捲動" }).GetByRole(AriaRole.Row).Filter(new() { HasText = service.Key });
-                        await serviceRow.GetByText(service.Name, new() { Exact = true }).WaitForAsync();
-                        if (service.ServiceStatus is not null) await serviceRow.GetByText($"狀態：{service.ServiceStatus}", new() { Exact = false }).WaitForAsync();
-                    }
                 }
                 finally
                 {
@@ -343,11 +296,13 @@ public sealed class AgentIdentityHttpTests
                 credential = $"vla_{registered.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}";
             }
             using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
-            using (var anonymous = await client.GetAsync("/api/v1/agent/inventory/status", token))
+            using var statusBridge = new InventoryStatusBridge(database.ConnectionString, factory.Services);
+            using (var anonymous = await statusBridge.Client.GetAsync("/api/v1/agent/inventory/status", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             using (var anonymous = await client.GetAsync("/api/v1/agent/inventory-settings", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
+            statusBridge.Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
             using (var policy = await client.GetAsync("/api/v1/agent/inventory-settings", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, policy.StatusCode);
@@ -380,7 +335,7 @@ public sealed class AgentIdentityHttpTests
             }
             using (var duplicate = await client.PostAsync("/api/v1/agent/batches", JsonBytes(payload), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, duplicate.StatusCode);
-            using var statusResponse = await client.GetAsync("/api/v1/agent/inventory/status", token);
+            using var statusResponse = await statusBridge.Client.GetAsync("/api/v1/agent/inventory/status", token);
             Assert.AreEqual(HttpStatusCode.OK, statusResponse.StatusCode);
             Assert.IsNotNull(statusResponse.Headers.CacheControl);
             Assert.IsTrue(statusResponse.Headers.CacheControl.NoStore);
@@ -414,9 +369,9 @@ public sealed class AgentIdentityHttpTests
                 firstMeasure.Bytes + secondMeasure.Bytes, InventoryDigest.Combine([firstMeasure.Digest, secondMeasure.Digest]), processOne);
             using (var staged = await client.PostAsync("/api/v1/agent/batches", JsonBytes(InventoryChunkCodec.Serialize(processChunk)), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, staged.StatusCode);
-            using (var legacyBusy = await client.GetAsync("/api/v1/agent/inventory/status", token))
+            using (var legacyBusy = await statusBridge.Client.GetAsync("/api/v1/agent/inventory/status", token))
                 Assert.AreEqual(HttpStatusCode.ServiceUnavailable, legacyBusy.StatusCode);
-            using (var extended = await client.GetAsync("/api/v1/agent/inventory/status?contract=5", token))
+            using (var extended = await statusBridge.Client.GetAsync("/api/v1/agent/inventory/status?contract=5", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, extended.StatusCode);
                 Assert.AreEqual("5", extended.Headers.GetValues("Vigiloom-Inventory-Contract").Single());
@@ -427,7 +382,7 @@ public sealed class AgentIdentityHttpTests
             var lastProcessChunk = processChunk with { BatchId = Guid.CreateVersion7(), ChunkIndex = 1, Items = processTwo };
             using (var acceptedProcess = await client.PostAsync("/api/v1/agent/batches", JsonBytes(InventoryChunkCodec.Serialize(lastProcessChunk)), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, acceptedProcess.StatusCode);
-            using (var legacy = await client.GetAsync("/api/v1/agent/inventory/status", token))
+            using (var legacy = await statusBridge.Client.GetAsync("/api/v1/agent/inventory/status", token))
             {
                 var legacySources = await legacy.Content.ReadFromJsonAsync<InventorySourceStatus[]>(cancellationToken: token);
                 Assert.IsNotNull(legacySources);

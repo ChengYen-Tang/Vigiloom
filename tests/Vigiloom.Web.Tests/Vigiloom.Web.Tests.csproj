@@ -9,6 +9,7 @@
     <ProjectReference Include="../../src/Hosts/Vigiloom.Web/Vigiloom.Web.csproj" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Resources/Vigiloom.Resources.csproj" Aliases="ResourcesHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.HostMonitoring/Vigiloom.HostMonitoring.csproj" Aliases="HostMonitoring" />
+    <ProjectReference Include="../../src/Hosts/Vigiloom.Security/Vigiloom.Security.csproj" Aliases="SecurityHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Network/Vigiloom.Network.csproj" Aliases="NetworkHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Operations/Vigiloom.Operations.csproj" Aliases="OperationsHost" />
     <ProjectReference Include="../../src/Hosts/Vigiloom.Observability/Vigiloom.Observability.csproj" Aliases="ObservabilityHost" />

@@ -1,7 +1,6 @@
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
-using Vigiloom.Contracts.Agent.Inventory;
 using Vigiloom.Web.Authentication;
 
 namespace Vigiloom.Web.Api;
@@ -63,42 +62,6 @@ internal static class AgentEndpoints
         }).AllowAnonymous().WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(2048))
             .Produces<EnrollmentResponse>().ProducesProblem(401).ProducesProblem(413).ProducesProblem(429)
             .WithSummary("Recover an existing Agent ID using enrollment and machine secret proof");
-        machine.MapGet("/inventory/status", async (int? contract, HttpContext context, AgentInventoryStatus inventory, CancellationToken token) =>
-        {
-            context.Response.Headers.CacheControl = "no-store";
-            try
-            {
-                if (contract is not (null or 5)) return Results.BadRequest();
-                var status = await inventory.GetAsync(Bearer(context), token);
-                if (status is null) return Results.Unauthorized();
-                if (contract == 5)
-                {
-                    context.Response.Headers["Vigiloom-Inventory-Contract"] = "5";
-                    context.Response.Headers["Vigiloom-Inventory-Schemas"] = "4, 5, 7, 8, 9, 10";
-                }
-                var supportsWindowsUpdate = contract == 5 && context.Request.Headers.TryGetValue("Vigiloom-Windows-Update-Contract", out var updateContract) &&
-                    updateContract.Count == 1 && updateContract[0] == "9";
-                if (supportsWindowsUpdate) context.Response.Headers["Vigiloom-Windows-Update-Contract"] = "9";
-                else if (contract == 5)
-                {
-                    if (status.Any(x => x.Source == InventorySource.WindowsUpdate && x.ActiveGeneration is not null))
-                        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-                    status = status.Where(x => x.Source != InventorySource.WindowsUpdate).ToArray();
-                }
-                if (contract is null)
-                {
-                    // Legacy clients cannot decode later sources; an active newer generation
-                    // must remain visible as a retry, not as a free producer slot.
-                    if (status.Any(x => x.Source > InventorySource.HostVolumes && x.ActiveGeneration is not null))
-                        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-                    status = status.Where(x => x.Source <= InventorySource.HostVolumes).ToArray();
-                }
-                return Results.Ok(status);
-            }
-            catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
-        }).RequireAuthorization("Agent").RequireRateLimiting("agent-transport").WithMetadata(AgentTransportEndpoint.Instance)
-            .Produces<IReadOnlyList<InventorySourceStatus>>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(429).ProducesProblem(503)
-            .WithSummary("Inspect this Agent's inventory source progress");
         machine.MapPost("/rotation/start", async (RotationRequest input, HttpContext context, IMachineAgentIdentity agents, CancellationToken token) =>
         {
             var result = await agents.BeginRotationAsync(Bearer(context), input.MachineVerifier, token);

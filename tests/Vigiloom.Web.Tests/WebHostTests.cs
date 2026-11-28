@@ -177,8 +177,6 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsTrue(publicationWrite.TryGetProperty("BrowserSession", out _));
         Assert.IsTrue(publicationWrite.TryGetProperty("Antiforgery", out _));
         Assert.IsTrue(paths.GetProperty("/api/v1/operations/audit/publications").GetProperty("get").GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
-        var inventorySecurity = paths.GetProperty("/api/v1/agent/inventory/status").GetProperty("get").GetProperty("security");
-        Assert.IsTrue(inventorySecurity[0].TryGetProperty("AgentBearer", out _));
         var accessSecurity = paths.GetProperty("/api/v1/access").GetProperty("get").GetProperty("security")[0];
         Assert.IsTrue(accessSecurity.TryGetProperty("ApiBearer", out _));
         var audit = paths.GetProperty("/api/v1/operations/audit").GetProperty("get");
