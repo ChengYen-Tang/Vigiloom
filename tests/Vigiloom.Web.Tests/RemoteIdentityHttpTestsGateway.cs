@@ -1,6 +1,7 @@
 extern alias GatewayHost;
 extern alias IdentityHost;
 extern alias ResourcesHost;
+extern alias HostMonitoring;
 
 using System.Net;
 using System.Net.Http.Headers;
@@ -20,6 +21,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Playwright;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Groups;
 using Vigiloom.Contracts.Agent;
@@ -29,6 +31,8 @@ using Vigiloom.Modules.IdentityAccess.Application;
 using Vigiloom.Modules.IdentityAccess.Domain;
 using Vigiloom.Modules.IdentityAccess.Persistence;
 using Vigiloom.Modules.Resources.Persistence;
+using Vigiloom.Modules.AgentManagement.Persistence;
+using Vigiloom.UpdateSecurity.AgentPackages;
 using Vigiloom.Infrastructure.Scheduling.Persistence;
 using Vigiloom.Testing.SqlServer;
 using Vigiloom.Web.Authentication;
@@ -43,6 +47,14 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
 {
     [TestMethod]
     public Task GatewayUsesRealIdentityAndResourcesForAuthorization() =>
+        ExecuteGatewayScenarioAsync(false);
+
+    [TestMethod]
+    [TestCategory("Browser")]
+    public Task GatewayAllowsWebAssemblyAgentVersionAssignment() =>
+        ExecuteGatewayScenarioAsync(true);
+
+    private Task ExecuteGatewayScenarioAsync(bool verifyBrowser) =>
         ReusableWebDatabase.ExecuteAsync(async (webDb, outerToken) =>
         await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (identityDb, innerToken) =>
         await SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (resourceDb, token) =>
@@ -84,6 +96,8 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
                     if (dispatcher is not null) services.Remove(dispatcher);
                     services.RemoveAll<IDataProtectionProvider>();
                     services.AddSingleton<IDataProtectionProvider>(keys);
+                    services.RemoveAll<IPackageLibraryTransport>();
+                    services.AddSingleton<IPackageLibraryTransport, Vigiloom.Tests.Fixtures.AvailablePackageTransport>();
                 });
             });
             resources.UseKestrel(0);
@@ -94,11 +108,28 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
                 sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", "scheduling")).Options;
             await using (var db = new SchedulingDbContext(scheduleOptions)) await db.Database.MigrateAsync(token);
 
+            var hostOptions = new DbContextOptionsBuilder<HostMonitoringDbContext>().UseSqlServer(resourceDb.ConnectionString,
+                sql => sql.MigrationsHistoryTable(HostMonitoringDbContext.MigrationHistory, "agent")).Options;
+            await using (var db = new HostMonitoringDbContext(hostOptions)) await db.Database.MigrateAsync(token);
+            using var host = new WebApplicationFactory<HostMonitoring::Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseUrls("http://127.0.0.1:0");
+                builder.UseSetting("ConnectionStrings:HostMonitoring", resourceDb.ConnectionString);
+                builder.UseSetting("Services:Resources:Url", resourcesAddress);
+                builder.UseSetting("Hangfire:Enabled", "false");
+                builder.UseSetting("Temporal:Enabled", "false");
+            });
+            host.UseKestrel(0);
+            host.StartServer();
+            var hostAddress = Address(host.Services);
+            resources.Services.GetRequiredService<IConfiguration>()["Services:Host:Url"] = hostAddress;
+
             using var web = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseUrls("http://127.0.0.1:0");
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                { ["ConnectionStrings:Vigiloom"] = webDb.ConnectionString, ["Services:Identity:Url"] = identityAddress, ["Services:Resources:Url"] = resourcesAddress }));
+                { ["ConnectionStrings:Vigiloom"] = webDb.ConnectionString, ["Services:Identity:Url"] = identityAddress, ["Services:Resources:Url"] = resourcesAddress,
+                  ["Services:HostMonitoring:Url"] = hostAddress }));
                 builder.ConfigureTestServices(services => { services.RemoveAll<IDataProtectionProvider>(); services.AddSingleton<IDataProtectionProvider>(keys); });
             });
             web.UseKestrel(0);
@@ -160,6 +191,65 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             Assert.AreEqual(HttpStatusCode.OK, enrolled.StatusCode);
             using var enrollmentJson = JsonDocument.Parse(await enrolled.Content.ReadAsStringAsync(token));
             var agentId = enrollmentJson.RootElement.GetProperty("agentId").GetGuid();
+            if (verifyBrowser)
+            {
+                var packageId = Guid.CreateVersion7();
+                await using (var db = await resources.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                {
+                    db.AgentPackages.Add(new Vigiloom.Modules.Resources.Domain.AgentPackage
+                    {
+                        Id = packageId, Version = "1.2.3", RuntimeIdentifier = "win-x64", Size = 1,
+                        Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64)
+                    });
+                    await db.SaveChangesAsync(token);
+                }
+                using (var browserGateway = new WebApplicationFactory<GatewayHost::Program>().WithWebHostBuilder(builder =>
+                {
+                    builder.UseUrls("http://127.0.0.1:0");
+                    builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web.Services),
+                        ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = resourcesAddress,
+                        ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = hostAddress,
+                        ["Services:Identity:Url"] = identityAddress
+                    }));
+                    builder.ConfigureTestServices(services => { services.RemoveAll<IDataProtectionProvider>(); services.AddSingleton<IDataProtectionProvider>(keys); });
+                }))
+                {
+                    browserGateway.UseKestrel(0);
+                    browserGateway.StartServer();
+                    using var playwright = await Playwright.CreateAsync();
+                    await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
+                    var page = await browser.NewPageAsync();
+                    await using var renderGate = await AutoRenderGate.HoldAsync(page);
+                    await page.GotoAsync(Address(browserGateway.Services) + $"/devices/{hostDevice.Id:D}/agent-version");
+                    await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("gateway-admin");
+                    await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Admin-Password-123");
+                    await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
+                    await page.Locator(".version-assignment[data-interactive='true']").WaitForAsync();
+                    await renderGate.ReleaseAsync();
+                    await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
+                    await page.ReloadAsync();
+                    await page.Locator(".version-assignment[data-runtime='WebAssembly'][data-interactive='true']").WaitForAsync();
+                    await page.GetByRole(AriaRole.Radio, new() { Name = "1.2.3 win-x64" }).CheckAsync();
+                    await page.GetByRole(AriaRole.Button, new() { Name = "指派版本", Exact = true }).ClickAsync();
+                    await page.GetByText("已儲存版本指派；設備是否安裝仍以實際回報為準。", new() { Exact = true }).WaitForAsync();
+                    await using (var db = await resources.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        var assignment = await db.AgentVersionAssignments.SingleAsync(x => x.AgentId == agentId, token);
+                        Assert.AreEqual(packageId, assignment.PackageId);
+                        Assert.IsNotNull(assignment.UpdateId);
+                    }
+                    await page.GetByRole(AriaRole.Button, new() { Name = "取消指派", Exact = true }).ClickAsync();
+                    await page.GetByText("已取消指派。", new() { Exact = true }).WaitForAsync();
+                    await using (var db = await resources.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
+                    {
+                        var assignment = await db.AgentVersionAssignments.SingleAsync(x => x.AgentId == agentId, token);
+                        Assert.IsNull(assignment.PackageId);
+                        Assert.IsNull(assignment.UpdateId);
+                    }
+                }
+            }
             Assert.IsTrue(AgentCredentials.TryDecode(issued.Secret, "vle", out var enrollmentId, out var enrollmentSecret));
             CryptographicOperations.ZeroMemory(enrollmentSecret);
             anonymous.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AgentCredentials.Encode("vlr", enrollmentId, machineSecret));
