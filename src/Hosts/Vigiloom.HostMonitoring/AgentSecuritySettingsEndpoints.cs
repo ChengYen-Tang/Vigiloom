@@ -40,7 +40,8 @@ internal static class AgentSecuritySettingsEndpoints
                 status = status.Where(x => x.Source <= InventorySource.HostVolumes).ToArray();
             }
             return Results.Ok(status);
-        });
+        }).Produces<InventorySourceStatus[]>().ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(429).ProducesProblem(503)
+          .WithSummary("Inspect this Agent's inventory source progress");
         app.MapGet("/api/v1/agent/integrity-status/{scopeId:guid}", async (Guid scopeId, HttpContext context, IHttpClientFactory clients, CancellationToken token) =>
         {
             if (scopeId.Version != 7) return Results.BadRequest();

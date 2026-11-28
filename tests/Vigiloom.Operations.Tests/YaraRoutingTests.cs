@@ -225,6 +225,12 @@ public sealed class YaraRoutingTests(TestContext context)
                     .ConfigurePrimaryHttpMessageHandler(() => new IdentityHandler(identity)));
             });
             using var agent = host.CreateClient();
+            using (var api = await agent.GetFromJsonAsync<System.Text.Json.JsonDocument>("/openapi/v1.json", token))
+            {
+                var statusOperation = api!.RootElement.GetProperty("paths").GetProperty("/api/v1/agent/inventory/status").GetProperty("get");
+                Assert.IsTrue(statusOperation.GetProperty("security")[0].TryGetProperty("AgentBearer", out _));
+                Assert.IsTrue(statusOperation.GetProperty("responses").TryGetProperty("503", out _));
+            }
             using (var noCredential = await agent.GetAsync("/api/v1/agent/yara-scans/next", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, noCredential.StatusCode);
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid");
@@ -237,6 +243,48 @@ public sealed class YaraRoutingTests(TestContext context)
             }
             using (var unsupportedInventory = await agent.GetAsync("/api/v1/agent/inventory/status?contract=4", token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, unsupportedInventory.StatusCode);
+            await using (var db = new SecurityAnalysisDbContext(options))
+            {
+                foreach (var source in new[] { InventorySource.HostProcesses, InventorySource.WindowsUpdate })
+                {
+                    var state = new InventorySourceState(new(identity.AgentId, identity.DeviceId, 1), source);
+                    db.InventorySources.Add(state);
+                    db.Entry(state).Property(nameof(InventorySourceState.ActiveGeneration)).CurrentValue = 1L;
+                }
+                await db.SaveChangesAsync(token);
+            }
+            using (var legacyBusy = await agent.GetAsync("/api/v1/agent/inventory/status", token))
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, legacyBusy.StatusCode);
+            using (var updateBusy = await agent.GetAsync("/api/v1/agent/inventory/status?contract=5", token))
+                Assert.AreEqual(HttpStatusCode.ServiceUnavailable, updateBusy.StatusCode);
+            using (var supported = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/inventory/status?contract=5"))
+            {
+                supported.Headers.Add("Vigiloom-Windows-Update-Contract", "9");
+                using var response = await agent.SendAsync(supported, token);
+                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+                Assert.AreEqual("9", response.Headers.GetValues("Vigiloom-Windows-Update-Contract").Single());
+                var sources = await response.Content.ReadFromJsonAsync<InventorySourceStatus[]>(cancellationToken: token);
+                Assert.IsTrue(sources!.Any(x => x.Source == InventorySource.WindowsUpdate && x.ActiveGeneration == 1));
+            }
+            await using (var db = new SecurityAnalysisDbContext(options))
+            {
+                var states = await db.InventorySources.Where(x => x.AgentId == identity.AgentId && x.Source > InventorySource.HostVolumes).ToListAsync(token);
+                foreach (var state in states) db.Entry(state).Property(nameof(InventorySourceState.ActiveGeneration)).CurrentValue = null;
+                await db.SaveChangesAsync(token);
+            }
+            using (var legacy = await agent.GetAsync("/api/v1/agent/inventory/status", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, legacy.StatusCode);
+                var sources = await legacy.Content.ReadFromJsonAsync<InventorySourceStatus[]>(cancellationToken: token);
+                Assert.IsTrue(sources!.All(x => x.Source <= InventorySource.HostVolumes));
+            }
+            using (var compatible = await agent.GetAsync("/api/v1/agent/inventory/status?contract=5", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, compatible.StatusCode);
+                var sources = await compatible.Content.ReadFromJsonAsync<InventorySourceStatus[]>(cancellationToken: token);
+                Assert.IsTrue(sources!.Any(x => x.Source == InventorySource.HostProcesses));
+                Assert.IsFalse(sources!.Any(x => x.Source == InventorySource.WindowsUpdate));
+            }
             using (var inventory = await agent.GetAsync("/api/v1/agent/inventory-settings?contract=2", token))
             {
                 Assert.AreEqual(HttpStatusCode.OK, inventory.StatusCode);
