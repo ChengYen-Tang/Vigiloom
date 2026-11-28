@@ -206,6 +206,17 @@ public sealed class HostLogTests(TestContext context)
             using var shared = await client.PostAsJsonAsync("/internal/v1/application-logs/grouped", sharedResource, token);
             Assert.AreEqual(HttpStatusCode.OK, shared.StatusCode);
             Assert.AreEqual(72, await logs.LogRecords.CountAsync(token));
+            var multiline = item with { MessageId = Guid.CreateVersion7(), Content = "start\n  continuation\n" };
+            var gap = item with { MessageId = Guid.CreateVersion7(), Content = "", Gap = new AgentLogGap(AgentLogGapReason.InvalidEncoding, 1) };
+            using (var structured = await client.PostAsJsonAsync("/internal/v1/host-logs",
+                input with { Batch = batch with { BatchId = Guid.CreateVersion7(), Items = [multiline, gap] } }, token))
+                Assert.AreEqual(HttpStatusCode.OK, structured.StatusCode);
+            var structuredHistory = await client.GetFromJsonAsync<HostLogPage>($"/internal/v1/host-logs/{input.DeviceId:D}?from={from}&until={until}", token);
+            var storedMultiline = structuredHistory!.Items.Single(x => x.MessageId == multiline.MessageId);
+            var storedGap = structuredHistory.Items.Single(x => x.MessageId == gap.MessageId);
+            Assert.AreEqual(multiline.Content, storedMultiline.Content);
+            Assert.AreEqual(AgentLogGapReason.InvalidEncoding, storedGap.Gap!.Reason);
+            Assert.AreEqual(1L, storedGap.Gap.AffectedCount);
         }, context.CancellationToken);
 
     private sealed class TestOutboxHandler : IOutboxHandler

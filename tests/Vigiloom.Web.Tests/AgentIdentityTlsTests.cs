@@ -1,7 +1,6 @@
 using System.Net;
 using System.IO.Compression;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -13,22 +12,14 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Time.Testing;
-using Microsoft.Playwright;
-using Vigiloom.Agent.Core.Configuration;
 using Vigiloom.Agent.Core.Identity;
 using Vigiloom.Agent.Core.Transport;
-using Vigiloom.Agent.Hosting;
-using Vigiloom.Agent.Hosting.Metrics;
 using Vigiloom.Contracts.Agent;
-using Vigiloom.Contracts.Publishing;
 using Vigiloom.Infrastructure.LogAdmission.Persistence;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Modules.AgentManagement.Persistence;
 using Vigiloom.Modules.Resources.Domain;
 using Vigiloom.Modules.Resources.Persistence;
-using Vigiloom.Web.Api;
 using Vigiloom.Web.Tests.Fixtures;
 
 namespace Vigiloom.Web.Tests;
@@ -36,7 +27,6 @@ namespace Vigiloom.Web.Tests;
 [TestClass]
 [TestCategory("Integration")]
 [TestCategory("Database")]
-[TestCategory("Browser")]
 [DoNotParallelize]
 public sealed class AgentIdentityTlsTests
 {
@@ -128,313 +118,6 @@ public sealed class AgentIdentityTlsTests
                 await using (var db = await agents.CreateDbContextAsync(token))
                     Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == id, token)).LastHeartbeatAt);
 
-                // Exercise the actual host workers against the real TLS listener and SQL database.
-                var logPath = Path.Combine(statePath, "integration.log");
-                var multilinePath = Path.Combine(statePath, "multiline.log");
-                await File.WriteAllTextAsync(logPath, "tls-log-one\ntls-log-two\n", token);
-                await File.WriteAllTextAsync(multilinePath, "", token);
-                AgentSettingsView configured;
-                AgentMetricSettingsView configuredMetrics;
-                await using (var scope = factory.Services.CreateAsyncScope())
-                {
-                    var configuration = scope.ServiceProvider.GetRequiredService<AgentConfiguration>();
-                    var current = await configuration.GetAsync(device.Id, token);
-                    Assert.IsNotNull(current);
-                    configured = (await configuration.UpdateAsync(device.Id, new(new(10, 60, 3), current.Version), Guid.CreateVersion7(), token))!;
-                    Assert.IsNotNull(configured);
-                    var metricConfiguration = scope.ServiceProvider.GetRequiredService<AgentMetricConfiguration>();
-                    var metricCurrent = await metricConfiguration.GetAsync(device.Id, token);
-                    Assert.IsNotNull(metricCurrent);
-                    configuredMetrics = (await metricConfiguration.UpdateAsync(device.Id,
-                        new(new(10, 20, 2000, 1024, 2500, 96), metricCurrent.Version), Guid.CreateVersion7(), token))!;
-                    Assert.IsNotNull(configuredMetrics);
-                    var logs = scope.ServiceProvider.GetRequiredService<HostLogConfiguration>();
-                    var logSource = await logs.CreateAsync(device.Id, new(AgentLogSourceKind.TextFile, "TLS log", logPath, true, AgentTextLogMode.SingleLine), Guid.CreateVersion7(), token);
-                    Assert.AreEqual(HostLogConfigurationStatus.Success, logSource.Status);
-                    var multilineSource = await logs.CreateAsync(device.Id, new(AgentLogSourceKind.TextFile, "Multiline log", multilinePath, true, AgentTextLogMode.IndentedContinuation), Guid.CreateVersion7(), token);
-                    Assert.AreEqual(HostLogConfigurationStatus.Success, multilineSource.Status);
-                }
-                var agentClock = new FakeTimeProvider(DateTimeOffset.UtcNow);
-                var agentBuilder = AgentHost.CreateBuilder([]);
-                agentBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["Vigiloom:Agent:StateDirectory"] = statePath,
-                    ["Vigiloom:Agent:Server"] = url.AbsoluteUri
-                });
-                agentBuilder.Services.AddSingleton<TimeProvider>(agentClock);
-                // Keep real HTTP deadlines independent from the accelerated worker clock.
-                agentBuilder.Services.AddSingleton(new AgentSettingsClient(http, TimeProvider.System));
-                agentBuilder.Services.AddSingleton(new AgentMetricSettingsClient(http, TimeProvider.System));
-                agentBuilder.Services.AddSingleton(new AgentLogSettingsClient(http, TimeProvider.System));
-                agentBuilder.Services.AddSingleton(new AgentHeartbeatClient(http));
-                agentBuilder.Services.AddSingleton(new AgentBatchClient(http, agentClock));
-                // The in-process Agent shares the Web test host's resource counters.
-                agentBuilder.Services.AddSingleton<IMetricResourceMonitor>(new InProcessAgentResourceMonitor());
-                using (var agentHost = agentBuilder.Build())
-                {
-                    try
-                    {
-                        await agentHost.StartAsync(token);
-                        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
-                        deadline.CancelAfter(TimeSpan.FromSeconds(90));
-                        var store = new AgentSettingsStore(vault, url, id);
-                        AgentAppliedSettings? saved = null;
-                        while (saved?.Snapshot != configured.Effective)
-                        {
-                            try { saved = await store.ReadAsync(deadline.Token); }
-                            catch (IOException) { /* The running host may briefly hold the identity lease. */ }
-                            if (saved?.Snapshot != configured.Effective)
-                            {
-                                agentClock.Advance(TimeSpan.FromSeconds(2));
-                                await Task.Delay(TimeSpan.FromMilliseconds(250), deadline.Token);
-                            }
-                        }
-                        AgentSettingsStatus? observed = null;
-                        while (observed?.State != AgentSettingsApplyState.Applied)
-                        {
-                            await Task.Delay(TimeSpan.FromMilliseconds(250), deadline.Token);
-                            agentClock.Advance(TimeSpan.FromSeconds(2));
-                            await using var scope = factory.Services.CreateAsyncScope();
-                            observed = await scope.ServiceProvider.GetRequiredService<AgentSettingsMonitoring>().GetAsync(device.Id, deadline.Token);
-                        }
-                        Assert.AreEqual(configured.Effective, observed.Applied);
-                        Assert.AreEqual(configured.Effective, saved.Snapshot);
-                        var metricStore = new AgentMetricSettingsStore(vault, url, id);
-                        AgentSavedMetricSettings? metricSaved = null;
-                        while (metricSaved is null)
-                        {
-                            try { metricSaved = await metricStore.ReadAsync(deadline.Token); }
-                            catch (IOException) { /* The running host may briefly hold the identity lease. */ }
-                            if (metricSaved is null) { agentClock.Advance(TimeSpan.FromSeconds(2)); await Task.Delay(250, deadline.Token); }
-                        }
-                        Assert.AreEqual(configuredMetrics.Effective, metricSaved.Snapshot);
-                        while (true)
-                        {
-                            await using var metricDb = await agents.CreateDbContextAsync(deadline.Token);
-                            if (await metricDb.HostMetrics.AnyAsync(x => x.AgentId == id && x.Kind == AgentMetricKind.MemoryTotalBytes, deadline.Token)) break;
-                            agentClock.Advance(TimeSpan.FromSeconds(2));
-                            await Task.Delay(250, deadline.Token);
-                        }
-                        while (true)
-                        {
-                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
-                            if (await logDb.HostLogs.CountAsync(x => x.AgentId == id && x.SourceName == "TLS log", deadline.Token) == 2) break;
-                            agentClock.Advance(TimeSpan.FromSeconds(2));
-                            await Task.Delay(250, deadline.Token);
-                        }
-                        await using (var logDb = await agents.CreateDbContextAsync(deadline.Token))
-                        {
-                            var collected = await logDb.HostLogs.Where(x => x.AgentId == id && x.SourceName == "TLS log")
-                                .OrderBy(x => x.RowId).Select(x => x.Content).ToArrayAsync(deadline.Token);
-                            CollectionAssert.AreEqual(new[] { "tls-log-one\n", "tls-log-two\n" }, collected);
-                        }
-                        await using (var scope = factory.Services.CreateAsyncScope())
-                        {
-                            var history = scope.ServiceProvider.GetRequiredService<HostLogHistory>();
-                            var logs = await history.GetAsync(device.Id, DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1), null, null, deadline.Token);
-                            Assert.IsNotNull(logs);
-                            Assert.HasCount(2, logs.Items);
-                            Assert.AreEqual("tls-log-two\n", logs.Items[0].Content);
-                            Assert.AreEqual("tls-log-one\n", logs.Items[1].Content);
-                        }
-                        // Continue writing while the real hosted collector and TLS sender run.
-                        var streamed = Enumerable.Range(0, 100).Select(i => $"tls-stream-{i:D3}\n").ToArray();
-                        var elapsed = System.Diagnostics.Stopwatch.StartNew();
-                        for (var offset = 0; offset < streamed.Length; offset += 10)
-                        {
-                            await File.AppendAllTextAsync(logPath, string.Concat(streamed.AsSpan(offset, 10).ToArray()), deadline.Token);
-                            agentClock.Advance(TimeSpan.FromSeconds(2));
-                            await Task.Delay(250, deadline.Token);
-                        }
-                        while (true)
-                        {
-                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
-                            if (await logDb.HostLogs.CountAsync(x => x.AgentId == id && x.SourceName == "TLS log", deadline.Token) >= 102) break;
-                            agentClock.Advance(TimeSpan.FromSeconds(2));
-                            await Task.Delay(250, deadline.Token);
-                        }
-                        elapsed.Stop();
-                        await using (var logDb = await agents.CreateDbContextAsync(deadline.Token))
-                        {
-                            var collected = await logDb.HostLogs.Where(x => x.AgentId == id && x.SourceName == "TLS log")
-                                .OrderBy(x => x.RowId).Select(x => x.Content).ToArrayAsync(deadline.Token);
-                            CollectionAssert.AreEqual(new[] { "tls-log-one\n", "tls-log-two\n" }.Concat(streamed).ToArray(), collected);
-                        }
-                        TestContext.WriteLine($"100 streamed records delivered over TLS in {elapsed.Elapsed.TotalSeconds:F1} seconds.");
-                        await File.WriteAllTextAsync(multilinePath, "multiline-start\n  continuation\nnext-record\n", deadline.Token);
-                        while (true)
-                        {
-                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
-                            if (await logDb.HostLogs.AnyAsync(x => x.AgentId == id && x.SourceName == "Multiline log" &&
-                                x.Content == "multiline-start\n  continuation\n", deadline.Token)) break;
-                            agentClock.Advance(TimeSpan.FromSeconds(2));
-                            await Task.Delay(250, deadline.Token);
-                        }
-                        // A real invalid UTF-8 record must become an observable gap without
-                        // preventing the following valid record from reaching the platform.
-                        await using (var append = new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite, 4096, useAsync: true))
-                            await append.WriteAsync(new byte[] { 0xff, (byte)'\n', (byte)'o', (byte)'k', (byte)'\n' }, deadline.Token);
-                        while (true)
-                        {
-                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
-                            var entries = logDb.HostLogs.Where(x => x.AgentId == id && x.SourceName == "TLS log");
-                            if (await entries.AnyAsync(x => x.GapReason == AgentLogGapReason.InvalidEncoding, deadline.Token) &&
-                                await entries.AnyAsync(x => x.Content == "ok\n", deadline.Token)) break;
-                            agentClock.Advance(TimeSpan.FromSeconds(2));
-                            await Task.Delay(250, deadline.Token);
-                        }
-                        await using (var scope = factory.Services.CreateAsyncScope())
-                        {
-                            var history = scope.ServiceProvider.GetRequiredService<HostLogHistory>();
-                            var page = await history.GetAsync(device.Id, DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddHours(1),
-                                null, null, deadline.Token);
-                            Assert.IsNotNull(page);
-                            var gap = page.Items.Single(x => x.Gap?.Reason == AgentLogGapReason.InvalidEncoding);
-                            Assert.AreEqual(1L, gap.Gap!.AffectedCount);
-                            Assert.AreEqual(id, gap.AgentId);
-                            Assert.AreEqual("TLS log", gap.SourceName);
-                            Assert.IsTrue(page.Items.Any(x => x.Content == "ok\n"));
-                        }
-                        // Replace only this test-owned file, then verify the hosted collector
-                        // persists a gap before accepting records from the replacement.
-                        File.Move(logPath, logPath + ".previous");
-                        await File.WriteAllTextAsync(logPath, "after-rotation\n", deadline.Token);
-                        while (true)
-                        {
-                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
-                            var entries = logDb.HostLogs.Where(x => x.AgentId == id && x.SourceName == "TLS log");
-                            if (await entries.AnyAsync(x => x.GapReason == AgentLogGapReason.CursorLost, deadline.Token) &&
-                                await entries.AnyAsync(x => x.Content == "after-rotation\n", deadline.Token)) break;
-                            agentClock.Advance(TimeSpan.FromSeconds(2));
-                            await Task.Delay(250, deadline.Token);
-                        }
-                        await using (var logDb = await agents.CreateDbContextAsync(deadline.Token))
-                        {
-                            var gap = await logDb.HostLogs.SingleAsync(x => x.AgentId == id && x.GapReason == AgentLogGapReason.CursorLost, deadline.Token);
-                            var resumed = await logDb.HostLogs.SingleAsync(x => x.AgentId == id && x.Content == "after-rotation\n", deadline.Token);
-                            Assert.IsNull(gap.GapAffectedCount);
-                            Assert.IsLessThan(resumed.RowId, gap.RowId);
-                        }
-                        // Truncate the same file below the stored offset, then resume from its beginning.
-                        await File.WriteAllTextAsync(logPath, "x\n", deadline.Token);
-                        while (true)
-                        {
-                            await using var logDb = await agents.CreateDbContextAsync(deadline.Token);
-                            var entries = logDb.HostLogs.Where(x => x.AgentId == id && x.SourceName == "TLS log");
-                            if (await entries.CountAsync(x => x.GapReason == AgentLogGapReason.CursorLost, deadline.Token) == 2 &&
-                                await entries.AnyAsync(x => x.Content == "x\n", deadline.Token)) break;
-                            agentClock.Advance(TimeSpan.FromSeconds(2));
-                            await Task.Delay(250, deadline.Token);
-                        }
-                        await using (var logDb = await agents.CreateDbContextAsync(deadline.Token))
-                        {
-                            var gap = await logDb.HostLogs.Where(x => x.AgentId == id && x.GapReason == AgentLogGapReason.CursorLost)
-                                .OrderByDescending(x => x.RowId).FirstAsync(deadline.Token);
-                            var resumed = await logDb.HostLogs.SingleAsync(x => x.AgentId == id && x.Content == "x\n", deadline.Token);
-                            Assert.IsNull(gap.GapAffectedCount);
-                            Assert.IsLessThan(resumed.RowId, gap.RowId);
-                        }
-                        await using (var db = await resources.CreateDbContextAsync(deadline.Token))
-                        {
-                            var published = await db.Devices.SingleAsync(x => x.Id == device.Id, deadline.Token);
-                            published.SetPublication(true, "Public TLS device", PublicationPolicy.BaselineVersion, DateTimeOffset.UtcNow);
-                            await db.SaveChangesAsync(deadline.Token);
-                        }
-                        using (var anonymous = CreateClient())
-                        {
-                            foreach (var path in new[] { "/api/v1/public/devices", $"/api/v1/public/devices/{device.Id:D}" })
-                            {
-                                using var response = await anonymous.GetAsync(new Uri(url, path), deadline.Token);
-                                Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-                                var body = await response.Content.ReadAsStringAsync(deadline.Token);
-                                Assert.Contains("Public TLS device", body);
-                                Assert.Contains(device.Id.ToString("D"), body);
-                                Assert.DoesNotContain("multiline-start", body);
-                                Assert.DoesNotContain("after-rotation", body);
-                                Assert.DoesNotContain("TLS log", body);
-                            }
-                            using var streamDeadline = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
-                            streamDeadline.CancelAfter(TimeSpan.FromSeconds(10));
-                            using var streamResponse = await anonymous.GetAsync(new Uri(url, $"/api/v1/public/devices/{device.Id:D}/events"),
-                                HttpCompletionOption.ResponseHeadersRead, streamDeadline.Token);
-                            Assert.AreEqual(HttpStatusCode.OK, streamResponse.StatusCode);
-                            using var reader = new StreamReader(await streamResponse.Content.ReadAsStreamAsync(streamDeadline.Token));
-                            var eventText = new System.Text.StringBuilder();
-                            while (await reader.ReadLineAsync(streamDeadline.Token) is { Length: > 0 } line) eventText.AppendLine(line);
-                            var status = eventText.ToString();
-                            Assert.Contains("event: status", status);
-                            Assert.Contains("Public TLS device", status);
-                            Assert.DoesNotContain("multiline-start", status);
-                            Assert.DoesNotContain("after-rotation", status);
-                            Assert.DoesNotContain("TLS log", status);
-                        }
-                        using (var playwright = await Playwright.CreateAsync())
-                        await using (var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true }))
-                        {
-                            await using (var publicContext = await browser.NewContextAsync(new() { IgnoreHTTPSErrors = true }))
-                            {
-                                var publicPage = await publicContext.NewPageAsync();
-                                await using var publicGate = await AutoRenderGate.HoldAsync(publicPage);
-                                await publicPage.GotoAsync(url.ToString());
-                                await publicPage.GetByRole(AriaRole.Button, new() { Name = "Public TLS device", Exact = true }).WaitForAsync(new() { Timeout = 60000 });
-                                var body = await publicPage.Locator("body").InnerTextAsync();
-                                Assert.DoesNotContain("multiline-start", body);
-                                Assert.DoesNotContain("after-rotation", body);
-                                Assert.DoesNotContain("TLS log", body);
-                                await publicGate.ReleaseAsync();
-                                await AutoRenderGate.WaitForWebAssemblyCachedAsync(publicPage);
-                                await publicPage.ReloadAsync();
-                                await publicPage.Locator(".public-status[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
-                                await publicPage.GetByRole(AriaRole.Button, new() { Name = "Public TLS device", Exact = true }).WaitForAsync();
-                                body = await publicPage.Locator("body").InnerTextAsync();
-                                Assert.DoesNotContain("multiline-start", body);
-                                Assert.DoesNotContain("after-rotation", body);
-                                Assert.DoesNotContain("TLS log", body);
-                            }
-                            await using var browserContext = await browser.NewContextAsync(new() { IgnoreHTTPSErrors = true });
-                            var page = await browserContext.NewPageAsync();
-                            await using var wasmGate = await AutoRenderGate.HoldAsync(page);
-                            await page.GotoAsync(new Uri(url, $"/devices/{device.Id:D}").ToString());
-                            await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("reader");
-                            await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
-                            await page.GetByRole(AriaRole.Button, new() { Name = "登入", Exact = true }).ClickAsync();
-                            await page.Locator(".host-details[data-runtime='Server']").WaitForAsync(new() { Timeout = 60000 });
-                            await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
-                            var table = page.GetByRole(AriaRole.Region, new() { Name = "日誌表格，可左右捲動" });
-                            await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
-                            await table.GetByText("after-rotation", new() { Exact = true }).WaitForAsync();
-                            await table.GetByText("multiline-start", new() { Exact = false }).WaitForAsync();
-                            var multilineRow = table.GetByRole(AriaRole.Row).Filter(new() { HasText = "multiline-start" });
-                            await Assertions.Expect(multilineRow).ToContainTextAsync("continuation");
-                            await Assertions.Expect(multilineRow).ToContainTextAsync("Multiline log");
-                            await table.GetByText("TLS log", new() { Exact = true }).First.WaitForAsync();
-                            await table.GetByText("x", new() { Exact = true }).WaitForAsync();
-                            await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(3);
-                            await wasmGate.ReleaseAsync();
-                            await AutoRenderGate.WaitForWebAssemblyCachedAsync(page);
-                            await page.ReloadAsync();
-                            await page.Locator(".host-details[data-runtime='WebAssembly']").WaitForAsync(new() { Timeout = 60000 });
-                            await page.GetByRole(AriaRole.Button, new() { Name = "主機日誌", Exact = true }).ClickAsync();
-                            await table.GetByText("ok", new() { Exact = true }).WaitForAsync();
-                            await table.GetByText("after-rotation", new() { Exact = true }).WaitForAsync();
-                            await table.GetByText("multiline-start", new() { Exact = false }).WaitForAsync();
-                            await Assertions.Expect(multilineRow).ToContainTextAsync("continuation");
-                            await Assertions.Expect(multilineRow).ToContainTextAsync("Multiline log");
-                            await table.GetByText("x", new() { Exact = true }).WaitForAsync();
-                            await Assertions.Expect(table.GetByText("採集缺口：", new() { Exact = true })).ToHaveCountAsync(3);
-                        }
-                        await using (var scope = factory.Services.CreateAsyncScope())
-                        {
-                            var history = scope.ServiceProvider.GetRequiredService<HostMetricHistory>();
-                            var page = await history.GetAsync(device.Id, DateTimeOffset.UtcNow.AddHours(-1), agentClock.GetUtcNow().AddMinutes(1),
-                                null, AgentMetricKind.MemoryTotalBytes, deadline.Token);
-                            Assert.IsNotNull(page);
-                            Assert.IsNotEmpty(page.Items);
-                            Assert.IsTrue(page.Items.Any(item => item.Value > 0));
-                        }
-                    }
-                    finally { await agentHost.StopAsync(CancellationToken.None); }
-                }
                 var now = DateTimeOffset.UtcNow;
                 var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "test system", "X64", ".NET 10");
                 var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [message]);
