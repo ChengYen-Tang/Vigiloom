@@ -1247,10 +1247,6 @@ public sealed class AgentIdentityHttpTests
             Assert.IsEmpty(retiredSources!);
             using (var forged = await admin.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
-            using (var forgedAssignment = await admin.PutAsJsonAsync($"/api/v1/agents/{Guid.CreateVersion7():D}/version-assignment", new AgentVersionAssignmentUpdate(Guid.CreateVersion7(), ""), token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, forgedAssignment.StatusCode);
-            using (var readerAssignment = await reader.PutAsJsonAsync($"/api/v1/agents/{Guid.CreateVersion7():D}/version-assignment", new AgentVersionAssignmentUpdate(Guid.CreateVersion7(), ""), token))
-                Assert.AreEqual(HttpStatusCode.Forbidden, readerAssignment.StatusCode);
             using (var cookieCannotActAsAgent = await admin.GetAsync("/api/v1/agent/identity", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotActAsAgent.StatusCode);
             using (var cookieCannotHeartbeat = await admin.PostAsync("/api/v1/agent/heartbeat", null, token))
@@ -1413,13 +1409,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);
                 Assert.AreEqual(device.Id, (await valid.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token))!.DeviceId);
             }
-            using (var target = await agent.GetAsync("/api/v1/agent/version-assignment", token))
-            {
-                Assert.AreEqual(HttpStatusCode.NoContent, target.StatusCode);
-                Assert.IsTrue(target.Headers.CacheControl?.NoStore);
-            }
-            using (var readerTarget = await reader.GetAsync("/api/v1/agent/version-assignment", token))
-                Assert.AreEqual(HttpStatusCode.Unauthorized, readerTarget.StatusCode);
             using (var forbiddenPage = await reader.GetAsync("/settings/agent-packages", token))
             {
                 Assert.AreEqual(HttpStatusCode.Redirect, forbiddenPage.StatusCode);

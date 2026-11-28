@@ -23,7 +23,7 @@ public sealed class PackageCatalogTests
     public Task DownloadsAndListsPackageFromResourceDatabase() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
-            var path = Path.Combine(Path.GetTempPath(), "vigiloom-package-" + Guid.CreateVersion7().ToString("N"));
+            var path = Path.Combine(AppContext.BaseDirectory, "vigiloom-package-" + Guid.CreateVersion7().ToString("N"));
             try
             {
                 var services = new ServiceCollection().AddDbContextFactory<ResourcesDbContext>(options =>
@@ -33,7 +33,8 @@ public sealed class PackageCatalogTests
                 await using (var db = await contexts.CreateDbContextAsync(token)) await db.Database.MigrateAsync(token);
                 var contents = Encoding.UTF8.GetBytes("agent package");
                 var sha = Convert.ToHexStringLower(SHA256.HashData(contents));
-                using var client = new HttpClient(new ReleaseHandler(contents, sha)) { BaseAddress = new Uri("https://api.github.com/") };
+                var source = new ReleaseHandler(contents, sha);
+                using var client = new HttpClient(source) { BaseAddress = new Uri("https://api.github.com/") };
                 var usage = new PackageUsage { InUse = true };
                 var files = new PackageLibraryTransport(path);
                 var catalog = new PackageCatalog(contexts, new GitHubAgentReleases(client), files, usage);
@@ -61,6 +62,7 @@ public sealed class PackageCatalogTests
                 var access = new AgentPackageAccess(assignments, files, contexts);
                 var target = await assignments.GetTargetAsync(agent.Id, token);
                 Assert.IsNotNull(target);
+                source.Offline = true;
                 var view = await assignments.GetAsync(agent.Id, token);
                 Assert.AreEqual("1.0.0", view?.ReportedVersion);
                 Assert.AreEqual("1.2.3", view?.PackageVersion);
@@ -105,6 +107,7 @@ public sealed class PackageCatalogTests
                     oldPackage.ManifestSha256 = new string('c', 64);
                     await db.SaveChangesAsync(token);
                 }
+                source.Offline = false;
                 Assert.IsTrue(await catalog.DownloadAsync("1.2.3", "win-x64", token));
                 Assert.IsTrue((await catalog.ListAsync(1, token)).Items.Single().Cached);
             }
@@ -113,8 +116,10 @@ public sealed class PackageCatalogTests
 
     private sealed class ReleaseHandler(byte[] contents, string hash) : HttpMessageHandler
     {
+        public bool Offline { get; set; }
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (Offline) throw new HttpRequestException("GitHub is unavailable.");
             if (request.RequestUri!.Host == "api.github.com")
             {
                 var json = $$"""{"tag_name":"agent-v1.2.3","assets":[{"name":"agent-win-x64.zip","size":{{contents.Length}},"digest":"sha256:{{hash}}"}]}""";

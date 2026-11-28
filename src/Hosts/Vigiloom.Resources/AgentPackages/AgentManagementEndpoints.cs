@@ -73,7 +73,9 @@ internal static class AgentManagementEndpoints
         {
             context.Response.Headers.CacheControl = "no-store";
             return await assignments.GetAsync(id, token) is { } assignment ? Results.Ok(assignment) : Results.NotFound();
-        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .Produces<AgentVersionAssignmentView>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404)
+            .WithSummary("Read a desired Agent package assignment");
         app.MapPut("/api/v1/agents/{id:guid}/version-assignment", async (Guid id, AgentVersionAssignmentUpdate input,
             HttpContext context, AgentAssignments assignments, CancellationToken token) =>
         {
@@ -86,7 +88,9 @@ internal static class AgentManagementEndpoints
                     VersionAssignmentResult.NotFound => Results.NotFound(),
                     _ => Results.Problem(statusCode: 409, title: "Assignment changed or package is unavailable; reload and try again.")
                 }, allowApiCredential: false);
-        }).RequireAuthorization(WorkspaceAccess.Administrator).RequireRateLimiting("api-client");
+        }).RequireAuthorization(WorkspaceAccess.Administrator).RequireRateLimiting("api-client")
+            .Produces(204).ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(404).ProducesProblem(409)
+            .WithSummary("Assign or cancel a desired Agent package");
     }
 
     private sealed record PackageDownload(string Version, string RuntimeIdentifier);

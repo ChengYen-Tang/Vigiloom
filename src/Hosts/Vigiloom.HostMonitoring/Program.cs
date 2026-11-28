@@ -199,7 +199,8 @@ app.MapGet("/api/v1/agent/version-assignment", async (HttpContext context, IHttp
     response.EnsureSuccessStatusCode();
     var target = await response.Content.ReadFromJsonAsync<AgentVersionTarget>(cancellationToken: token);
     return target is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) : Results.Ok(target);
-});
+}).Produces<AgentVersionTarget>().Produces(204).ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
+    .WithSummary("Read the authenticated Agent's current version assignment");
 app.MapHostAgentSettingsEndpoints();
 app.MapHostQueueCapacityEndpoints();
 app.MapHostMetricSettingsEndpoints();
