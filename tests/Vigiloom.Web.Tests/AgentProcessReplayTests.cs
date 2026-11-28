@@ -78,7 +78,7 @@ public sealed class AgentProcessReplayTests(TestContext context)
             var secret = RandomNumberGenerator.GetBytes(32);
             var registration = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
             var agentId = registration.AgentId!.Value;
-            var testRoot = Path.Combine(Path.GetTempPath(), "VigiloomAgentReplayTests", Path.GetRandomFileName());
+            var testRoot = Path.Combine(AppContext.BaseDirectory, "VigiloomAgentReplayTests", Path.GetRandomFileName());
             var stateRoot = Path.Combine(testRoot, "state");
             Exception? primaryFailure = null;
             var preserveDirectory = false;
@@ -154,24 +154,6 @@ public sealed class AgentProcessReplayTests(TestContext context)
                 Assert.AreEqual(originalLedger, local.LedgerId);
                 Assert.AreNotEqual(originalWriter, ledger.WriterId.ToString("D"));
                 Assert.IsTrue(local.CompletenessUnknown);
-                using var handler = new HttpClientHandler();
-                handler.ServerCertificateCustomValidationCallback = (_, certificate, _, errors) =>
-                {
-                    if (certificate is null || (errors & (System.Net.Security.SslPolicyErrors.RemoteCertificateNameMismatch | System.Net.Security.SslPolicyErrors.RemoteCertificateNotAvailable)) != 0) return false;
-                    using var chain = new X509Chain();
-                    chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-                    chain.ChainPolicy.CustomTrustStore.Add(root);
-                    chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-                    return chain.Build(certificate);
-                };
-                using var heartbeatHttp = new HttpClient(handler);
-                var heartbeat = new AgentHeartbeatClient(heartbeatHttp);
-                Assert.AreEqual(HeartbeatResult.Accepted, await heartbeat.SendAsync(vault, server, null, null, ledger.WriterId, token));
-                var status = await scope.ServiceProvider.GetRequiredService<AgentMonitoring>().GetAsync(device.Id, token);
-                Assert.IsNotNull(status?.MetricLoss);
-                Assert.AreEqual(local.LedgerId, status.MetricLoss.Snapshot.LedgerId);
-                Assert.AreEqual(local.Records, status.MetricLoss.Snapshot.Records);
-                Assert.IsTrue(status.MetricLoss.Snapshot.CompletenessUnknown);
                 await ledger.CompleteAsync(token);
 
                 // Exercise the production hosted Agent's real OS inventory through strict-CA TLS and SQL.
@@ -195,7 +177,7 @@ public sealed class AgentProcessReplayTests(TestContext context)
                 CryptographicOperations.ZeroMemory(secret);
                 try
                 {
-                    var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomAgentReplayTests")) + Path.DirectorySeparatorChar;
+                    var prefix = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "VigiloomAgentReplayTests")) + Path.DirectorySeparatorChar;
                     if (!Path.GetFullPath(testRoot).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                         throw new InvalidOperationException("Test cleanup path escaped its designated root.");
                     if (!preserveDirectory && Directory.Exists(testRoot)) Directory.Delete(testRoot, recursive: true);

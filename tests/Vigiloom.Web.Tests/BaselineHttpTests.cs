@@ -120,8 +120,7 @@ public sealed class BaselineHttpTests(TestContext context)
                 Assert.AreEqual(revision.Id, selected.RevisionId);
             }
             var epoch = Guid.CreateVersion7();
-            using (var started = await client.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
-                Assert.AreEqual(HttpStatusCode.NoContent, started.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, client, new AgentQueueSessionRequest(null, epoch), token));
             var report = new BaselineSettingsReport(currentPolicy.Revision, now, now, null);
             using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 1, null, BaselineConfiguration: report), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);

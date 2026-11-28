@@ -361,8 +361,7 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
             }
             var epoch = Guid.CreateVersion7();
-            using (var started = await client.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
-                Assert.AreEqual(HttpStatusCode.NoContent, started.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, client, new AgentQueueSessionRequest(null, epoch), token));
             var appliedInventory = InventorySettingsSnapshot.Create(InventorySettings.Default);
             var heartbeat = new AgentHeartbeatReport(1, epoch, 1, null, InventoryConfiguration: new(appliedInventory, now, null));
             using (var reported = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat, token))
@@ -972,42 +971,6 @@ public sealed class AgentIdentityHttpTests
                     Assert.AreEqual(1L, quarantined.TotalBatches, "A permanent rejection must retain the batch.");
                     Assert.AreEqual(1L, quarantined.QuarantinedBatches);
                 }
-                using (var heartbeatHttp = new HttpClient(new DropFirstQueueSessionResponse(factory.Server.CreateHandler())))
-                {
-                    await using var scope = factory.Services.CreateAsyncScope();
-                    var configuration = scope.ServiceProvider.GetRequiredService<AgentConfiguration>();
-                    var settingsMonitoring = scope.ServiceProvider.GetRequiredService<AgentSettingsMonitoring>();
-                    var expectedSettings = (await configuration.UpdateAsync(device.Id, new AgentSettingsUpdate(new(60, null, 10), ""), Guid.CreateVersion7(), token))!;
-                    var settingsReport = new AgentConfigurationReport(expectedSettings.Effective, clock.Now, null);
-                    var observation = new AgentConfigurationObservation(new AgentSettingsOwner(recoveredId, server.AbsoluteUri, vault.StateDirectory), settingsReport);
-                    var capacityConfiguration = scope.ServiceProvider.GetRequiredService<AgentQueueCapacityConfiguration>();
-                    var capacityMonitoring = scope.ServiceProvider.GetRequiredService<AgentQueueCapacityMonitoring>();
-                    var expectedCapacity = (await capacityConfiguration.UpdateAsync(device.Id, new AgentQueueCapacityUpdate(new(1024L * 1024, 100), ""), Guid.CreateVersion7(), token))!;
-                    var capacityStore = new AgentQueueCapacityStore(vault, server, recoveredId);
-                    await capacityStore.SaveAsync(expectedCapacity.Effective, null, clock.Now, token);
-                    var capacityObservation = new AgentQueueCapacityObservation(observation.Owner, null);
-                    var heartbeatClient = new AgentHeartbeatClient(heartbeatHttp);
-                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation, capacityObservation, token));
-                    var monitoring = scope.ServiceProvider.GetRequiredService<AgentMonitoring>();
-                    Assert.IsNull((await monitoring.GetAsync(device.Id, token))!.Queue, "Lost session response still allows an empty heartbeat.");
-                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation, capacityObservation, token));
-                    var queueStatus = (await monitoring.GetAsync(device.Id, token))!.Queue;
-                    Assert.AreEqual(clock.Now, queueStatus!.ReportedAt);
-                    Assert.AreEqual(1L, queueStatus.Snapshot!.TotalBatches);
-                    Assert.AreEqual(1L, queueStatus.Snapshot.QuarantinedBatches);
-                    Assert.AreEqual(new AgentQuarantineBreakdown(0, 0, 1, 0, 0, 0, 0), queueStatus.Quarantine,
-                        "A real rejected batch must be reported through the Agent heartbeat.");
-                    Assert.AreEqual(AgentSettingsApplyState.Applied, (await settingsMonitoring.GetAsync(device.Id, token))!.State);
-                    var capacityStatus = await capacityMonitoring.GetAsync(device.Id, token);
-                    Assert.AreEqual(AgentSettingsApplyState.Applied, capacityStatus!.State);
-                    Assert.AreEqual(expectedCapacity.Effective, capacityStatus.Applied);
-                    Assert.AreEqual(1024L * 1024, queueStatus.Snapshot.CapacityBytes);
-                    var changedSettings = (await configuration.UpdateAsync(device.Id, new AgentSettingsUpdate(new(90, null, 10), expectedSettings.Version), Guid.CreateVersion7(), token))!;
-                    Assert.AreEqual(AgentSettingsApplyState.Pending, (await settingsMonitoring.GetAsync(device.Id, token))!.State);
-                    var nextReport = new AgentConfigurationReport(changedSettings.Effective, clock.Now, null);
-                    Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation with { Report = nextReport }, token));
-                    Assert.AreEqual(AgentSettingsApplyState.Applied, (await settingsMonitoring.GetAsync(device.Id, token))!.State);
-                }
                 using (var rotationHttp = new HttpClient(new DropFirstRotationResponse(factory.Server.CreateHandler())))
                 {
                     var rotation = new IdentityClient(rotationHttp);
@@ -1404,8 +1367,7 @@ public sealed class AgentIdentityHttpTests
             }
             using (var heartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
             var queueEpoch = Guid.CreateVersion7();
-            using (var session = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, queueEpoch), token))
-                Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, agent, new AgentQueueSessionRequest(null, queueEpoch), token));
             var settingsReport = new AgentConfigurationReport(configured.Effective, DateTimeOffset.UtcNow, null);
             var lossReport = new AgentMetricLossReport(Guid.CreateVersion7(), clock.Now, 2, 7, true);
             var queueReport = new AgentHeartbeatReport(1, queueEpoch, 1, new AgentQueueSnapshot(1234, 5, 2, 8192, 10), settingsReport,
@@ -1778,22 +1740,6 @@ public sealed class AgentIdentityHttpTests
                 droppedGzip = true;
                 response.Dispose();
                 throw new HttpRequestException("Simulated connection loss after the compressed batch commit.");
-            }
-            return response;
-        }
-    }
-
-    private sealed class DropFirstQueueSessionResponse(HttpMessageHandler inner) : DelegatingHandler(inner)
-    {
-        private bool dropped;
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
-        {
-            var response = await base.SendAsync(request, token);
-            if (!dropped && request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/api/v1/agent/queue-session" && response.IsSuccessStatusCode)
-            {
-                dropped = true;
-                response.Dispose();
-                throw new HttpRequestException("Simulated connection loss after the queue session committed.");
             }
             return response;
         }

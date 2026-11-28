@@ -13,12 +13,21 @@ using Vigiloom.Web.Authentication;
 using Vigiloom.Modules.AlertingOperations.Persistence;
 using AngleSharp.Html.Parser;
 using System.Net;
+using Vigiloom.Contracts.Agent;
+using Vigiloom.Modules.AgentManagement.Application;
 
 namespace Vigiloom.Web.Tests.Fixtures;
 
 internal static class PingTestSite
 {
     internal static HttpClient Client(WebApplicationFactory<Program> factory) => factory.CreateClient(new() { AllowAutoRedirect = false, BaseAddress = new("https://localhost") });
+
+    internal static async Task<AgentIdentityStatus> BeginQueueSessionAsync(IServiceProvider services, HttpClient client, AgentQueueSessionRequest request, CancellationToken token)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<AgentIdentity>()
+            .BeginQueueSessionAsync(client.DefaultRequestHeaders.Authorization?.Parameter, request, token);
+    }
 
     internal static async Task LoginAsync(HttpClient client, string name, CancellationToken token)
     {

@@ -316,8 +316,7 @@ public sealed class AgentSettingsUiHttpTests
             }
             Assert.AreEqual(AgentSettingsApplyState.WaitingForHeartbeat, (await ReadSettingsStatusAsync()).State);
             var epoch = Guid.CreateVersion7();
-            using (var session = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
-                Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, agent, new AgentQueueSessionRequest(null, epoch), token));
             var report = new AgentHeartbeatReport(1, epoch, 1, null, IntegrityConfiguration:
                 new(firstSettings.Revision, firstSettings.Generation, DateTimeOffset.UtcNow, null));
             using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", report, token)) Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
@@ -335,8 +334,7 @@ public sealed class AgentSettingsUiHttpTests
                 Assert.AreEqual(firstSettings.Revision, value.AppliedRevision);
             }
             var replacementEpoch = Guid.CreateVersion7();
-            using (var replacementSession = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(epoch, replacementEpoch), token))
-                Assert.AreEqual(HttpStatusCode.NoContent, replacementSession.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, agent, new AgentQueueSessionRequest(epoch, replacementEpoch), token));
             {
                 var value = await ReadSettingsStatusAsync();
                 Assert.AreEqual(AgentSettingsApplyState.WaitingForReport, value.State);
@@ -456,8 +454,7 @@ public sealed class AgentSettingsUiHttpTests
             Assert.AreEqual(100, snapshot.MaxBatchRecords);
             Assert.AreEqual(source.Settings.SourceId, snapshot.Sources.Single().SourceId);
             var epoch = Guid.CreateVersion7();
-            using (var session = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(null, epoch), token))
-                Assert.AreEqual(HttpStatusCode.NoContent, session.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, agent, new AgentQueueSessionRequest(null, epoch), token));
             var observation = new AgentLogSourceObservation(source.Settings.SourceId, source.Settings.Generation,
                 AgentLogSourceState.Unavailable, DateTimeOffset.UtcNow, 0, PermissionDenied: true);
             var heartbeat = new AgentHeartbeatReport(1, epoch, 1, null, LogStatus: new(snapshot.Revision, false, [observation]));
@@ -472,8 +469,7 @@ public sealed class AgentSettingsUiHttpTests
             using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
                 Assert.Contains("尚未檢查", await BodyTextAsync(statusPage, token));
             var replacementEpoch = Guid.CreateVersion7();
-            using (var replacement = await agent.PostAsJsonAsync("/api/v1/agent/queue-session", new AgentQueueSessionRequest(epoch, replacementEpoch), token))
-                Assert.AreEqual(HttpStatusCode.NoContent, replacement.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, agent, new AgentQueueSessionRequest(epoch, replacementEpoch), token));
             using (var oldSession = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat with { Sequence = 5 }, token))
                 Assert.AreEqual(HttpStatusCode.Conflict, oldSession.StatusCode);
             using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
