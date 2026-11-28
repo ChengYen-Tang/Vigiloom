@@ -10,7 +10,7 @@ namespace Vigiloom.Modules.AgentManagement.Application;
 
 /// <summary>Maintains the desired package for one currently enrolled Agent.</summary>
 public sealed class AgentVersionAssignments(IDbContextFactory<AgentManagementDbContext> contexts,
-    IDeviceAgentSource devices, AgentIdentity identity, TimeProvider clock, IPackageLibraryTransport packages) : IAgentAssignments, IAgentVersionDelivery
+    IDeviceAgentSource devices, AgentIdentity identity, TimeProvider clock, IPackageLibraryTransport packages) : IAgentAssignments
 {
     public sealed record AgentRead(bool Authenticated, AgentVersionTarget? Target);
 

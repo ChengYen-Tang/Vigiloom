@@ -65,6 +65,7 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         await using var browser = await playwright.Chromium.LaunchAsync(new() { Headless = true });
         await using var context = await browser.NewContextAsync(new() { ViewportSize = new() { Width = 1440, Height = 1024 } });
         var page = await context.NewPageAsync();
+        await using var renderGate = await AutoRenderGate.HoldAsync(page);
         await page.GotoAsync(url + $"/devices/{device.Id:D}/agent-version");
         await page.GetByLabel("帳號", new() { Exact = true }).FillAsync("admin");
         await page.GetByLabel("密碼", new() { Exact = true }).FillAsync("Strong-Password-123");
@@ -158,6 +159,7 @@ public sealed class AgentVersionBrowserTests(TestContext testContext)
         }
         var evidence = Environment.GetEnvironmentVariable("VIGILOOM_VERSION_EVIDENCE_DIR") ?? Path.Combine(testContext.TestRunDirectory!, "agent-version-ui");
         Directory.CreateDirectory(evidence);
+        await page.Locator(".version-assignment[data-interactive='true']").WaitForAsync();
         await page.GetByRole(AriaRole.Radio, new() { Name = "1.2.3 win-x64" }).CheckAsync();
         await page.ScreenshotAsync(new() { Path = Path.Combine(evidence, "desktop.png"), FullPage = true });
         await page.SetViewportSizeAsync(390, 844);

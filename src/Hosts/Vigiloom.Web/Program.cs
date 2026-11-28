@@ -387,10 +387,6 @@ builder.Services.AddScoped<IAgentAssignments>(services =>
     string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
         ? services.GetRequiredService<AgentVersionAssignments>()
         : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>());
-builder.Services.AddScoped<IAgentVersionDelivery>(services =>
-    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
-        ? services.GetRequiredService<AgentVersionAssignments>()
-        : services.GetRequiredService<Vigiloom.Web.AgentVersions.RemoteAgentAssignments>());
 builder.Services.AddScoped<Vigiloom.Modules.AgentManagement.Application.YaraScans>();
 builder.Services.AddScoped<Vigiloom.Web.AgentVersions.YaraScanAccess>();
 builder.Services.AddHttpClient("security", (services, client) =>
@@ -399,14 +395,6 @@ builder.Services.AddHttpClient("security", (services, client) =>
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(30);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
-builder.Services.AddScoped<AgentPackageAccess>();
-builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentUpdateAccess>((services, client) =>
-    client.BaseAddress = new Uri(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"]!.TrimEnd('/') + "/"))
-    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
-builder.Services.AddScoped<IAgentUpdateAccess>(services =>
-    string.IsNullOrWhiteSpace(services.GetRequiredService<IConfiguration>()["Services:Resources:Url"])
-        ? services.GetRequiredService<AgentPackageAccess>()
-        : services.GetRequiredService<Vigiloom.Web.AgentPackages.RemoteAgentUpdateAccess>());
 builder.Services.AddScoped<AgentUpdateResults>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentVersionClient, Vigiloom.Web.AgentVersions.ServerAgentVersionClient>();
 builder.Services.AddScoped<PackageLibrary>();
