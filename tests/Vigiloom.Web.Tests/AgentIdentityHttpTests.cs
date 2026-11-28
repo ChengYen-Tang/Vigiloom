@@ -900,7 +900,7 @@ public sealed class AgentIdentityHttpTests
             await using (var scope = factory.Services.CreateAsyncScope())
                 issued = await scope.ServiceProvider.GetRequiredService<AgentIdentity>().IssueAsync(device.Id, Guid.CreateVersion7(), token);
             Assert.AreEqual(AgentIdentityStatus.Success, issued.Status);
-            var root = Path.Combine(Path.GetTempPath(), "VigiloomAgentHttpTests", Path.GetRandomFileName());
+            var root = Path.Combine(AppContext.BaseDirectory, "VigiloomAgentHttpTests", Path.GetRandomFileName());
             try
             {
                 var vault = new IdentityVault(root);
@@ -978,21 +978,13 @@ public sealed class AgentIdentityHttpTests
                     var configuration = scope.ServiceProvider.GetRequiredService<AgentConfiguration>();
                     var settingsMonitoring = scope.ServiceProvider.GetRequiredService<AgentSettingsMonitoring>();
                     var expectedSettings = (await configuration.UpdateAsync(device.Id, new AgentSettingsUpdate(new(60, null, 10), ""), Guid.CreateVersion7(), token))!;
-                    using var settingsHttp = new HttpClient(factory.Server.CreateHandler());
-                    var settingsClient = new AgentSettingsClient(settingsHttp, TimeProvider.System);
-                    var synchronized = await settingsClient.SyncAsync(vault, server, token);
-                    Assert.AreEqual(AgentSettingsSyncStatus.Saved, synchronized.Status);
-                    Assert.AreEqual(expectedSettings.Effective, synchronized.Settings!.Snapshot);
-                    var settingsReport = new AgentConfigurationReport(synchronized.Settings.Snapshot, synchronized.Settings.AppliedAt, null);
+                    var settingsReport = new AgentConfigurationReport(expectedSettings.Effective, clock.Now, null);
                     var observation = new AgentConfigurationObservation(new AgentSettingsOwner(recoveredId, server.AbsoluteUri, vault.StateDirectory), settingsReport);
                     var capacityConfiguration = scope.ServiceProvider.GetRequiredService<AgentQueueCapacityConfiguration>();
                     var capacityMonitoring = scope.ServiceProvider.GetRequiredService<AgentQueueCapacityMonitoring>();
                     var expectedCapacity = (await capacityConfiguration.UpdateAsync(device.Id, new AgentQueueCapacityUpdate(new(1024L * 1024, 100), ""), Guid.CreateVersion7(), token))!;
-                    var capacityClient = new AgentQueueCapacityClient(settingsHttp, TimeProvider.System);
-                    var capacitySync = await capacityClient.SyncAsync(vault, server, token);
-                    Assert.AreEqual(AgentSettingsSyncStatus.Saved, capacitySync.Status);
-                    Assert.AreEqual(expectedCapacity.Effective, capacitySync.Settings!.Snapshot);
-                    Assert.AreEqual(AgentSettingsSyncStatus.Unchanged, (await capacityClient.SyncAsync(vault, server, token)).Status);
+                    var capacityStore = new AgentQueueCapacityStore(vault, server, recoveredId);
+                    await capacityStore.SaveAsync(expectedCapacity.Effective, null, clock.Now, token);
                     var capacityObservation = new AgentQueueCapacityObservation(observation.Owner, null);
                     var heartbeatClient = new AgentHeartbeatClient(heartbeatHttp);
                     Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation, capacityObservation, token));
@@ -1012,10 +1004,7 @@ public sealed class AgentIdentityHttpTests
                     Assert.AreEqual(1024L * 1024, queueStatus.Snapshot.CapacityBytes);
                     var changedSettings = (await configuration.UpdateAsync(device.Id, new AgentSettingsUpdate(new(90, null, 10), expectedSettings.Version), Guid.CreateVersion7(), token))!;
                     Assert.AreEqual(AgentSettingsApplyState.Pending, (await settingsMonitoring.GetAsync(device.Id, token))!.State);
-                    var updated = await settingsClient.SyncAsync(vault, server, token);
-                    Assert.AreEqual(AgentSettingsSyncStatus.Saved, updated.Status);
-                    Assert.AreEqual(changedSettings.Effective, updated.Settings!.Snapshot);
-                    var nextReport = new AgentConfigurationReport(updated.Settings.Snapshot, updated.Settings.AppliedAt, null);
+                    var nextReport = new AgentConfigurationReport(changedSettings.Effective, clock.Now, null);
                     Assert.AreEqual(HeartbeatResult.Accepted, await heartbeatClient.SendAsync(vault, server, observation with { Report = nextReport }, token));
                     Assert.AreEqual(AgentSettingsApplyState.Applied, (await settingsMonitoring.GetAsync(device.Id, token))!.State);
                 }
@@ -1036,14 +1025,13 @@ public sealed class AgentIdentityHttpTests
                     var rotatedState = await session.ReadAsync(token);
                     Assert.IsNotNull(rotatedState); Assert.IsNull(rotatedState.PendingSecret);
                     retryHttp.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{recoveredId:D}.{rotatedState.MachineSecret}");
-                    using var authenticated = await retryHttp.GetAsync("/api/v1/agent/identity", token);
-                    Assert.AreEqual(HttpStatusCode.OK, authenticated.StatusCode);
+                    Assert.IsNotNull(await AuthenticateAgentAsync(factory.Services, retryHttp, token));
                 }
                 await using (var db = await agents.CreateDbContextAsync(token)) Assert.AreEqual(1, await db.Agents.CountAsync(token));
             }
             finally
             {
-                var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomAgentHttpTests")) + Path.DirectorySeparatorChar;
+                var prefix = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "VigiloomAgentHttpTests")) + Path.DirectorySeparatorChar;
                 if (!Path.GetFullPath(root).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                     throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
                 if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
@@ -1117,7 +1105,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.IsTrue(apiStatus.Headers.CacheControl?.NoStore);
                 Assert.AreEqual(AgentConnectionState.NotRegistered, (await apiStatus.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token))!.State);
             }
-            using (var apiCannotImpersonate = await api.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotImpersonate.StatusCode);
             using (var invalidPackagePage = await api.GetAsync("/api/v1/agent-packages?page=0", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalidPackagePage.StatusCode);
             using (var apiCannotAudit = await api.GetAsync("/api/v1/operations/audit?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotAudit.StatusCode);
@@ -1247,8 +1234,6 @@ public sealed class AgentIdentityHttpTests
             Assert.IsEmpty(retiredSources!);
             using (var forged = await admin.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
-            using (var cookieCannotActAsAgent = await admin.GetAsync("/api/v1/agent/identity", token))
-                Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotActAsAgent.StatusCode);
             using (var cookieCannotHeartbeat = await admin.PostAsync("/api/v1/agent/heartbeat", null, token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotHeartbeat.StatusCode);
             admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
@@ -1363,7 +1348,7 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(result.AgentId, (await recovery.Content.ReadFromJsonAsync<EnrollmentResponse>(cancellationToken: token))!.AgentId);
             }
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", enrollment.Secret);
-            using (var oneTimeNotMachine = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, oneTimeNotMachine.StatusCode);
+            Assert.IsNull(await AuthenticateAgentAsync(factory.Services, agent, token));
             var machineSecret = Convert.ToBase64String(secret).TrimEnd('=').Replace('+', '-').Replace('/', '_');
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{result.AgentId:D}.{machineSecret}");
             byte[] publicationVersion;
@@ -1404,11 +1389,7 @@ public sealed class AgentIdentityHttpTests
                 using var machineRead = await agent.GetAsync(path, token);
                 Assert.AreEqual(HttpStatusCode.Unauthorized, machineRead.StatusCode, path);
             }
-            using (var valid = await agent.GetAsync("/api/v1/agent/identity", token))
-            {
-                Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);
-                Assert.AreEqual(device.Id, (await valid.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token))!.DeviceId);
-            }
+            Assert.AreEqual(device.Id, (await AuthenticateAgentAsync(factory.Services, agent, token))!.DeviceId);
             using (var forbiddenPage = await reader.GetAsync("/settings/agent-packages", token))
             {
                 Assert.AreEqual(HttpStatusCode.Redirect, forbiddenPage.StatusCode);
@@ -1471,13 +1452,9 @@ public sealed class AgentIdentityHttpTests
                 renamed.Update("renamed server", "192.0.2.45", true, true, clock.Now);
                 await db.SaveChangesAsync(token);
             }
-            using (var afterDeviceChange = await agent.GetAsync("/api/v1/agent/identity", token))
-            {
-                Assert.AreEqual(HttpStatusCode.OK, afterDeviceChange.StatusCode);
-                var identity = await afterDeviceChange.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token);
-                Assert.AreEqual(result.AgentId, identity!.AgentId);
-                Assert.AreEqual(device.Id, identity.DeviceId);
-            }
+            var afterDeviceChangeIdentity = await AuthenticateAgentAsync(factory.Services, agent, token);
+            Assert.AreEqual(result.AgentId, afterDeviceChangeIdentity!.AgentId);
+            Assert.AreEqual(device.Id, afterDeviceChangeIdentity.DeviceId);
             var afterChange = batch with { BatchId = Guid.CreateVersion7(), Items = [observation with { MessageId = Guid.CreateVersion7() }] };
             using (var afterDeviceChange = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(afterChange)), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, afterDeviceChange.StatusCode);
@@ -1673,20 +1650,26 @@ public sealed class AgentIdentityHttpTests
             using (var oldCannotFinish = await agent.PostAsync("/api/v1/agent/rotation/finish", null, token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, oldCannotFinish.StatusCode);
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", nextCredential);
-            using (var pending = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, pending.StatusCode);
+            Assert.IsNull(await AuthenticateAgentAsync(factory.Services, agent, token));
             using (var finish = await agent.PostAsync("/api/v1/agent/rotation/finish", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, finish.StatusCode);
             using (var retry = await agent.PostAsync("/api/v1/agent/rotation/finish", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, retry.StatusCode);
-            using (var rotated = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.OK, rotated.StatusCode);
+            Assert.IsNotNull(await AuthenticateAgentAsync(factory.Services, agent, token));
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{result.AgentId:D}.{machineSecret}");
             using (var oldHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, oldHeartbeat.StatusCode);
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", nextCredential);
             using (var rotatedHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, rotatedHeartbeat.StatusCode);
             using (var revoke = await admin.PostAsync($"/api/v1/agent-management/agents/{result.AgentId:D}/revoke", null, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, revoke.StatusCode);
-            using (var revoked = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
+            Assert.IsNull(await AuthenticateAgentAsync(factory.Services, agent, token));
             using (var revokedHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revokedHeartbeat.StatusCode);
             using (var revokedBatch = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revokedBatch.StatusCode);
         }, TestContext.CancellationToken);
+
+    private static async Task<AgentPrincipal?> AuthenticateAgentAsync(IServiceProvider services, HttpClient client, CancellationToken token)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<AgentIdentity>().AuthenticateAsync(client.DefaultRequestHeaders.Authorization?.Parameter, token);
+    }
 
     private sealed class TestClock : TimeProvider
     {

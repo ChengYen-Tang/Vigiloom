@@ -138,7 +138,9 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             {
                 builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
                 { ["ReverseProxy:Clusters:web:Destinations:web:Address"] = Address(web.Services), ["Services:Identity:Url"] = identityAddress,
-                  ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = resourcesAddress }));
+                  ["ReverseProxy:Clusters:resources:Destinations:resources:Address"] = resourcesAddress,
+                  ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = hostAddress,
+                  ["Vigiloom:Gateway:AgentIdentityAddress"] = hostAddress }));
                 builder.ConfigureTestServices(services => { services.RemoveAll<IDataProtectionProvider>(); services.AddSingleton<IDataProtectionProvider>(keys); });
             });
             var options = new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false };
@@ -151,6 +153,7 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             using (var groups = await readClient.GetAsync("/api/v1/groups/", token)) Assert.AreEqual(HttpStatusCode.OK, groups.StatusCode);
             using (var denied = await readClient.PostAsJsonAsync("/api/v1/groups/", new GroupInput("denied", null), token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             using (var packages = await readClient.GetAsync("/api/v1/agent-packages", token)) Assert.AreEqual(HttpStatusCode.OK, packages.StatusCode);
+            using (var deniedAgent = await readClient.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, deniedAgent.StatusCode);
             using (var deniedManagement = await readClient.GetAsync($"/api/v1/agent-management/devices/{Guid.CreateVersion7():D}", token)) Assert.AreEqual(HttpStatusCode.Forbidden, deniedManagement.StatusCode);
             using var secondWeb = web.WithWebHostBuilder(_ => { });
             secondWeb.UseKestrel(0);
@@ -261,13 +264,25 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             }
             var oldCredential = AgentCredentials.Encode("vla", agentId, machineSecret);
             var replacementSecret = RandomNumberGenerator.GetBytes(32);
+            anonymous.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", issued.Secret);
+            using (var deniedEnrollment = await anonymous.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, deniedEnrollment.StatusCode);
             anonymous.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", oldCredential);
             using (var rotated = await anonymous.PostAsJsonAsync("/api/v1/agent/rotation/start", new { MachineVerifier = SHA256.HashData(replacementSecret) }, token)) Assert.AreEqual(HttpStatusCode.NoContent, rotated.StatusCode);
             var replacementCredential = AgentCredentials.Encode("vla", agentId, replacementSecret);
             anonymous.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", replacementCredential);
+            using (var pending = await anonymous.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, pending.StatusCode);
             using (var confirmed = await anonymous.PostAsync("/api/v1/agent/rotation/finish", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, confirmed.StatusCode);
+            using (var confirmedIdentity = await anonymous.GetAsync("/api/v1/agent/identity", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, confirmedIdentity.StatusCode);
+                var agentIdentity = await confirmedIdentity.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token);
+                Assert.AreEqual(agentId, agentIdentity!.AgentId);
+                Assert.AreEqual(hostDevice.Id, agentIdentity.DeviceId);
+            }
             Assert.IsNull(await registrations.AuthenticateAsync(oldCredential, token));
             Assert.IsNotNull(await registrations.AuthenticateAsync(replacementCredential, token));
+            Assert.AreEqual(AgentRegistrationStatus.Success, await registrations.RevokeAsync(agentId, admin.Id, token));
+            using (var revokedAgent = await anonymous.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revokedAgent.StatusCode);
             await using (var db = await resources.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>().CreateDbContextAsync(token))
                 Assert.IsTrue(await db.Devices.AnyAsync(device => device.Name == "gateway device", token));
             var webResourcesOptions = new DbContextOptionsBuilder<ResourcesDbContext>().UseSqlServer(webDb.ConnectionString).Options;
@@ -275,6 +290,7 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
                 Assert.IsFalse(await db.Devices.AnyAsync(device => device.Name == "gateway device", token));
             using var api = gateway.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vlg_{credential.Id:D}.{WebEncoders.Base64UrlEncode(secret)}");
+            using (var deniedAgent = await api.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, deniedAgent.StatusCode);
             using (var valid = await api.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, valid.StatusCode);
             using (var groups = await api.GetAsync("/api/v1/groups/", token)) Assert.AreEqual(HttpStatusCode.OK, groups.StatusCode);
             using (var packages = await api.GetAsync("/api/v1/agent-packages", token)) Assert.AreEqual(HttpStatusCode.OK, packages.StatusCode);

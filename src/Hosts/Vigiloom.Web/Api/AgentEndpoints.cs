@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using Vigiloom.Modules.AgentManagement.Application;
 using Vigiloom.Contracts.Devices;
 using Vigiloom.Contracts.Agent;
@@ -64,11 +63,6 @@ internal static class AgentEndpoints
         }).AllowAnonymous().WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(2048))
             .Produces<EnrollmentResponse>().ProducesProblem(401).ProducesProblem(413).ProducesProblem(429)
             .WithSummary("Recover an existing Agent ID using enrollment and machine secret proof");
-        machine.MapGet("/identity", (HttpContext context) => Results.Ok(new AgentIdentityResponse(
-            Guid.Parse(context.User.FindFirstValue(ClaimTypes.NameIdentifier)!),
-            Guid.Parse(context.User.FindFirstValue("vigiloom:device-id")!))))
-            .RequireAuthorization("Agent").Produces<AgentIdentityResponse>().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
-            .WithSummary("Inspect the current Agent identity");
         machine.MapPost("/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
             .RequireAuthorization("Agent").RequireRateLimiting("agent-transport")
             .WithMetadata(AgentTransportEndpoint.Instance, new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes))

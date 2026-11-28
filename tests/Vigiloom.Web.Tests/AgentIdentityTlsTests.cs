@@ -91,7 +91,7 @@ public sealed class AgentIdentityTlsTests
             await using (var scope = factory.Services.CreateAsyncScope())
                 issued = await scope.ServiceProvider.GetRequiredService<AgentIdentity>().IssueAsync(device.Id, Guid.CreateVersion7(), token);
             Assert.AreEqual(AgentIdentityStatus.Success, issued.Status);
-            var statePath = Path.Combine(Path.GetTempPath(), "VigiloomAgentTlsTests", Path.GetRandomFileName());
+            var statePath = Path.Combine(AppContext.BaseDirectory, "VigiloomAgentTlsTests", Path.GetRandomFileName());
             try
             {
                 using var untrusted = new HttpClient();
@@ -121,11 +121,8 @@ public sealed class AgentIdentityTlsTests
                     Assert.IsNotNull(state);
                     http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{id:D}.{state.MachineSecret}");
                 }
-                using (var identity = await http.GetAsync(new Uri(url, "/api/v1/agent/identity"), token))
-                {
-                    Assert.AreEqual(HttpStatusCode.OK, identity.StatusCode);
-                    Assert.AreEqual(device.Id, (await identity.Content.ReadFromJsonAsync<AgentIdentityResponse>(cancellationToken: token))!.DeviceId);
-                }
+                await using (var db = await agents.CreateDbContextAsync(token))
+                    Assert.AreEqual(device.Id, (await db.Agents.SingleAsync(x => x.Id == id, token)).DeviceId);
                 Assert.AreEqual(HeartbeatResult.ServerMismatch, await new AgentHeartbeatClient(http).SendAsync(vault, new Uri("https://different.example/"), token));
                 Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, url, token));
                 await using (var db = await agents.CreateDbContextAsync(token))
@@ -487,7 +484,7 @@ public sealed class AgentIdentityTlsTests
             }
             finally
             {
-                var prefix = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VigiloomAgentTlsTests")) + Path.DirectorySeparatorChar;
+                var prefix = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "VigiloomAgentTlsTests")) + Path.DirectorySeparatorChar;
                 if (!Path.GetFullPath(statePath).StartsWith(prefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                     throw new InvalidOperationException("Test cleanup path escaped its designated temporary root.");
                 if (Directory.Exists(statePath)) Directory.Delete(statePath, recursive: true);
