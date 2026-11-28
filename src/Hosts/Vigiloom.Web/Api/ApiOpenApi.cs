@@ -60,7 +60,6 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             }
             else if (path.Equals("/api/v1/agent/identity", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/heartbeat", StringComparison.OrdinalIgnoreCase) ||
-                     path.Equals("/api/v1/agent/update-results", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/queue-session", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/inventory/status", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/agent/inventory-settings", StringComparison.OrdinalIgnoreCase) ||

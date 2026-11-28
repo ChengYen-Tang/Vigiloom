@@ -395,7 +395,6 @@ builder.Services.AddHttpClient("security", (services, client) =>
     client.BaseAddress = new Uri(address.TrimEnd('/') + "/");
     client.Timeout = TimeSpan.FromSeconds(30);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false }).AddServiceDiscovery();
-builder.Services.AddScoped<AgentUpdateResults>();
 builder.Services.AddScoped<Vigiloom.Contracts.Agent.IAgentVersionClient, Vigiloom.Web.AgentVersions.ServerAgentVersionClient>();
 builder.Services.AddScoped<PackageLibrary>();
 builder.Services.AddHttpClient<Vigiloom.Web.AgentPackages.RemoteAgentPackageLibrary>((services, client) =>

@@ -216,7 +216,10 @@ app.MapHostMetricRetentionEndpoints();
 app.MapPost("/api/v1/agent/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
     .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes));
 app.MapPost("/api/v1/agent/update-results", AgentUpdateResultEndpoint.ReceiveAsync)
-    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentUpdateResultEndpoint.MaximumBytes));
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentUpdateResultEndpoint.MaximumBytes))
+    .Accepts<AgentUpdateResult>("application/json")
+    .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(413).ProducesProblem(415).ProducesProblem(429)
+    .WithSummary("Record an authenticated Agent update result");
 app.MapGet("/internal/v1/agents/{id:guid}/update-status", async (Guid id, HostUpdateResults results, CancellationToken token) =>
     await results.GetAsync(id, token) is { } status ? Results.Ok(status) : Results.NotFound());
 app.MapPost("/internal/v1/agent-package-usage", async (AgentPackageUsageRequest request, IDbContextFactory<HostMonitoringDbContext> contexts,
