@@ -45,7 +45,9 @@ internal static class AgentManagementEndpoints
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["page"] = ["Page must be between 1 and 20000."] });
             context.Response.Headers.CacheControl = "no-store";
             return Results.Ok(await catalog.ListAsync(page ?? 1, token));
-        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client");
+        }).RequireAuthorization("MonitoringApiRead").RequireRateLimiting("api-client")
+            .Produces<AgentPackagePage>().ProducesValidationProblem().ProducesProblem(401).ProducesProblem(403).ProducesProblem(429)
+            .WithSummary("List downloaded Agent package versions");
         app.MapPost("/api/v1/agent-packages/cache", async (PackageDownload request, HttpContext context, PackageCatalog catalog, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async _ =>
             {
@@ -53,7 +55,9 @@ internal static class AgentManagementEndpoints
                 catch (InvalidOperationException) { return Results.Conflict(); }
                 catch (Exception error) when (error is HttpRequestException or IOException or TimeoutException)
                 { return Results.Problem(statusCode: 503, title: "The package could not be downloaded."); }
-            }, allowApiCredential: false)).RequireAuthorization(WorkspaceAccess.Administrator).RequireRateLimiting("api-client");
+            }, allowApiCredential: false)).RequireAuthorization(WorkspaceAccess.Administrator).RequireRateLimiting("api-client")
+            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).Produces(404).Produces(409).ProducesProblem(429).ProducesProblem(503)
+            .WithSummary("Download an Agent release to the central platform");
         app.MapDelete("/api/v1/agent-packages/{id:guid}/cache", async (Guid id, HttpContext context, PackageCatalog catalog, CancellationToken token) =>
             await ApiMutation.ExecuteAsync(context, async _ =>
             {
@@ -68,7 +72,9 @@ internal static class AgentManagementEndpoints
                 }
                 catch (Exception error) when (error is HttpRequestException or IOException or TimeoutException or InvalidOperationException)
                 { return Results.Problem(statusCode: 503, title: "Agent package usage could not be checked."); }
-            }, allowApiCredential: false)).RequireAuthorization(WorkspaceAccess.Administrator).RequireRateLimiting("api-client");
+            }, allowApiCredential: false)).RequireAuthorization(WorkspaceAccess.Administrator).RequireRateLimiting("api-client")
+            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).Produces(404).Produces(409).ProducesProblem(429).ProducesProblem(503)
+            .WithSummary("Remove an unused Agent package");
         app.MapGet("/api/v1/agents/{id:guid}/version-assignment", async (Guid id, HttpContext context, AgentAssignments assignments, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";

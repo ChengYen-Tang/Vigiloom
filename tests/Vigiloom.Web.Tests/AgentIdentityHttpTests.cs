@@ -939,7 +939,7 @@ public sealed class AgentIdentityHttpTests
             using var agent = factory.CreateClient(options);
             using var api = factory.CreateClient(options);
             api.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiCredential);
-            var monitoringPaths = new[] { "/api/v1/agent-packages", $"/api/v1/devices/{device.Id:D}/agent-status" };
+            var monitoringPaths = new[] { $"/api/v1/devices/{device.Id:D}/agent-status" };
             foreach (var path in monitoringPaths)
             {
                 using var anonymousRead = await agent.GetAsync(path, token);
@@ -954,7 +954,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.IsTrue(apiStatus.Headers.CacheControl?.NoStore);
                 Assert.AreEqual(AgentConnectionState.NotRegistered, (await apiStatus.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token))!.State);
             }
-            using (var invalidPackagePage = await api.GetAsync("/api/v1/agent-packages?page=0", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalidPackagePage.StatusCode);
             using (var apiCannotAudit = await api.GetAsync("/api/v1/operations/audit?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotAudit.StatusCode);
             Assert.AreEqual(AgentIdentityStatus.Invalid, await PingTestSite.RecordHeartbeatAsync(factory.Services, api, null, token));
@@ -988,10 +987,6 @@ public sealed class AgentIdentityHttpTests
                 fields["Input.UserName"] = "reader"; fields["Input.Password"] = "Strong-Password-123";
                 using var login = await reader.PostAsync("/account/login", new FormUrlEncodedContent(fields), token);
                 Assert.AreEqual(HttpStatusCode.Redirect, login.StatusCode);
-                using var packages = await reader.GetAsync("/api/v1/agent-packages", token);
-                Assert.AreEqual(HttpStatusCode.OK, packages.StatusCode);
-                Assert.IsTrue(packages.Headers.CacheControl?.NoStore);
-                Assert.IsEmpty((await packages.Content.ReadFromJsonAsync<AgentPackagePage>(cancellationToken: token))!.Items);
                 using var status = await reader.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token);
                 Assert.AreEqual(HttpStatusCode.OK, status.StatusCode);
                 Assert.AreEqual(AgentConnectionState.NotRegistered, (await status.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token))!.State);

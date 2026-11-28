@@ -808,7 +808,6 @@ app.MapDeviceEndpoints();
 app.MapPublicationEndpoints();
 app.MapGroupEndpoints();
 app.MapAgentEndpoints();
-app.MapAgentPackageEndpoints();
 app.MapAgentPackageUiEndpoints();
 app.MapInventorySettingsEndpoints();
 app.MapBaselineSettingsEndpoints();

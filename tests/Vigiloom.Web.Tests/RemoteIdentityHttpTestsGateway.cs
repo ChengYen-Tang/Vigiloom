@@ -152,7 +152,12 @@ public sealed class RemoteIdentityHttpTestsGateway(TestContext context)
             using (var read = await readClient.GetAsync("/api/v1/devices/", token)) Assert.AreEqual(HttpStatusCode.OK, read.StatusCode);
             using (var groups = await readClient.GetAsync("/api/v1/groups/", token)) Assert.AreEqual(HttpStatusCode.OK, groups.StatusCode);
             using (var denied = await readClient.PostAsJsonAsync("/api/v1/groups/", new GroupInput("denied", null), token)) Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
-            using (var packages = await readClient.GetAsync("/api/v1/agent-packages", token)) Assert.AreEqual(HttpStatusCode.OK, packages.StatusCode);
+            using (var packages = await readClient.GetAsync("/api/v1/agent-packages", token))
+            {
+                Assert.AreEqual(HttpStatusCode.OK, packages.StatusCode);
+                Assert.IsTrue(packages.Headers.CacheControl?.NoStore);
+            }
+            using (var invalidPage = await readClient.GetAsync("/api/v1/agent-packages?page=0", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalidPage.StatusCode);
             using (var deniedAgent = await readClient.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, deniedAgent.StatusCode);
             using (var deniedManagement = await readClient.GetAsync($"/api/v1/agent-management/devices/{Guid.CreateVersion7():D}", token)) Assert.AreEqual(HttpStatusCode.Forbidden, deniedManagement.StatusCode);
             using var secondWeb = web.WithWebHostBuilder(_ => { });

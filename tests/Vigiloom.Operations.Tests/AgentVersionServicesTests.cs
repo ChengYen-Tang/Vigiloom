@@ -82,6 +82,7 @@ public sealed class AgentVersionServicesTests(TestContext context)
 
             var cachedPackage = new CachedPackage(manifest, archive);
             var session = new AdminSessionHandler();
+            using var releasesHttp = new HttpClient(new ReleaseHandler(archive.Length, archiveHash)) { BaseAddress = new Uri("https://api.github.com/") };
             using var resources = new WebApplicationFactory<ResourcesHost::Program>().WithWebHostBuilder(web =>
             {
                 web.UseUrls("http://127.0.0.1:0");
@@ -91,6 +92,8 @@ public sealed class AgentVersionServicesTests(TestContext context)
                     HostWorkers.RemoveBackgroundWork(services);
                     services.RemoveAll<IPackageLibraryTransport>();
                     services.AddSingleton<IPackageLibraryTransport>(cachedPackage);
+                    services.RemoveAll<GitHubAgentReleases>();
+                    services.AddSingleton(new GitHubAgentReleases(releasesHttp));
                     services.RemoveAll<IOutboxHandler>();
                     services.AddScoped<IOutboxHandler, TestOutboxHandler>();
                     services.AddHttpClient<IdentityCookieValidator>().ConfigurePrimaryHttpMessageHandler(() => session);
@@ -100,7 +103,15 @@ public sealed class AgentVersionServicesTests(TestContext context)
             using var resourceClient = resources.CreateClient();
             using (var api = await resourceClient.GetFromJsonAsync<JsonDocument>("/openapi/v1.json", token))
             {
-                var path = api!.RootElement.GetProperty("paths").GetProperty("/api/v1/agents/{id}/version-assignment");
+                var paths = api!.RootElement.GetProperty("paths");
+                var packages = paths.GetProperty("/api/v1/agent-packages").GetProperty("get").GetProperty("security");
+                Assert.IsTrue(packages.EnumerateArray().Any(x => x.TryGetProperty("BrowserSession", out _)));
+                Assert.IsTrue(packages.EnumerateArray().Any(x => x.TryGetProperty("ApiBearer", out _)));
+                var cache = paths.GetProperty("/api/v1/agent-packages/cache").GetProperty("post").GetProperty("security");
+                Assert.AreEqual(1, cache.GetArrayLength());
+                Assert.IsTrue(cache[0].TryGetProperty("BrowserSession", out _));
+                Assert.IsTrue(cache[0].TryGetProperty("Antiforgery", out _));
+                var path = paths.GetProperty("/api/v1/agents/{id}/version-assignment");
                 var read = path.GetProperty("get").GetProperty("security");
                 Assert.IsTrue(read.EnumerateArray().Any(x => x.TryGetProperty("BrowserSession", out _)));
                 Assert.IsTrue(read.EnumerateArray().Any(x => x.TryGetProperty("ApiBearer", out _)));
@@ -148,6 +159,7 @@ public sealed class AgentVersionServicesTests(TestContext context)
 
             var assignmentPath = $"/api/v1/agents/{agentId:D}/version-assignment";
             using (var denied = await resourceClient.GetAsync(assignmentPath, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
+            using (var denied = await resourceClient.GetAsync("/api/v1/agent-packages", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
             hostClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", AgentCredentials.Encode("vla", agentId, secret));
             using (var unassigned = await hostClient.GetAsync("/api/v1/agent/version-assignment", token))
             {
@@ -162,6 +174,10 @@ public sealed class AgentVersionServicesTests(TestContext context)
             resourceClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={cookie}");
             using (var missingCsrf = await resourceClient.PutAsJsonAsync(assignmentPath, new AgentVersionAssignmentUpdate(package.Id, ""), token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+            using (var missingCsrf = await resourceClient.PostAsJsonAsync("/api/v1/agent-packages/cache", new { Version = "1.2.3", RuntimeIdentifier = "win-x64" }, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
+            using (var missingCsrf = await resourceClient.DeleteAsync($"/api/v1/agent-packages/{package.Id:D}/cache", token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, missingCsrf.StatusCode);
             var antiContext = new DefaultHttpContext { RequestServices = resources.Services, User = principal };
             antiContext.Request.Scheme = "https";
             var anti = resources.Services.GetRequiredService<IAntiforgery>().GetAndStoreTokens(antiContext);
@@ -169,14 +185,24 @@ public sealed class AgentVersionServicesTests(TestContext context)
             resourceClient.DefaultRequestHeaders.Remove("Cookie");
             resourceClient.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={cookie}; {antiCookie}");
             resourceClient.DefaultRequestHeaders.Add("RequestVerificationToken", anti.RequestToken);
+            using (var cached = await resourceClient.PostAsJsonAsync("/api/v1/agent-packages/cache", new { Version = "1.2.3", RuntimeIdentifier = "win-x64" }, token))
+                Assert.AreEqual(HttpStatusCode.NoContent, cached.StatusCode);
+            using (var missing = await resourceClient.PostAsJsonAsync("/api/v1/agent-packages/cache", new { Version = "1.2.3", RuntimeIdentifier = "unknown" }, token))
+                Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);
             using (var assigned = await resourceClient.PutAsJsonAsync(assignmentPath, new AgentVersionAssignmentUpdate(package.Id, ""), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, assigned.StatusCode);
+            using (var inUse = await resourceClient.DeleteAsync($"/api/v1/agent-packages/{package.Id:D}/cache", token))
+                Assert.AreEqual(HttpStatusCode.Conflict, inUse.StatusCode);
             using (var stale = await resourceClient.PutAsJsonAsync(assignmentPath, new AgentVersionAssignmentUpdate(package.Id, ""), token))
                 Assert.AreEqual(HttpStatusCode.Conflict, stale.StatusCode);
             var publicAssignment = await resourceClient.GetFromJsonAsync<AgentVersionAssignmentView>(assignmentPath, token);
             Assert.AreEqual(package.Id, publicAssignment!.PackageId);
             session.Role = "Read only";
             using (var denied = await resourceClient.PutAsJsonAsync(assignmentPath, new AgentVersionAssignmentUpdate(null, publicAssignment.Revision), token))
+                Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await resourceClient.PostAsJsonAsync("/api/v1/agent-packages/cache", new { Version = "1.2.3", RuntimeIdentifier = "win-x64" }, token))
+                Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
+            using (var denied = await resourceClient.DeleteAsync($"/api/v1/agent-packages/{package.Id:D}/cache", token))
                 Assert.AreEqual(HttpStatusCode.Forbidden, denied.StatusCode);
             session.Role = "Administrator";
             using (var cancelled = await resourceClient.PutAsJsonAsync(assignmentPath, new AgentVersionAssignmentUpdate(null, publicAssignment.Revision), token))
@@ -259,7 +285,13 @@ public sealed class AgentVersionServicesTests(TestContext context)
                 await using var verify = new HostMonitoringDbContext(hostOptions);
                 Assert.AreEqual(1, await verify.UpdateReceipts.CountAsync(x => x.AgentId == agentId && x.UpdateId == target.UpdateId && x.Sequence == 2, token));
             }
-            finally { if (Directory.Exists(journalPath)) Directory.Delete(journalPath, recursive: true); }
+            finally
+            {
+                var root = Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                if (!Path.GetFullPath(journalPath).StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                    throw new InvalidOperationException("Test cleanup path escaped its designated root.");
+                if (Directory.Exists(journalPath)) Directory.Delete(journalPath, recursive: true);
+            }
             cachedPackage.BeforeOpenReturns = async () =>
             {
                 using var cleared = await resourceClient.PutAsJsonAsync($"/internal/v1/agents/{agentId:D}/assignment",
@@ -269,6 +301,8 @@ public sealed class AgentVersionServicesTests(TestContext context)
             using (var clearedDuringDownload = await hostClient.GetAsync($"/api/v1/agent/update/packages/{archiveHash}", token))
                 Assert.AreEqual(HttpStatusCode.NotFound, clearedDuringDownload.StatusCode);
             Assert.IsFalse(cachedPackage.LastStream!.CanRead);
+            using (var removed = await resourceClient.DeleteAsync($"/api/v1/agent-packages/{package.Id:D}/cache", token))
+                Assert.AreEqual(HttpStatusCode.NoContent, removed.StatusCode);
             using var revoked = await resourceClient.PostAsJsonAsync($"/internal/v1/agents/{agentId:D}/revoke", new AgentRevokeCommand(Guid.CreateVersion7()), token);
             Assert.AreEqual(AgentRegistrationStatus.Success, await revoked.Content.ReadFromJsonAsync<AgentRegistrationStatus>(cancellationToken: token));
             using var rejected = await hostClient.PostAsJsonAsync("/api/v1/agent/update-results", result, token);
@@ -325,7 +359,16 @@ public sealed class AgentVersionServicesTests(TestContext context)
             if (BeforeOpenReturns is not null) await BeforeOpenReturns();
             return LastStream;
         }
-        public Task SaveAsync(string version, AgentReleaseAsset asset, string manifestHash, byte[] data, GitHubAgentReleases github, CancellationToken token) => throw new NotSupportedException();
-        public Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> others, CancellationToken token) => throw new NotSupportedException();
+        public Task SaveAsync(string version, AgentReleaseAsset asset, string manifestHash, byte[] data, GitHubAgentReleases github, CancellationToken token) => Task.CompletedTask;
+        public Task RemoveCachedAsync(string archiveHash, string manifestHash, IReadOnlyList<string> others, CancellationToken token) => Task.CompletedTask;
+    }
+
+    private sealed class ReleaseHandler(int size, string hash) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            var json = $$"""{"tag_name":"agent-v1.2.3","assets":[{"name":"agent-win-x64.zip","size":{{size}},"digest":"sha256:{{hash}}"}]}""";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") });
+        }
     }
 }

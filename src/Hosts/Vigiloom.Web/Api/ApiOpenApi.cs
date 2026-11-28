@@ -48,8 +48,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
             }
             else if (path.StartsWith("/api/v1/admin/intelligence/", StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith("/api/v1/admin/sigma/", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith("/api/v1/agent-management/", StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith("/api/v1/agent-packages/", StringComparison.OrdinalIgnoreCase))
+                path.StartsWith("/api/v1/agent-management/", StringComparison.OrdinalIgnoreCase))
             {
                 var session = new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("BrowserSession", document)] = [] };
                 if (!method.ToString().Equals("Get", StringComparison.OrdinalIgnoreCase))
@@ -81,8 +80,7 @@ internal sealed class ApiOpenApi(IOptionsMonitor<CookieAuthenticationOptions> co
                     [new OpenApiSecuritySchemeReference("Antiforgery", document)] = [] }];
                 operation.Description = "Requires a signed-in Administrator session and an antiforgery token.";
             }
-            else if (path.Equals("/api/v1/agent-packages", StringComparison.OrdinalIgnoreCase) ||
-                     path.Equals("/api/v1/devices", StringComparison.OrdinalIgnoreCase) ||
+            else if (path.Equals("/api/v1/devices", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/devices/", StringComparison.OrdinalIgnoreCase) ||
                      path.Equals("/api/v1/groups", StringComparison.OrdinalIgnoreCase) ||
                      path.StartsWith("/api/v1/groups/", StringComparison.OrdinalIgnoreCase))

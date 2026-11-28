@@ -284,15 +284,6 @@ public sealed class WebHostTests(TestContext testContext)
         Assert.IsFalse(deviceReadSecurity[0].TryGetProperty("Antiforgery", out _));
         Assert.IsTrue(deviceReadSecurity[1].TryGetProperty("ApiBearer", out _));
         Assert.Contains("monitoring.read", deviceRead.GetProperty("description").GetString()!);
-        var packages = paths.GetProperty("/api/v1/agent-packages").GetProperty("get");
-        Assert.IsTrue(packages.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
-        Assert.IsTrue(packages.GetProperty("security")[1].TryGetProperty("ApiBearer", out _));
-        var packageCache = paths.GetProperty("/api/v1/agent-packages/cache").GetProperty("post");
-        Assert.IsTrue(packageCache.GetProperty("security")[0].TryGetProperty("BrowserSession", out _));
-        Assert.IsTrue(packageCache.GetProperty("security")[0].TryGetProperty("Antiforgery", out _));
-        Assert.AreEqual(1, packageCache.GetProperty("security").GetArrayLength());
-        Assert.IsFalse(packages.GetProperty("security")[0].TryGetProperty("AgentBearer", out _));
-        Assert.Contains("monitoring.read", packages.GetProperty("description").GetString()!);
         var deviceWrite = paths.GetProperty("/api/v1/devices").GetProperty("post");
         var deviceWriteSecurity = deviceWrite.GetProperty("security");
         Assert.IsTrue(deviceWriteSecurity[0].TryGetProperty("BrowserSession", out _));
