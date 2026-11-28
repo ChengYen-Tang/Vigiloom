@@ -122,8 +122,7 @@ public sealed class BaselineHttpTests(TestContext context)
             var epoch = Guid.CreateVersion7();
             Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, client, new AgentQueueSessionRequest(null, epoch), token));
             var report = new BaselineSettingsReport(currentPolicy.Revision, now, now, null);
-            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 1, null, BaselineConfiguration: report), token))
-                Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, client, new AgentHeartbeatReport(1, epoch, 1, null, BaselineConfiguration: report), token));
             var batch = new BaselineBatch(BaselineBatchCodec.SchemaVersion, Guid.CreateVersion7(), now,
                 [new(selected.SourceId, selected.RevisionId, selected.ActivationVersion, selected.Check.Id,
                     now, "ubuntu:24.04", BaselineOutcome.Fail, "test evidence")]);
@@ -204,17 +203,15 @@ public sealed class BaselineHttpTests(TestContext context)
                 Assert.IsTrue(result.Latest!.Current);
                 Assert.AreEqual(BaselineOutcome.Fail, result.Latest.Outcome);
             }
-            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 2, null,
-                BaselineConfiguration: report with { Failure = AgentConfigurationFailure.Unavailable }), token))
-                Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, client, new AgentHeartbeatReport(1, epoch, 2, null,
+                BaselineConfiguration: report with { Failure = AgentConfigurationFailure.Unavailable }), token));
             {
                 var view = await baselineQuery.GetAsync(device.Id, token);
                 Assert.AreEqual(BaselineSyncState.Failed, view!.Sync!.State);
                 Assert.AreEqual(now, view.Sync.LastSyncedAt);
             }
-            using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 3, null,
-                BaselineConfiguration: report), token))
-                Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, client, new AgentHeartbeatReport(1, epoch, 3, null,
+                BaselineConfiguration: report), token));
             await db.IntelligenceActivations.Where(x => x.SourceId == source.Id).ExecuteDeleteAsync(token);
             var historic = batch with { BatchId = Guid.CreateVersion7() };
             using (var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/agent/batches") { Content = new ByteArrayContent(BaselineBatchCodec.Serialize(historic)) })

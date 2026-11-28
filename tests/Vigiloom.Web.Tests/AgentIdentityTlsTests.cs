@@ -114,7 +114,9 @@ public sealed class AgentIdentityTlsTests
                 await using (var db = await agents.CreateDbContextAsync(token))
                     Assert.AreEqual(device.Id, (await db.Agents.SingleAsync(x => x.Id == id, token)).DeviceId);
                 Assert.AreEqual(HeartbeatResult.ServerMismatch, await new AgentHeartbeatClient(http).SendAsync(vault, new Uri("https://different.example/"), token));
-                Assert.AreEqual(HeartbeatResult.Accepted, await new AgentHeartbeatClient(http).SendAsync(vault, url, token));
+                await using (var scope = factory.Services.CreateAsyncScope())
+                    Assert.AreEqual(AgentIdentityStatus.Success, await scope.ServiceProvider.GetRequiredService<AgentIdentity>()
+                        .RecordHeartbeatAsync(http.DefaultRequestHeaders.Authorization!.Parameter, token));
                 await using (var db = await agents.CreateDbContextAsync(token))
                     Assert.IsNotNull((await db.Agents.SingleAsync(x => x.Id == id, token)).LastHeartbeatAt);
 

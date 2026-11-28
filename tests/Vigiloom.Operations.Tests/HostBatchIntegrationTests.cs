@@ -697,6 +697,15 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 Assert.IsTrue(current.Headers.CacheControl?.NoStore);
                 Assert.AreEqual(epoch, (await current.Content.ReadFromJsonAsync<AgentQueueSession>(cancellationToken: token))!.Epoch);
             }
+            using (var duplicate = new StringContent("{\"version\":1,\"version\":1,\"queue\":null}", System.Text.Encoding.UTF8, "application/json"))
+            using (var rejected = await client.PostAsync("/api/v1/agent/heartbeat", duplicate, token))
+                Assert.AreEqual(HttpStatusCode.BadRequest, rejected.StatusCode);
+            using (var oversized = new ByteArrayContent(new byte[8193]))
+            using (var rejected = await client.PostAsync("/api/v1/agent/heartbeat", oversized, token))
+                Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
+            using (var oversized = new UnknownLengthContent(8193))
+            using (var rejected = await client.PostAsync("/api/v1/agent/heartbeat", oversized, token))
+                Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, rejected.StatusCode);
             using (var heartbeat = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", new AgentHeartbeatReport(1, epoch, 1, null), token))
                 Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
             var update = new AgentUpdateResult(Guid.CreateVersion7(), targetUpdate.UpdateId, targetUpdate.PackageId, targetUpdate.ManifestSha256, 1,
@@ -1327,6 +1336,12 @@ public sealed class HostBatchIntegrationTests(TestContext context)
             var receipt = await response.Content.ReadFromJsonAsync<LogReceipt>(cancellationToken: token);
             return Calls == 1 ? new(LogReceiptStatus.Busy) : receipt!;
         }
+    }
+
+    private sealed class UnknownLengthContent(int length) : HttpContent
+    {
+        protected override bool TryComputeLength(out long value) { value = 0; return false; }
+        protected override Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context) => stream.WriteAsync(new byte[length]).AsTask();
     }
 
     private sealed class TestOutboxHandler : IOutboxHandler

@@ -95,8 +95,14 @@ public sealed class ProxyTests
         identityBuilder.WebHost.UseUrls("http://127.0.0.1:0");
         await using var identity = identityBuilder.Build();
         var agentId = Guid.CreateVersion7();
+        var secondAgentId = Guid.CreateVersion7();
         var deviceId = Guid.CreateVersion7();
-        identity.MapGet("/api/v1/agent/identity", () => Results.Json(new { AgentId = agentId, DeviceId = deviceId }));
+        identity.MapGet("/api/v1/agent/identity", (HttpContext context) => context.Request.Headers.Authorization.ToString() switch
+        {
+            "Bearer valid-agent" => Results.Json(new { AgentId = agentId, DeviceId = deviceId }),
+            "Bearer other-agent" => Results.Json(new { AgentId = secondAgentId, DeviceId = deviceId }),
+            _ => Results.Unauthorized()
+        });
         await identity.StartAsync(TestContext.CancellationToken);
         static string Address(WebApplication app) => app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web => web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -106,11 +112,69 @@ public sealed class ProxyTests
             ["Vigiloom:Agent:Transport:RequestsPerMinute"] = "1"
         })));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-agent");
+        using (var invalid = await client.PostAsync("/api/v1/agent/heartbeat", null, TestContext.CancellationToken)) Assert.AreEqual(HttpStatusCode.Unauthorized, invalid.StatusCode);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-agent");
         using (var first = await client.PostAsync("/api/v1/agent/heartbeat", null, TestContext.CancellationToken)) Assert.AreEqual(HttpStatusCode.OK, first.StatusCode);
         using var limited = await client.GetAsync("/api/v1/agent/inventory/status", TestContext.CancellationToken);
         Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
         Assert.AreEqual("60", limited.Headers.RetryAfter!.ToString());
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "other-agent");
+        using var other = await client.PostAsync("/api/v1/agent/heartbeat", null, TestContext.CancellationToken);
+        Assert.AreEqual(HttpStatusCode.OK, other.StatusCode);
+    }
+    [TestMethod]
+    public async Task AgentTransportLimitsConcurrencyBeforeAuthenticationAndReleasesPermit()
+    {
+        var token = TestContext.CancellationToken;
+        await using var host = await StartUpstreamAsync("host-monitoring", token);
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var identity = builder.Build();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var agentId = Guid.CreateVersion7();
+        var deviceId = Guid.CreateVersion7();
+        identity.MapGet("/api/v1/agent/identity", async () =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                entered.TrySetResult();
+                await release.Task;
+            }
+            return Results.Json(new { AgentId = agentId, DeviceId = deviceId });
+        });
+        await identity.StartAsync(token);
+        static string Address(WebApplication app) => app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web => web.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ReverseProxy:Clusters:host-monitoring:Destinations:host-monitoring:Address"] = Address(host),
+            ["Vigiloom:Gateway:AgentIdentityAddress"] = Address(identity),
+            ["Vigiloom:Agent:Transport:MaxConcurrentRequests"] = "1",
+            ["Vigiloom:Agent:Transport:MaxQueuedRequests"] = "0"
+        })));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "valid-agent");
+        var first = client.PostAsync("/api/v1/agent/heartbeat", null, token);
+        HttpStatusCode? firstStatus = null;
+        try
+        {
+            await entered.Task.WaitAsync(token);
+            using var denied = await client.PostAsync("/api/v1/agent/heartbeat", null, token);
+            Assert.AreEqual(HttpStatusCode.TooManyRequests, denied.StatusCode);
+            Assert.IsNotNull(denied.Headers.RetryAfter);
+            Assert.AreEqual(1, Volatile.Read(ref calls));
+        }
+        finally
+        {
+            release.TrySetResult();
+            using var completed = await first;
+            firstStatus = completed.StatusCode;
+        }
+        Assert.AreEqual(HttpStatusCode.OK, firstStatus);
+        using var next = await client.PostAsync("/api/v1/agent/heartbeat", null, token);
+        Assert.AreEqual(HttpStatusCode.OK, next.StatusCode);
     }
     [TestMethod]
     public async Task RoutesAgentChannelOnlyOverHttps()

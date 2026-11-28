@@ -319,15 +319,14 @@ public sealed class AgentSettingsUiHttpTests
             Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, agent, new AgentQueueSessionRequest(null, epoch), token));
             var report = new AgentHeartbeatReport(1, epoch, 1, null, IntegrityConfiguration:
                 new(firstSettings.Revision, firstSettings.Generation, DateTimeOffset.UtcNow, null));
-            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", report, token)) Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, report, token));
             {
                 var value = await ReadSettingsStatusAsync();
                 Assert.AreEqual(AgentSettingsApplyState.Applied, value.State);
                 Assert.AreEqual(firstSettings.Revision, value.AppliedRevision);
             }
-            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", report with { Sequence = 2, IntegrityConfiguration = report.IntegrityConfiguration! with { Failure = AgentConfigurationFailure.Unavailable } }, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
-            using (var stale = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", report, token)) Assert.AreEqual(HttpStatusCode.NoContent, stale.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, report with { Sequence = 2, IntegrityConfiguration = report.IntegrityConfiguration! with { Failure = AgentConfigurationFailure.Unavailable } }, token));
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, report, token));
             {
                 var value = await ReadSettingsStatusAsync();
                 Assert.AreEqual(AgentSettingsApplyState.Failed, value.State);
@@ -458,36 +457,32 @@ public sealed class AgentSettingsUiHttpTests
             var observation = new AgentLogSourceObservation(source.Settings.SourceId, source.Settings.Generation,
                 AgentLogSourceState.Unavailable, DateTimeOffset.UtcNow, 0, PermissionDenied: true);
             var heartbeat = new AgentHeartbeatReport(1, epoch, 1, null, LogStatus: new(snapshot.Revision, false, [observation]));
-            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat, token)) Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, heartbeat, token));
             using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
                 Assert.Contains("讀取權限不足", await BodyTextAsync(statusPage, token));
             var duplicateSource = heartbeat with { Sequence = 2, LogStatus = heartbeat.LogStatus! with { Sources = [observation, observation] } };
-            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", duplicateSource, token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            await Assert.ThrowsAsync<ArgumentException>(() => PingTestSite.RecordHeartbeatAsync(factory.Services, agent, duplicateSource, token));
             var wrongGeneration = heartbeat with { Sequence = 2, LogStatus = heartbeat.LogStatus! with { Sources = [observation with { Generation = Guid.CreateVersion7() }] } };
-            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", wrongGeneration, token)) Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
-            using (var stale = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat, token)) Assert.AreEqual(HttpStatusCode.NoContent, stale.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, wrongGeneration, token));
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, heartbeat, token));
             using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
                 Assert.Contains("尚未檢查", await BodyTextAsync(statusPage, token));
             var replacementEpoch = Guid.CreateVersion7();
             Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, agent, new AgentQueueSessionRequest(epoch, replacementEpoch), token));
-            using (var oldSession = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat with { Sequence = 5 }, token))
-                Assert.AreEqual(HttpStatusCode.Conflict, oldSession.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Conflict, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, heartbeat with { Sequence = 5 }, token));
             using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
                 Assert.Contains("尚無目前設定的狀態", await BodyTextAsync(statusPage, token));
-            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat with { Epoch = replacementEpoch, Sequence = 1 }, token)) Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, heartbeat with { Epoch = replacementEpoch, Sequence = 1 }, token));
             var largeStatus = new AgentLogStatusReport(snapshot.Revision, true, Enumerable.Range(0, AgentLogSettingsSnapshot.MaximumSources)
                 .Select(_ => new AgentLogSourceObservation(Guid.CreateVersion7(), Guid.CreateVersion7(), AgentLogSourceState.Unavailable, DateTimeOffset.UtcNow, 2_592_000)).ToArray());
             Assert.IsLessThan(8192, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(heartbeat with { LogStatus = largeStatus }).Length);
-            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat with { Epoch = replacementEpoch, Sequence = 2, LogStatus = largeStatus }, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, heartbeat with { Epoch = replacementEpoch, Sequence = 2, LogStatus = largeStatus }, token));
             using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
                 Assert.Contains("尚未檢查", await BodyTextAsync(statusPage, token));
-            using (var older = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat with { Epoch = replacementEpoch, Sequence = 3, LogStatus = null }, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, older.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, heartbeat with { Epoch = replacementEpoch, Sequence = 3, LogStatus = null }, token));
             using (var statusPage = await admin.GetAsync($"/devices/{first.Id:D}/log-sources", token))
                 Assert.Contains("尚無目前設定的狀態", await BodyTextAsync(statusPage, token));
-            using (var sent = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat with { Epoch = replacementEpoch, Sequence = 4 }, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, sent.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, heartbeat with { Epoch = replacementEpoch, Sequence = 4 }, token));
             var quota = await admin.GetFromJsonAsync<Vigiloom.Contracts.Operations.LogQuotaSettings>("/api/v1/log-quota/", token);
             Assert.IsNotNull(quota);
             using (var limited = await admin.PutAsJsonAsync("/api/v1/log-quota/", quota with { SourceBurst = 1 }, token))

@@ -364,8 +364,7 @@ public sealed class AgentIdentityHttpTests
             Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, client, new AgentQueueSessionRequest(null, epoch), token));
             var appliedInventory = InventorySettingsSnapshot.Create(InventorySettings.Default);
             var heartbeat = new AgentHeartbeatReport(1, epoch, 1, null, InventoryConfiguration: new(appliedInventory, now, null));
-            using (var reported = await client.PostAsJsonAsync("/api/v1/agent/heartbeat", heartbeat, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, reported.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, client, heartbeat, token));
             var measured = InventoryDigest.MeasureChunk([]);
             var chunk = new InventoryChunk(4, Guid.CreateVersion7(), now, Guid.CreateVersion7(), 1,
                 InventorySource.LinuxDpkg, now, InventoryOutcome.Complete, 0, 1, 0, measured.Bytes,
@@ -763,119 +762,6 @@ public sealed class AgentIdentityHttpTests
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
-    [Timeout(180000, CooperativeCancellation = true)]
-    public Task AgentTransport_PreAuthenticationConcurrencyIsBoundedAndReleased() =>
-        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
-        {
-            var gate = new TestDeviceGate();
-            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            {
-                builder.UseEnvironment("Development");
-                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
-                    ["Vigiloom:Agent:Transport:MaxConcurrentRequests"] = "1",
-                    ["Vigiloom:Agent:Transport:MaxQueuedRequests"] = "0"
-                }));
-                builder.ConfigureServices(services => services.AddScoped<IDeviceAgentSource>(provider =>
-                    new BlockingDeviceSource(new DeviceAgentSource(provider.GetRequiredService<IDbContextFactory<ResourcesDbContext>>()), gate)));
-            });
-            var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
-            var device = new Device("Agent", "127.0.0.1", true, DateTimeOffset.UtcNow);
-            await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
-            string credential;
-            await using (var scope = factory.Services.CreateAsyncScope())
-            {
-                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
-                var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
-                var secret = RandomNumberGenerator.GetBytes(32);
-                var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
-                credential = $"vla_{registered.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}";
-            }
-            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
-            using var first = factory.CreateClient(options);
-            using var second = factory.CreateClient(options);
-            first.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
-            second.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credential);
-            gate.Enabled = true;
-            var pending = first.PostAsync("/api/v1/agent/heartbeat", null, token);
-            HttpStatusCode? firstStatus = null;
-            try
-            {
-                await gate.Entered.Task.WaitAsync(token);
-                using var limited = await second.PostAsync("/api/v1/agent/heartbeat", null, token);
-                Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
-                Assert.IsNotNull(limited.Headers.RetryAfter);
-            }
-            finally
-            {
-                gate.Release.TrySetResult();
-                using var completed = await pending;
-                firstStatus = completed.StatusCode;
-            }
-            Assert.AreEqual(HttpStatusCode.NoContent, firstStatus);
-            using (var resumed = await second.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, resumed.StatusCode);
-        }, TestContext.CancellationToken);
-
-    [TestMethod]
-    public Task AgentTransport_RateLimitsVerifiedAgentsIndependentlyBehindOneAddress() =>
-        ReusableWebDatabase.ExecuteAsync(async (database, token) =>
-        {
-            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            {
-                builder.UseEnvironment("Development");
-                builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["ConnectionStrings:Vigiloom"] = database.ConnectionString,
-                    ["Vigiloom:Authentication:ApiRequestsPerMinute"] = "1",
-                    ["Vigiloom:Agent:Transport:RequestsPerMinute"] = "2"
-                }));
-            });
-            var resources = factory.Services.GetRequiredService<IDbContextFactory<ResourcesDbContext>>();
-            var credentials = new List<string>();
-            await using (var scope = factory.Services.CreateAsyncScope())
-            {
-                var identity = scope.ServiceProvider.GetRequiredService<AgentIdentity>();
-                for (var i = 0; i < 2; i++)
-                {
-                    var device = new Device($"Agent {i}", "127.0.0.1", true, DateTimeOffset.UtcNow);
-                    await using (var db = await resources.CreateDbContextAsync(token)) { db.Devices.Add(device); await db.SaveChangesAsync(token); }
-                    var issued = await identity.IssueAsync(device.Id, Guid.CreateVersion7(), token);
-                    var secret = RandomNumberGenerator.GetBytes(32);
-                    var registered = await identity.RedeemAsync(issued.Secret, SHA256.HashData(secret), token);
-                    credentials.Add($"vla_{registered.AgentId:D}.{WebEncoders.Base64UrlEncode(secret)}");
-                }
-            }
-            var options = new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") };
-            using var invalid = factory.CreateClient(options);
-            for (var i = 0; i < 5; i++)
-            {
-                invalid.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{Guid.CreateVersion7():D}.{WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32))}");
-                using var denied = await invalid.PostAsync("/api/v1/agent/heartbeat", null, token);
-                Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
-            }
-            using var first = factory.CreateClient(options);
-            using var second = factory.CreateClient(options);
-            first.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credentials[0]);
-            second.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", credentials[1]);
-            using (var heartbeat = await first.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
-            using (var denied = await first.GetAsync("/api/v1/operations/platform-status", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
-            foreach (var source in new[] { "accounts", "api-credentials", "devices", "agent-identity", "agent-settings", "scheduling" })
-                using (var denied = await first.GetAsync($"/api/v1/operations/audit-feed/{source}?from=2026-11-01T00%3A00%3A00Z&to=2026-11-02T00%3A00%3A00Z", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, denied.StatusCode);
-            var now = DateTimeOffset.UtcNow;
-            var message = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "Test OS", "X64", ".NET 10");
-            using (var batch = await first.PostAsync("/api/v1/agent/batches", JsonBytes(AgentBatchCodec.Serialize(new AgentBatch(1, Guid.CreateVersion7(), now, [message]))), token))
-                Assert.AreEqual(HttpStatusCode.NoContent, batch.StatusCode);
-            using (var limited = await first.PostAsync("/api/v1/agent/heartbeat", null, token))
-            {
-                Assert.AreEqual(HttpStatusCode.TooManyRequests, limited.StatusCode);
-                Assert.IsNotNull(limited.Headers.RetryAfter);
-            }
-            using (var heartbeat = await second.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
-            using (var heartbeat = await second.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
-        }, TestContext.CancellationToken);
-
-    [TestMethod]
     public Task AgentRecoversAfterCommittedEnrollmentResponseIsLostAndExpires() =>
         SqlTestDatabase.ExecuteAsync(TestDatabaseServer.FromEnvironment(), async (database, token) =>
         {
@@ -1071,11 +957,11 @@ public sealed class AgentIdentityHttpTests
             using (var invalidPackagePage = await api.GetAsync("/api/v1/agent-packages?page=0", token)) Assert.AreEqual(HttpStatusCode.BadRequest, invalidPackagePage.StatusCode);
             using (var apiCannotAudit = await api.GetAsync("/api/v1/operations/audit?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotAudit.StatusCode);
-            using (var apiCannotHeartbeat = await api.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotHeartbeat.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Invalid, await PingTestSite.RecordHeartbeatAsync(factory.Services, api, null, token));
             using (var apiCannotBatch = await api.PostAsync("/api/v1/agent/batches", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotBatch.StatusCode);
             using (var apiCannotDiscover = await api.GetAsync("/api/v1/service-discovery/candidates/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotDiscover.StatusCode);
             using (var apiCannotApprove = await api.PostAsync($"/api/v1/service-discovery/candidates/{Guid.CreateVersion7():D}/approve", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotApprove.StatusCode);
-            using (var anonymousCannotHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousCannotHeartbeat.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Invalid, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, null, token));
             using (var apiCannotManage = await api.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotManage.StatusCode);
             using (var unauthenticated = await agent.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, unauthenticated.StatusCode);
@@ -1197,8 +1083,7 @@ public sealed class AgentIdentityHttpTests
             Assert.IsEmpty(retiredSources!);
             using (var forged = await admin.PostAsync($"/api/v1/agent-management/devices/{device.Id:D}/enrollments", null, token))
                 Assert.AreEqual(HttpStatusCode.BadRequest, forged.StatusCode);
-            using (var cookieCannotHeartbeat = await admin.PostAsync("/api/v1/agent/heartbeat", null, token))
-                Assert.AreEqual(HttpStatusCode.Unauthorized, cookieCannotHeartbeat.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Invalid, await PingTestSite.RecordHeartbeatAsync(factory.Services, admin, null, token));
             admin.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en");
             using (var english = await admin.GetAsync($"/devices/{device.Id:D}/agent", token))
             {
@@ -1365,29 +1250,24 @@ public sealed class AgentIdentityHttpTests
                 var actual = await settingsScope.ServiceProvider.GetRequiredService<AgentConfiguration>().GetForAgentAsync(agent.DefaultRequestHeaders.Authorization!.Parameter, token);
                 Assert.AreEqual(configured.Effective, actual);
             }
-            using (var heartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, null, token));
             var queueEpoch = Guid.CreateVersion7();
             Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.BeginQueueSessionAsync(factory.Services, agent, new AgentQueueSessionRequest(null, queueEpoch), token));
             var settingsReport = new AgentConfigurationReport(configured.Effective, DateTimeOffset.UtcNow, null);
             var lossReport = new AgentMetricLossReport(Guid.CreateVersion7(), clock.Now, 2, 7, true);
             var queueReport = new AgentHeartbeatReport(1, queueEpoch, 1, new AgentQueueSnapshot(1234, 5, 2, 8192, 10), settingsReport,
                 new AgentQuarantineBreakdown(0, 0, 2, 0, 0, 0, 0), MetricLoss: lossReport);
-            using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, queueReport, token));
             await using (var settingsScope = factory.Services.CreateAsyncScope())
             {
                 var status = await settingsScope.ServiceProvider.GetRequiredService<IAgentSettingsStatusReader>().GetAsync(device.Id, token);
                 Assert.AreEqual(AgentSettingsApplyState.Applied, status!.State);
                 Assert.AreEqual(configured.Effective, status.Applied);
             }
-            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Queue = queueReport.Queue! with { QuarantinedBatches = 6 } }, token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
-            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, Quarantine = queueReport.Quarantine! with { Conflict = -1 } }, token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
-            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, Queue = null }, token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
-            using (var invalid = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, MetricLoss = lossReport with { Records = -1 } }, token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, invalid.StatusCode);
+            await Assert.ThrowsAsync<ArgumentException>(() => PingTestSite.RecordHeartbeatAsync(factory.Services, agent, queueReport with { Queue = queueReport.Queue! with { QuarantinedBatches = 6 } }, token));
+            await Assert.ThrowsAsync<ArgumentException>(() => PingTestSite.RecordHeartbeatAsync(factory.Services, agent, queueReport with { Sequence = 2, Quarantine = queueReport.Quarantine! with { Conflict = -1 } }, token));
+            await Assert.ThrowsAsync<ArgumentException>(() => PingTestSite.RecordHeartbeatAsync(factory.Services, agent, queueReport with { Sequence = 2, Queue = null }, token));
+            await Assert.ThrowsAsync<ArgumentException>(() => PingTestSite.RecordHeartbeatAsync(factory.Services, agent, queueReport with { Sequence = 2, MetricLoss = lossReport with { Records = -1 } }, token));
             using (var statusResponse = await api.GetAsync($"/api/v1/devices/{device.Id:D}/agent-status", token))
             {
                 var status = await statusResponse.Content.ReadFromJsonAsync<AgentConnectionStatus>(cancellationToken: token);
@@ -1395,14 +1275,7 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(queueReport.Quarantine, status.Queue.Quarantine);
                 Assert.AreEqual(lossReport, status.MetricLoss!.Snapshot);
             }
-            using (var wrongVersion = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Version = 2 }, token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, wrongVersion.StatusCode);
-            using (var duplicate = await agent.PostAsync("/api/v1/agent/heartbeat", JsonBytes("{\"version\":1,\"version\":1,\"queue\":null}"u8.ToArray()), token))
-                Assert.AreEqual(HttpStatusCode.BadRequest, duplicate.StatusCode);
-            using (var oversized = await agent.PostAsync("/api/v1/agent/heartbeat", JsonBytes(new byte[8193]), token))
-                Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
-            using (var oversized = await agent.PostAsync("/api/v1/agent/heartbeat", new UnknownLengthJsonContent(8193), token))
-                Assert.AreEqual(HttpStatusCode.RequestEntityTooLarge, oversized.StatusCode);
+            await Assert.ThrowsAsync<ArgumentException>(() => PingTestSite.RecordHeartbeatAsync(factory.Services, agent, queueReport with { Version = 2 }, token));
             var now = DateTimeOffset.UtcNow;
             var observation = new AgentRuntimeMessage(Guid.CreateVersion7(), AgentBatchCodec.RuntimeKind, now, "test operating system", "X64", ".NET 10");
             var batch = new AgentBatch(1, Guid.CreateVersion7(), now, [observation]);
@@ -1525,8 +1398,7 @@ public sealed class AgentIdentityHttpTests
                 Assert.Contains("歷史批次觀察，不代表目前時鐘狀態", page.Body.TextContent);
             }
             clock.Now += TimeSpan.FromMinutes(4);
-            using (var heartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, null, token));
             using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
             {
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
@@ -1534,22 +1406,19 @@ public sealed class AgentIdentityHttpTests
                 Assert.Contains("統計已過時或平台時間異常", page.Body.TextContent);
                 Assert.Contains("已連線", page.Body.TextContent);
             }
-            using (var full = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 2, Queue = queueReport.Queue! with { TotalBatches = 10 } }, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, full.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, queueReport with { Sequence = 2, Queue = queueReport.Queue! with { TotalBatches = 10 } }, token));
             using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
             {
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("佇列已達容量", page.Body!.TextContent);
             }
-            using (var unreadable = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 3, Queue = null, Quarantine = null }, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, unreadable.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, queueReport with { Sequence = 3, Queue = null, Quarantine = null }, token));
             using (var deliveryPage = await admin.GetAsync($"/devices/{device.Id:D}", token))
             {
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("Agent 無法讀取佇列，資料狀態未知", page.Body!.TextContent);
             }
-            using (var legacy = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", queueReport with { Sequence = 4, Quarantine = null }, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, legacy.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, queueReport with { Sequence = 4, Quarantine = null }, token));
             using (var deliveryPage = await reader.GetAsync($"/devices/{device.Id:D}", token))
             {
                 var page = await new HtmlParser().ParseDocumentAsync(await deliveryPage.Content.ReadAsStringAsync(token), token);
@@ -1575,16 +1444,14 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.NoContent, duplicateAtCapacity.StatusCode);
             var previousSettings = AgentSettingsSnapshot.Create(AgentSettings.Default);
             var failedReport = queueReport with { Sequence = 5, Configuration = new(previousSettings, clock.Now, AgentConfigurationFailure.Invalid) };
-            using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", failedReport, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, failedReport, token));
             using (var details = await reader.GetAsync($"/devices/{device.Id:D}", token))
             {
                 var page = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
                 Assert.Contains("同步失敗", page.Body!.TextContent);
                 Assert.Contains("收到的設定無法套用，Agent 會保留上次設定", page.Body.TextContent);
             }
-            using (var report = await agent.PostAsJsonAsync("/api/v1/agent/heartbeat", failedReport with { Sequence = 6, Configuration = new(previousSettings, clock.Now, null) }, token))
-                Assert.AreEqual(HttpStatusCode.NoContent, report.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, failedReport with { Sequence = 6, Configuration = new(previousSettings, clock.Now, null) }, token));
             using (var details = await reader.GetAsync($"/devices/{device.Id:D}", token))
             {
                 var page = await new HtmlParser().ParseDocumentAsync(await details.Content.ReadAsStringAsync(token), token);
@@ -1617,13 +1484,13 @@ public sealed class AgentIdentityHttpTests
             using (var retry = await agent.PostAsync("/api/v1/agent/rotation/finish", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, retry.StatusCode);
             Assert.IsNotNull(await AuthenticateAgentAsync(factory.Services, agent, token));
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", $"vla_{result.AgentId:D}.{machineSecret}");
-            using (var oldHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, oldHeartbeat.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Invalid, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, null, token));
             agent.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", nextCredential);
-            using (var rotatedHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, rotatedHeartbeat.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Success, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, null, token));
             using (var revoke = await admin.PostAsync($"/api/v1/agent-management/agents/{result.AgentId:D}/revoke", null, token))
                 Assert.AreEqual(HttpStatusCode.NoContent, revoke.StatusCode);
             Assert.IsNull(await AuthenticateAgentAsync(factory.Services, agent, token));
-            using (var revokedHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revokedHeartbeat.StatusCode);
+            Assert.AreEqual(AgentIdentityStatus.Invalid, await PingTestSite.RecordHeartbeatAsync(factory.Services, agent, null, token));
             using (var revokedBatch = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revokedBatch.StatusCode);
         }, TestContext.CancellationToken);
 
@@ -1637,12 +1504,6 @@ public sealed class AgentIdentityHttpTests
     {
         public DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
         public override DateTimeOffset GetUtcNow() => Now;
-    }
-
-    private sealed class UnknownLengthJsonContent(int length) : HttpContent
-    {
-        protected override bool TryComputeLength(out long value) { value = 0; return false; }
-        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => stream.WriteAsync(new byte[length]).AsTask();
     }
 
     private static ByteArrayContent GzipBytes(byte[] bytes)
@@ -1659,29 +1520,6 @@ public sealed class AgentIdentityHttpTests
         var content = new ByteArrayContent(bytes);
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         return content;
-    }
-
-    private sealed class TestDeviceGate
-    {
-        public volatile bool Enabled;
-        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    }
-
-    private sealed class BlockingDeviceSource(IDeviceAgentSource inner, TestDeviceGate gate) : IDeviceAgentSource
-    {
-        public async Task<DeviceAgentState?> GetAsync(Guid deviceId, CancellationToken token)
-        {
-            if (gate.Enabled)
-            {
-                gate.Entered.TrySetResult();
-                await gate.Release.Task.WaitAsync(token);
-            }
-            return await inner.GetAsync(deviceId, token);
-        }
-
-        public Task<bool> IsCurrentAsync(Guid deviceId, long generation, DbConnection connection, DbTransaction transaction, CancellationToken token) =>
-            inner.IsCurrentAsync(deviceId, generation, connection, transaction, token);
     }
 
     private sealed class CapturedLogs : ILoggerProvider

@@ -63,12 +63,6 @@ internal static class AgentEndpoints
         }).AllowAnonymous().WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(2048))
             .Produces<EnrollmentResponse>().ProducesProblem(401).ProducesProblem(413).ProducesProblem(429)
             .WithSummary("Recover an existing Agent ID using enrollment and machine secret proof");
-        machine.MapPost("/heartbeat", AgentHeartbeatEndpoint.ReceiveAsync)
-            .RequireAuthorization("Agent").RequireRateLimiting("agent-transport")
-            .WithMetadata(AgentTransportEndpoint.Instance, new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(AgentHeartbeatEndpoint.MaximumBytes))
-            .Accepts<AgentHeartbeatReport>(true, "application/json")
-            .Produces(204).ProducesProblem(400).ProducesProblem(401).ProducesProblem(403).ProducesProblem(409).ProducesProblem(413).ProducesProblem(415).ProducesProblem(429)
-            .WithSummary("Record an authenticated Agent heartbeat");
         machine.MapGet("/inventory/status", async (int? contract, HttpContext context, AgentInventoryStatus inventory, CancellationToken token) =>
         {
             context.Response.Headers.CacheControl = "no-store";

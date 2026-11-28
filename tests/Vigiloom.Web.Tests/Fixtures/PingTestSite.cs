@@ -29,6 +29,13 @@ internal static class PingTestSite
             .BeginQueueSessionAsync(client.DefaultRequestHeaders.Authorization?.Parameter, request, token);
     }
 
+    internal static async Task<AgentIdentityStatus> RecordHeartbeatAsync(IServiceProvider services, HttpClient client, AgentHeartbeatReport? report, CancellationToken token)
+    {
+        await using var scope = services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<AgentIdentity>()
+            .RecordHeartbeatAsync(client.DefaultRequestHeaders.Authorization?.Parameter, report, token);
+    }
+
     internal static async Task LoginAsync(HttpClient client, string name, CancellationToken token)
     {
         using var page = await client.GetAsync("/account/login", token);
