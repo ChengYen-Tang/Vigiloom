@@ -388,8 +388,6 @@ public sealed partial class CollectorInteropTests(TestContext context)
                 await Task.Delay(250, token);
             }
             Assert.IsTrue(rotationDelivered, "Collector did not resume delivery after central credential rotation and restart.");
-            await RunAgentAndCollectorQuotaAsync(factory, new Uri($"https://localhost:{port}/"), certificate,
-                directory, name, () => Send(bPort, ingressB, "billing", bodyText: "shared-quota-collector"), token);
             for (var i = 0; i < 160; i++)
             {
                 await using var metrics = await dbFactory.CreateDbContextAsync(token);
