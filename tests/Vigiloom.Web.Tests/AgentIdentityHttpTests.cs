@@ -1122,7 +1122,6 @@ public sealed class AgentIdentityHttpTests
             using (var apiCannotAudit = await api.GetAsync("/api/v1/operations/audit?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z", token))
                 Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotAudit.StatusCode);
             using (var apiCannotHeartbeat = await api.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotHeartbeat.StatusCode);
-            using (var apiCannotReadMachineSettings = await api.GetAsync("/api/v1/agent/settings", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotReadMachineSettings.StatusCode);
             using (var apiCannotBatch = await api.PostAsync("/api/v1/agent/batches", new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotBatch.StatusCode);
             using (var apiCannotDiscover = await api.GetAsync("/api/v1/service-discovery/candidates/", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotDiscover.StatusCode);
             using (var apiCannotApprove = await api.PostAsync($"/api/v1/service-discovery/candidates/{Guid.CreateVersion7():D}/approve", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, apiCannotApprove.StatusCode);
@@ -1428,18 +1427,10 @@ public sealed class AgentIdentityHttpTests
             }
             using (var packagePage = await admin.GetAsync("/settings/agent-packages", token))
                 Assert.AreEqual(HttpStatusCode.OK, packagePage.StatusCode);
-            using (var settingsResponse = await agent.GetAsync("/api/v1/agent/settings", token))
+            await using (var settingsScope = factory.Services.CreateAsyncScope())
             {
-                Assert.AreEqual(HttpStatusCode.OK, settingsResponse.StatusCode);
-                Assert.AreEqual(configured.Effective, await settingsResponse.Content.ReadFromJsonAsync<AgentSettingsSnapshot>(cancellationToken: token));
-                Assert.AreEqual($"\"{configured.Effective.Revision}\"", settingsResponse.Headers.ETag!.Tag);
-                Assert.IsTrue(settingsResponse.Headers.CacheControl?.NoStore);
-            }
-            using (var conditional = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/settings"))
-            {
-                conditional.Headers.IfNoneMatch.ParseAdd($"W/\"{configured.Effective.Revision}\"");
-                using var unchanged = await agent.SendAsync(conditional, token);
-                Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
+                var actual = await settingsScope.ServiceProvider.GetRequiredService<AgentConfiguration>().GetForAgentAsync(agent.DefaultRequestHeaders.Authorization!.Parameter, token);
+                Assert.AreEqual(configured.Effective, actual);
             }
             using (var heartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.NoContent, heartbeat.StatusCode);
             var queueEpoch = Guid.CreateVersion7();
@@ -1705,7 +1696,6 @@ public sealed class AgentIdentityHttpTests
                 Assert.AreEqual(HttpStatusCode.NoContent, revoke.StatusCode);
             using (var revoked = await agent.GetAsync("/api/v1/agent/identity", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revoked.StatusCode);
             using (var revokedHeartbeat = await agent.PostAsync("/api/v1/agent/heartbeat", null, token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revokedHeartbeat.StatusCode);
-            using (var revokedSettings = await agent.GetAsync("/api/v1/agent/settings", token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revokedSettings.StatusCode);
             using (var revokedBatch = await agent.PostAsync("/api/v1/agent/batches", JsonBytes(batchBytes), token)) Assert.AreEqual(HttpStatusCode.Unauthorized, revokedBatch.StatusCode);
         }, TestContext.CancellationToken);
 

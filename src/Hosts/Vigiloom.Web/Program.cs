@@ -823,7 +823,6 @@ app.MapGroupEndpoints();
 app.MapAgentEndpoints();
 app.MapAgentPackageEndpoints();
 app.MapAgentPackageUiEndpoints();
-app.MapAgentConfigurationEndpoints();
 app.MapAgentVersionEndpoints();
 app.MapInventorySettingsEndpoints();
 app.MapBaselineSettingsEndpoints();

@@ -680,7 +680,7 @@ public sealed class HostBatchIntegrationTests(TestContext context)
                 var snapshot = await settings.Content.ReadFromJsonAsync<AgentSettingsSnapshot>(cancellationToken: token);
                 Assert.AreEqual(120, snapshot!.Settings.HeartbeatSeconds);
                 using var unchangedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/agent/settings");
-                unchangedRequest.Headers.IfNoneMatch.Add(settings.Headers.ETag!);
+                unchangedRequest.Headers.IfNoneMatch.Add(new EntityTagHeaderValue(settings.Headers.ETag!.Tag, isWeak: true));
                 using var unchanged = await client.SendAsync(unchangedRequest, token);
                 Assert.AreEqual(HttpStatusCode.NotModified, unchanged.StatusCode);
             }
